@@ -28,7 +28,7 @@ const TemporalSoftenData = struct {
     vi: *const vs.VideoInfo,
 
     // The temporal radius from which we'll build a median.
-    radius: i8,
+    radius: i4,
     // Figure out how to make this work with floating point.
     // maybe use @bitCast to cast back and forth between u32 and f32, etc.
     threshold: [3]u32,
@@ -314,7 +314,7 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     }
 
     // Check radius param
-    d.radius = vsh.mapGetN(i8, in, "radius", 0, vsapi) orelse 1;
+    d.radius = vsh.mapGetN(i4, in, "radius", 0, vsapi) orelse 1;
 
     if ((d.radius < 1) or (d.radius > MAX_RADIUS)) {
         vsapi.?.mapSetError.?(out, "TemporalSoften: Radius must be between 1 and 7 (inclusive)");

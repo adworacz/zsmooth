@@ -1,0 +1,15 @@
+.{
+    .name = "vapoursynth-zmooth",
+    .version = "1.0.0",
+    .paths = .{""},
+    .dependencies = .{ 
+        .vapoursynth = .{
+            .url = "https://github.com/dnjulek/vapoursynth-zig/archive/8b5240b1713ba2afe97a5c7a593304e9051c8ceb.tar.gz",
+            .hash = "122004ea0c57f0ab407f5ba00430ddb3ebe451e144779ba3f563099c3c3782f28e07",
+        }, 
+        .zort = .{
+            .url = "https://github.com/alichraghi/zort/archive/6eba27e335e7f1f254acb80efc5e32a60ce5a3a8.tar.gz",
+            .hash = "1220e570562baba7cbfe2af726859e67dafca1ed77e9962a13456f6d3477e875ad14",
+        },
+    },
+}

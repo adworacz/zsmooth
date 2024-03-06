@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
 
     const lib = b.addSharedLibrary(.{
         .name = "zmooth",
+        //TODO: Update this to src/zmooth.zig once I update build.zig.zon with the latest vapoursynth-zig dependency, which fixes the dependency loop.
         .root_source_file = .{ .path = "src/temporal_median.zig" },
         .target = target,
         .optimize = optimize,

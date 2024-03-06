@@ -33,11 +33,7 @@ const TemporalMedianData = struct {
     process: [3]bool,
 };
 
-fn lessThan(a: u8, b: u8) bool {
-    return a < b;
-}
-
-fn getVecSize(comptime T: type) comptime_int {
+fn GetVecSize(comptime T: type) comptime_int {
     if (std.simd.suggestVectorLength(T)) |suggested| {
         return suggested;
     }
@@ -70,59 +66,150 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
     }
 }
 
-fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, radius: i8) void {
-    const vec_size = getVecSize(T);
+fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+    const vec_size = GetVecSize(T);
     const width_simd = width / vec_size * vec_size;
 
     for (0..height) |h| {
         var x: usize = 0;
         while (x < width_simd) : (x += vec_size) {
             const offset = h * width + x;
-            median_vec(T, srcp, dstp, offset, radius);
+            median_vec(T, srcp, dstp, offset, diameter);
         }
 
         // If the video width is not perfectly aligned with the vector width, do one
         // last operation at the end of the plane to cover what's leftover from the loop above.
         if (width_simd < width) {
-            median_vec(T, srcp, dstp, width - vec_size, radius);
+            median_vec(T, srcp, dstp, width - vec_size, diameter);
         }
     }
 }
 
-inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, _dstp: [*]T, offset: usize, radius: i8) void {
-    _ = radius;
+inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, _dstp: [*]T, offset: usize, diameter: i8) void {
     var dstp: [*]T = @ptrCast(@alignCast(_dstp));
-    const vec_size = getVecSize(T);
+    const vec_size = GetVecSize(T);
+    const VecType = @Vector(vec_size, T);
 
-    // Load
-    const a: @Vector(vec_size, T) = srcp[0][offset..][0..vec_size].*;
-    const b: @Vector(vec_size, T) = srcp[1][offset..][0..vec_size].*;
-    const c: @Vector(vec_size, T) = srcp[2][offset..][0..vec_size].*;
+    var src: [MAX_DIAMETER]@Vector(vec_size, T) = undefined;
 
-    // var src: [MAX_RADIUS]@Vector(vec_size, T) = undefined;
-    //
-    // for (0..@intCast(radius * 2 + 1)) |r| {
-    //     src[r] = srcp[r][offset..][0..vec_size].*;
-    // }
+    for (0..@intCast(diameter)) |r| {
+        src[r] = srcp[r][offset..][0..vec_size].*;
+    }
 
     // TODO: Support greater radii.
-    // switch (radius) {
-    //     1 => {},
-    //     2 => {
-    //         const d: @Vector(vec_size, T) = srcp[3][offset..][0..vec_size].*;
-    //         const e: @Vector(vec_size, T) = srcp[4][offset..][0..vec_size].*;
-    //
-    //         const f = @max(@min(a, b), @min(c, d));
-    //         const g = @min(@max(a, b), @max(c, d));
-    //
-    //         a = e;
-    //         b = f;
-    //         c = g;
-    //     },
+    var result: @Vector(vec_size, T) = undefined;
+    switch (diameter) {
+        3 => { // Radius 1
+            result = median3(VecType, src[0], src[1], src[2]);
+        },
+        5 => { // Radius 2
+            // https://github.com/HomeOfAviSynthPlusEvolution/neo_TMedian/blob/9b6a8931badeaa1ce7c1b692ddbf1f06620c0e93/src/tmedian_SIMD.hpp#L54
+            // zig fmt: off
+            swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
+            swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]); // Throw src0 and src3
+            // zig fmt: on
 
-    // Find median
-    const result = @max(@min(a, b), @min(c, @max(a, b)));
-    // const result = @max(@min(src[0], src[1]), @min(src[2], @max(src[0], src[1])));
+            result = median3(VecType, src[1], src[2], src[4]);
+        },
+        7 => { // Radius 3
+            // zig fmt: off
+            swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]);
+            swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[3], &src[5]);
+
+            swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[4], &src[5]);
+
+            swap2(VecType, &src[0], &src[4]); swap2(VecType, &src[1], &src[5]); // Throw src0 src5
+            swap2(VecType, &src[1], &src[3]); swap2(VecType, &src[2], &src[4]); // Throw src1 src4
+            // zig fmt: on
+
+            result = median3(VecType, src[2], src[3], src[6]);
+        },
+        9 => { // Radius 4
+            // zig fmt: off
+            swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
+            swap2(VecType, &src[4], &src[5]); swap2(VecType, &src[6], &src[7]);
+
+            swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]);
+            swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[5], &src[7]);
+
+            swap2(VecType, &src[0], &src[4]); swap2(VecType, &src[1], &src[2]); // Throw src0
+            swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[3], &src[7]); // Throw src7
+
+            swap2(VecType, &src[1], &src[5]); swap2(VecType, &src[2], &src[6]); // Throw src1 src6
+            swap2(VecType, &src[2], &src[4]); swap2(VecType, &src[3], &src[5]); // Throw src2 src5
+            // zig fmt: on
+
+            result = median3(VecType, src[3], src[4], src[8]);
+        },
+        11 => { // Radius 5
+            // There's a bug in this code - it's producing different output with radius 5 than the
+            // scalar version.
+            // The bug might be in neo_Tmedian's implementation as well.
+
+            // zig fmt: off
+            swap2(VecType, &src[0], &src[9]);
+            swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]);
+            swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[7], &src[8]);
+
+            swap2(VecType, &src[1], &src[8]);
+            swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[3], &src[5]);
+            swap2(VecType, &src[0], &src[3]); // Throw src0
+            swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[7], &src[9]);
+            swap2(VecType, &src[6], &src[9]); // Throw src9
+            swap2(VecType, &src[2], &src[7]);
+
+            swap2(VecType, &src[4], &src[5]);
+            swap2(VecType, &src[4], &src[8]);
+            swap2(VecType, &src[1], &src[5]);
+
+            swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]); // Throw src1 src3
+            swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[7], &src[8]); // Throw src6 src8
+            swap2(VecType, &src[2], &src[4]); swap2(VecType, &src[5], &src[7]); // Throw src2 src7
+            // zig fmt: on
+
+            result = median3(VecType, src[4], src[5], src[10]);
+        },
+        13 => { // Radius 6
+            // Seems to be a bug in this radius as well. So Radius 5 and 6 are buggy.
+
+            // zig fmt: off
+            swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
+            swap2(VecType, &src[4], &src[5]); swap2(VecType, &src[6], &src[7]);
+            swap2(VecType, &src[8], &src[9]); swap2(VecType, &src[10], &src[11]);
+
+            swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]);
+            swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[5], &src[7]);
+            swap2(VecType, &src[8], &src[10]); swap2(VecType, &src[9], &src[11]);
+            swap2(VecType, &src[7], &src[11]); // Throw src11
+
+            swap2(VecType, &src[2], &src[6]);
+            swap2(VecType, &src[1], &src[5]);
+            swap2(VecType, &src[1], &src[2]);
+            swap2(VecType, &src[9], &src[10]);
+            swap2(VecType, &src[6], &src[10]);
+            swap2(VecType, &src[5], &src[9]);
+            swap2(VecType, &src[0], &src[4]); // Throw src0
+            swap2(VecType, &src[9], &src[10]); // Throw src10
+            swap2(VecType, &src[4], &src[8]); // Throw src4
+            swap2(VecType, &src[3], &src[7]); // Throw src7
+            swap2(VecType, &src[2], &src[6]);
+            swap2(VecType, &src[1], &src[5]); // Throw src1
+            swap2(VecType, &src[0], &src[4]);
+
+            swap2(VecType, &src[3], &src[8]);
+
+            swap2(VecType, &src[2], &src[3]); // Throw src2
+            swap2(VecType, &src[5], &src[6]);
+            swap2(VecType, &src[8], &src[9]); // Throw src9
+
+            swap2(VecType, &src[3], &src[5]); // Throw src3
+            swap2(VecType, &src[6], &src[8]); // Throw src8
+            // zig fmt: on
+
+            result = median3(VecType, src[4], src[5], src[12]);
+        },
+        else => unreachable,
+    }
 
     // Store
     inline for (dstp[offset..][0..vec_size], 0..) |*d, i| {
@@ -130,9 +217,24 @@ inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, _dstp: [*
     }
 }
 
+/// Computes the median of 3 arguments.
+inline fn median3(comptime T: type, a: T, b: T, c: T) T {
+    return @max(@min(a, b), @min(c, @max(a, b)));
+}
+
+/// Computes the min and max of the two arguments, and writes the min to the first
+/// argument and the max to the second argument, effectively sorting the two arguments.
+inline fn swap2(comptime T: type, a: *T, b: *T) void {
+    const min = @min(a.*, b.*);
+    const max = @max(a.*, b.*);
+    a.* = min;
+    b.* = max;
+}
+
+//TODO: Add tests for radius 6 and 10.
 test "process_plane should find the median value" {
     //Emulate a 2 x 64 (width x height) video.
-    const T = f32;
+    const T = u8;
     const one = [_]T{1} ** 128;
     const two = [_]T{2} ** 128;
     const three = [_]T{3} ** 128;
@@ -150,10 +252,10 @@ test "process_plane should find the median value" {
     defer testingAllocator.free(dstp_vec);
 
     process_plane_scalar(T, srcp, dstp_scalar.ptr, 64, 2, 3);
-    process_plane_vec(T, srcp, dstp_vec.ptr, 64, 2, 1); // vec version uses radius, not diameter.
+    process_plane_vec(T, srcp, dstp_vec.ptr, 64, 2, 3);
 
     // The median of 1, 2, and 3 is 2.
-    const expected = ([_]T{2} ** 128)[0..];
+    const expected = two[0..];
 
     try testing.expectEqualDeep(expected, dstp_scalar);
     try testing.expectEqualDeep(expected, dstp_vec);
@@ -166,16 +268,13 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
     const d: *TemporalMedianData = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
-        // Don't request frames outside the bounds of the input clip while respecting the radius.
         if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
             vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
         } else {
             // Request previous, current, and next frames, based on the filter radius.
-            {
-                var i = -d.radius;
-                while (i <= d.radius) : (i += 1) {
-                    vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
-                }
+            var i = -d.radius;
+            while (i <= d.radius) : (i += 1) {
+                vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
             }
         }
     } else if (activation_reason == ar.AllFramesReady) {
@@ -190,9 +289,6 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
 
         // Retrieve all source frames within the filter radius.
         {
-            // Use block to scope 'var i'... which is annoying.
-            // The fact that zig doesn't support negative numbers in their ranges is really annoying.
-            // TODO: Open a ticket with zig.
             var i = -d.radius;
             while (i <= d.radius) : (i += 1) {
                 src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
@@ -209,7 +305,6 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
         // Prepare array of frame pointers, with null for planes we will process,
         // and pointers to the source frame for planes we won't process.
         var plane_src = [_]?*const vs.Frame{
-            // TODO: Disable zig fmt for these lines.
             if (d.process[0]) null else src_frames[@intCast(d.radius)],
             if (d.process[1]) null else src_frames[@intCast(d.radius)],
             if (d.process[2]) null else src_frames[@intCast(d.radius)],
@@ -229,6 +324,9 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
             const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
             const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
+            //TODO: If Zig gets updated to support functions that return exportable (C compatible) functions,
+            //this whole function can be type-paramed, and shrunk significantly.
+            //
             //TODO: See if the srcp loading can be optimized a bit more... Maybe a reusable func.
             //TODO: Support an 'opt' param to switch between vector and scalar algoritms.
             switch (d.vi.format.bytesPerSample) {
@@ -239,7 +337,7 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
                         srcp[i] = vsapi.?.getReadPtr.?(src_frames[i], plane);
                     }
                     if (d.radius <= 6) {
-                        process_plane_vec(u8, srcp, dstp, width, height, d.radius);
+                        process_plane_vec(u8, srcp, dstp, width, height, diameter);
                     } else {
                         process_plane_scalar(u8, srcp, dstp, width, height, diameter);
                     }
@@ -251,18 +349,19 @@ export fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data:
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
                     if (d.radius <= 6) {
-                        process_plane_vec(u16, srcp, @ptrCast(@alignCast(dstp)), width, height, d.radius);
+                        process_plane_vec(u16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter);
                     } else {
                         process_plane_scalar(u16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter);
                     }
                 },
                 4 => {
+                    // 32 bit float content
                     var srcp: [MAX_DIAMETER][*]const f32 = undefined;
                     for (0..@intCast(diameter)) |i| {
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
                     if (d.radius <= 6) {
-                        process_plane_vec(f32, srcp, @ptrCast(@alignCast(dstp)), width, height, d.radius);
+                        process_plane_vec(f32, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter);
                     } else {
                         process_plane_scalar(f32, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter);
                     }
@@ -348,6 +447,7 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     vsapi.?.createVideoFilter.?(out, "TemporalMedian", d.vi, temporalMedianGetFrame, temporalMedianFree, fm.Parallel, &deps, deps.len, data, core);
 }
 
+// TODO: Move this to zmooth.zig once I update deps.
 export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vspapi: *const vs.PLUGINAPI) void {
     _ = vspapi.configPlugin.?("com.adub.zmooth", "zmooth", "Smoothing functions in Zig", vs.makeVersion(1, 0), vs.VAPOURSYNTH_API_VERSION, 0, plugin);
     _ = vspapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);

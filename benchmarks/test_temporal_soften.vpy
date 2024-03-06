@@ -14,14 +14,12 @@ clip.set_output(0)
 
 # TODO: Float support doesn't work just yet.
 
-radius = 1
-luma = 4
-chroma = 8
+# radius = 1
 
-cppsoften = clip.focus2.TemporalSoften2(radius=radius, luma_threshold=luma, chroma_threshold=chroma)
+cppsoften = clip.focus2.TemporalSoften2(radius=radius)
 cppsoften.set_output(1)
 
-zmooth = clip.zmooth.TemporalSoften2(radius=radius, luma_threshold=luma, chroma_threshold=chroma)
+zmooth = clip.zmooth.TemporalSoften2(radius=radius)
 zmooth.set_output(2)
 
 

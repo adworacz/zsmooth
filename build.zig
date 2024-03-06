@@ -9,8 +9,7 @@ pub fn build(b: *std.Build) void {
 
     const lib = b.addSharedLibrary(.{
         .name = "zmooth",
-        //TODO: Update this to src/zmooth.zig once I update build.zig.zon with the latest vapoursynth-zig dependency, which fixes the dependency loop.
-        .root_source_file = .{ .path = "src/temporal_median.zig" },
+        .root_source_file = .{ .path = "src/zmooth.zig" },
         .target = target,
         .optimize = optimize,
     });
@@ -20,14 +19,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // const zort_dep = b.dependency("zort", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-
     lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
-    // lib.root_module.addImport("zort", zort_dep.module("zort"));
-    lib.linkLibC();
+    lib.linkLibC(); // Necessary to use the C memory allocator.
 
     if (lib.root_module.optimize == .ReleaseFast) {
         lib.root_module.strip = true;

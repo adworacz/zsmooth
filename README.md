@@ -7,14 +7,14 @@ Goals:
 4. Tests for all filters, covering the scalar and vector implementations.
 
 TODO:
-[x] TemporalMedian
-[x] TemporalSoften (scene detection support not yet implemented)
-[] RemoveGrain
-[] FluxSmooth
-[] MiniDeen
-[] DegrainMedian?
-[] Dogway's IQMST/IQMS functions?
-[] Avisynth support?
+* [x] TemporalMedian
+* [x] TemporalSoften (scene detection support not yet implemented)
+* [] RemoveGrain
+* [] FluxSmooth
+* [] MiniDeen
+* [] DegrainMedian?
+* [] Dogway's IQMST/IQMS functions?
+* [] Avisynth support?
 
 Take a stance on internal value scaling. Current thinking is to scale internally, but provide a "scale" parameter to
 disable internal scaling.

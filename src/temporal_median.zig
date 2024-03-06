@@ -3,7 +3,7 @@ const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
-const common = @import("common.zig");
+const cmn = @import("common.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -56,7 +56,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
 }
 
 fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
-    const vec_size = common.GetVecSize(T);
+    const vec_size = cmn.GetVecSize(T);
     const width_simd = width / vec_size * vec_size;
 
     for (0..height) |h| {
@@ -75,17 +75,16 @@ fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]
 }
 
 inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
-    const vec_size = common.GetVecSize(T);
+    const vec_size = cmn.GetVecSize(T);
     const VecType = @Vector(vec_size, T);
 
-    var src: [MAX_DIAMETER]@Vector(vec_size, T) = undefined;
+    var src: [MAX_DIAMETER]VecType = undefined;
 
     for (0..@intCast(diameter)) |r| {
-        src[r] = common.loadVec(T, srcp[r], offset, vec_size);
+        src[r] = cmn.loadVec(vec_size, T, srcp[r], offset);
     }
 
-    // TODO: Support greater radii.
-    var result: @Vector(vec_size, T) = undefined;
+    var result: VecType = undefined;
     switch (diameter) {
         3 => { // Radius 1
             result = median3(VecType, src[0], src[1], src[2]);
@@ -201,7 +200,7 @@ inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]
     }
 
     // Store
-    common.storeVec(T, dstp, offset, vec_size, result);
+    cmn.storeVec(vec_size, T, dstp, offset, result);
 }
 
 /// Computes the median of 3 arguments.
@@ -390,16 +389,13 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         return;
     }
 
-    // https://ziglang.org/documentation/master/#Optionals
-    const radius = vsh.mapGetN(i64, in, "radius", 0, vsapi) orelse 1;
+    d.radius = vsh.mapGetN(i8, in, "radius", 0, vsapi) orelse 1;
 
-    if ((radius < 1) or (radius > MAX_RADIUS)) {
+    if ((d.radius < 1) or (d.radius > MAX_RADIUS)) {
         vsapi.?.mapSetError.?(out, "TemporalMedian: Radius must be between 1 and 10 (inclusive)");
         vsapi.?.freeNode.?(d.node);
         return;
     }
-
-    d.radius = @intCast(radius);
 
     //mapNumElements returns -1 if the element doesn't exist (aka, the user doesn't specify the option.)
     const requestedPlanesSize = vsapi.?.mapNumElements.?(in, "planes");

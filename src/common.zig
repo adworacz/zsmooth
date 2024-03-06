@@ -18,10 +18,8 @@ test "GetVecSize returns reasonable vector sizes" {
     try std.testing.expectEqual(8, GetVecSize(f32));
 }
 
-// TODO: This function can likely be replaced by proper @typeInfo usage, I just don't know
-// how to use it properly yet.
 pub inline fn IsFloat(comptime T: type) bool {
-    return (T == f32 or T == f16);
+    return @typeInfo(T) == .Float;
 }
 
 test IsFloat {
@@ -99,11 +97,11 @@ test get_peak {
     try std.testing.expectEqual(65535, get_peak(u16_vf));
 }
 
-pub inline fn loadVec(comptime T: type, src: [*]const T, offset: usize, vec_size: comptime_int) @Vector(vec_size, T) {
+pub inline fn loadVec(vec_size: comptime_int, comptime T: type, src: [*]const T, offset: usize) @Vector(vec_size, T) {
     return src[offset..][0..vec_size].*;
 }
 
-pub inline fn storeVec(comptime T: type, _dst: [*]T, offset: usize, vec_size: comptime_int, result: @Vector(vec_size, T)) void {
+pub inline fn storeVec(vec_size: comptime_int, comptime T: type, _dst: [*]T, offset: usize, result: @Vector(vec_size, T)) void {
     var dst: [*]T = @ptrCast(@alignCast(_dst));
     inline for (dst[offset..][0..vec_size], 0..) |*d, i| {
         d.* = result[i];

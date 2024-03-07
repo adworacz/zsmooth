@@ -35,6 +35,12 @@ const TemporalSoftenData = struct {
     scenechange: u8,
 };
 
+/// Provides a type for numbers that is compatible with the given type T
+/// and conditionally supports unsigned or signed values.
+fn GetMathType(comptime T: type, isUnsigned: bool) type {
+    return if (cmn.IsFloat(T)) f32 else if (isUnsigned) u32 else i32;
+}
+
 // 68 fps with u8, radius 1
 // 27 fps with u8, radius 7
 // 65 fps with u16, radius 1
@@ -42,9 +48,8 @@ const TemporalSoftenData = struct {
 // 70 fps with f32, radius 1
 fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
     const half_frames: u8 = @divTrunc(frames, 2);
-    //TODO: Clean up all the damn "if f32/f16" logic to use something a bit more friendly.
-    const UnsignedType = if (cmn.IsFloat(T)) f32 else u32;
-    const SignedType = if (cmn.IsFloat(T)) f32 else i32;
+    const UnsignedType = GetMathType(T, true);
+    const SignedType = GetMathType(T, false);
 
     for (0..height) |row| {
         for (0..width) |column| {
@@ -63,10 +68,11 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
             }
 
             if (cmn.IsFloat(T)) {
-                //TODO: Avisynth doesn't include the half_frames when processing float.
-                // dstp[current_pixel] = (sum + common.scale_8bit(T, half_frames, false)) / @as(T, @floatFromInt(frames));
+                // Normal division for floating point
                 dstp[current_pixel] = sum / @as(T, @floatFromInt(frames));
             } else {
+                // Add half_frames to round the integer value up to the nearest integer value.
+                // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
                 dstp[current_pixel] = @intCast((sum + half_frames) / frames);
             }
         }
@@ -105,9 +111,9 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
     const vec_size = cmn.GetVecSize(T);
     const VecType = @Vector(vec_size, T);
 
-    const UnsignedType = if (cmn.IsFloat(T)) f32 else u32;
+    const UnsignedType = GetMathType(T, true);
     const UnsignedVecType = @Vector(vec_size, UnsignedType);
-    const SignedType = if (cmn.IsFloat(T)) f32 else i32;
+    const SignedType = GetMathType(T, false);
     const SignedVecType = @Vector(vec_size, SignedType);
 
     const threshold_vec: UnsignedVecType = @splat(@as(UnsignedType, @bitCast(threshold)));
@@ -314,15 +320,21 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     }
 
     // Check radius param
-    d.radius = vsh.mapGetN(i8, in, "radius", 0, vsapi) orelse 1;
-
-    if ((d.radius < 1) or (d.radius > MAX_RADIUS)) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften: Radius must be between 1 and 7 (inclusive)");
-        vsapi.?.freeNode.?(d.node);
-        return;
+    if (vsh.mapGetN(i32, in, "radius", 0, vsapi)) |radius| {
+        if ((radius < 1) or (radius > MAX_RADIUS)) {
+            vsapi.?.mapSetError.?(out, "TemporalSoften: Radius must be between 1 and 7 (inclusive)");
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+        d.radius = @intCast(radius);
+    } else {
+        d.radius = 1;
     }
 
     // check luma_threshold param
+    // TODO: Add proper validation to these threshold values. Right now I can pass "-1" and the code takes it.
+    // Also passing 655555 works even for floating point values, so I need to
+    // properly validate these params as the lossy cast is screwing things up.
     d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse 4;
     if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
         d.threshold[1] = d.threshold[0];
@@ -334,14 +346,15 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
 
     d.threshold[2] = d.threshold[1];
 
-    if (d.threshold[0] < 0 or d.threshold[0] > 255) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften2: luma_threshold must be between 0 and 255 (inclusive)");
+    // TODO: There's a bug with checking floating point values, as get_peak returns a u32 that should be @bitCast.
+    if (d.threshold[0] < 0 or d.threshold[0] > cmn.get_peak(d.vi.format)) {
+        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: luma_threshold must be between 0 and {d} (inclusive)", .{cmn.get_peak(d.vi.format)}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }
 
-    if (d.threshold[1] < 0 or d.threshold[1] > 255) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften2: chroma_threshold must be between 0 and 255 (inclusive)");
+    if (d.threshold[1] < 0 or d.threshold[1] > cmn.get_peak(d.vi.format)) {
+        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: chroma_threshold must be between 0 and {d} (inclusive)", .{cmn.get_peak(d.vi.format)}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }
@@ -359,18 +372,30 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     }
 
     // Scale the thresholds accordingly.
-    for (&d.threshold, 0..) |*t, i| {
-        const isChroma = d.vi.format.colorFamily == vs.ColorFamily.RGB or i > 0;
+    // TODO: Add scale_param support to simplify
+    // for (&d.threshold, 0..) |*t, i| {
+    //     const isChroma = d.vi.format.colorFamily == vs.ColorFamily.RGB or i > 0;
+    //
+    //     t.* = switch (d.vi.format.bytesPerSample) {
+    //         1 => t.*,
+    //         2 => if (d.vi.format.sampleType == vs.SampleType.Integer) cmn.scale_8bit(u16, @intCast(t.*), false) else @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
+    //         4 => @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
+    //         else => unreachable,
+    //     };
+    // }
 
-        t.* = switch (d.vi.format.bytesPerSample) {
-            1 => t.*,
-            2 => if (d.vi.format.sampleType == vs.SampleType.Integer) cmn.scale_8bit(u16, @intCast(t.*), false) else @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
-            4 => @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
-            else => unreachable,
-        };
+    // Since the value passed in may be negative or overly large,
+    // using a local variable to
+    if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {
+        if (scenechange < 0 or scenechange > 254) {
+            vsapi.?.mapSetError.?(out, "TemporalSoften2: scenechange must be between 0 and 254 (inclusive)");
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+        d.scenechange = @intCast(scenechange);
+    } else {
+        d.scenechange = 0;
     }
-
-    // TODO: Support scenechanges
 
     const mode = vsh.mapGetN(u8, in, "mode", 0, vsapi) orelse 2;
 

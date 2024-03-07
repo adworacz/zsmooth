@@ -29,7 +29,9 @@ test IsFloat {
     try std.testing.expectEqual(false, IsFloat(u8));
 }
 
-/// Scales a value from 8bit to the desired
+/// Scales a value from 8bit to the bit depth pertinent to the provided type.
+/// Use the chroma param to indicate if the value is for a chroma plane,
+/// which range from -0.5 to 0.5 instead of 0.0-1.0 like the luma plane
 pub fn scale_8bit(comptime T: type, value: u8, chroma: bool) T {
     if (T == f16 or T == f32) {
         const out = @as(T, @floatFromInt(value)) / 255.0;
@@ -49,6 +51,22 @@ test scale_8bit {
     try std.testing.expectEqual(256, scale_8bit(u16, 1, false));
     try std.testing.expectEqual(1.0 / 255.0, scale_8bit(f32, 1, false));
     try std.testing.expectEqual((1.0 / 255.0) - 0.5, scale_8bit(f32, 1, true));
+}
+
+// TODO: Add tests for this function.
+pub fn scale_8bit_to_format(vf: vs.VideoFormat, value: u8) u32 {
+    // Float support, 16-32 bit.
+    if (vf.sampleType == vs.SampleType.Float) {
+        return @bitCast(@as(f32, @floatFromInt(value)) / 255.0);
+    }
+
+    // Integer support, 9-16 bit.
+    if (vf.bitsPerSample > 8) {
+        return value << @as(u3, @intCast(vf.bitsPerSample - 8));
+    }
+
+    // Integer support, 8 bit.
+    return value;
 }
 
 pub fn get_peak(vf: vs.VideoFormat) u32 {
@@ -97,6 +115,10 @@ test get_peak {
     try std.testing.expectEqual(65535, get_peak(u16_vf));
 }
 
+/////////////////////////////////////////////////
+// Vector handling
+/////////////////////////////////////////////////
+
 pub inline fn loadVec(vec_size: comptime_int, comptime T: type, src: [*]const T, offset: usize) @Vector(vec_size, T) {
     return src[offset..][0..vec_size].*;
 }
@@ -106,4 +128,25 @@ pub inline fn storeVec(vec_size: comptime_int, comptime T: type, _dst: [*]T, off
     inline for (dst[offset..][0..vec_size], 0..) |*d, i| {
         d.* = result[i];
     }
+}
+
+//////////////////////////////////////////////////
+// String formatting
+//////////////////////////////////////////////////
+
+/// Convience funtion for writing strings / error messages that we pass back to
+/// the vapoursynth C API.
+///
+/// Note that passing these strings back to Vapoursynth effectively means that
+/// we're going to *leak memory when the program exits, but there's nothing we
+/// can do about that due to the realities of the C interop.
+pub fn printf(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) []const u8 {
+    return std.fmt.allocPrintZ(allocator, fmt, args) catch "Out of memory occurred while writing string.";
+}
+
+test printf {
+    const msg = printf(std.testing.allocator, "Hello {s}", .{"world"});
+    defer std.testing.allocator.free(msg);
+
+    try std.testing.expectEqualStrings("Hello world", msg);
 }

@@ -39,9 +39,11 @@ To generate Windows compatible DLLs:
 zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows
 ```
 
-To generate Windows compatible DLLs with AVX512 (something like the AMD Zen 4 architecture) support:
+To generate Windows compatible DLLs with AVX512 support:
 
 ```sh
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows -Dcpu=x86_64_v4
+# or the following for specific targeting of AMD Zen4 CPUs
 zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows -Dcpu=znver4
 ```
 

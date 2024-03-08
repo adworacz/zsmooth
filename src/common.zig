@@ -54,6 +54,8 @@ test scale_8bit {
 }
 
 // TODO: Add tests for this function.
+// TODO: rename "scale_to_sample", since this scales based on sample type
+// and *not* the size of the containing type.
 pub fn scale_8bit_to_format(vf: vs.VideoFormat, value: u8) u32 {
     // Float support, 16-32 bit.
     if (vf.sampleType == vs.SampleType.Float) {
@@ -62,7 +64,7 @@ pub fn scale_8bit_to_format(vf: vs.VideoFormat, value: u8) u32 {
 
     // Integer support, 9-16 bit.
     if (vf.bitsPerSample > 8) {
-        return value << @as(u3, @intCast(vf.bitsPerSample - 8));
+        return @as(u32, @intCast(value)) << @intCast(vf.bitsPerSample - 8);
     }
 
     // Integer support, 8 bit.
@@ -119,15 +121,31 @@ test get_peak {
 // Vector handling
 /////////////////////////////////////////////////
 
-pub inline fn loadVec(vec_size: comptime_int, comptime T: type, src: [*]const T, offset: usize) @Vector(vec_size, T) {
-    return src[offset..][0..vec_size].*;
+pub inline fn loadVec(comptime T: type, src: [*]const @typeInfo(T).Vector.child, offset: usize) T {
+    return src[offset..][0..@typeInfo(T).Vector.len].*;
 }
 
-pub inline fn storeVec(vec_size: comptime_int, comptime T: type, _dst: [*]T, offset: usize, result: @Vector(vec_size, T)) void {
-    var dst: [*]T = @ptrCast(@alignCast(_dst));
-    inline for (dst[offset..][0..vec_size], 0..) |*d, i| {
+pub inline fn storeVec(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize, result: T) void {
+    var dst: [*]@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
+    inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
         d.* = result[i];
     }
+}
+
+// Really seems to be faster for floats, with no real difference for 8/16 bit integer.
+// TODO needs more testing. Maybe *slightly* faster than @min/@max, but it's not a major difference.
+// Good testing is provided in TemporalMedian, Radius 4, with 8, 16, and 32 bit depth.
+// Inspired by https://github.com/zig-gamedev/zig-gamedev/blob/main/libs/zmath/src/zmath.zig#L744
+pub inline fn minFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
+    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
+}
+
+pub inline fn maxFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
+    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
+}
+
+pub inline fn clampFastVec(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax) {
+    return minFastVec(vmax, maxFastVec(vmin, v));
 }
 
 //////////////////////////////////////////////////
@@ -149,4 +167,11 @@ test printf {
     defer std.testing.allocator.free(msg);
 
     try std.testing.expectEqualStrings("Hello world", msg);
+}
+
+/// Reports an error to the VS API and frees the input node;
+pub fn reportError(msg: []u8, vsapi: vs.API, out: vs.Map, node: vs.Node) void {
+    vsapi.?.mapSetError.?(out, msg);
+    vsapi.?.freeNode.?(node);
+    return;
 }

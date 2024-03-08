@@ -38,7 +38,26 @@ const TemporalSoftenData = struct {
 /// Provides a type for numbers that is compatible with the given type T
 /// and conditionally supports unsigned or signed values.
 fn GetMathType(comptime T: type, isUnsigned: bool) type {
-    return if (cmn.IsFloat(T)) f32 else if (isUnsigned) u32 else i32;
+    return switch (T) {
+        u8, u16 => if (isUnsigned) u32 else i32,
+        f16 => f16,
+        f32 => f32,
+        else => unreachable,
+    };
+}
+
+// Returns a type capable of holding a sum of multiple values of the provided type without overflowing.
+// The maximum temporal radius sets the upper bound here, but we have plenty of head room.
+fn GetSumType(comptime T: type) type {
+    return switch (T) {
+        u8 => u16,
+        u16 => u32,
+        f16 => f16, // Should this be f32???
+        f32 => f32, // Should this be a f64 (double)? TODO: Check avisynth.
+        // https://github.com/AviSynth/AviSynthPlus/blob/master/avs_core/filters/focus.cpp#L722
+        // Looks like they use int for 8-16 bit integer, and float for 32bit float.
+        else => unreachable,
+    };
 }
 
 // 68 fps with u8, radius 1
@@ -46,6 +65,7 @@ fn GetMathType(comptime T: type, isUnsigned: bool) type {
 // 65 fps with u16, radius 1
 // 26 fps with u16, radius 7
 // 70 fps with f32, radius 1
+// TODO: Fix the types in this, as they're overly wide.
 fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
     const half_frames: u8 = @divTrunc(frames, 2);
     const UnsignedType = GetMathType(T, true);
@@ -56,7 +76,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
             const current_pixel = row * width + column;
             const current_value: T = srcp[@intCast(half_frames)][current_pixel];
 
-            var sum: UnsignedType = 0;
+            var sum: GetSumType(T) = 0;
 
             for (0..@intCast(frames)) |i| {
                 var value = current_value;
@@ -111,21 +131,25 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
     const vec_size = cmn.GetVecSize(T);
     const VecType = @Vector(vec_size, T);
 
-    const UnsignedType = GetMathType(T, true);
-    const UnsignedVecType = @Vector(vec_size, UnsignedType);
-    const SignedType = GetMathType(T, false);
-    const SignedVecType = @Vector(vec_size, SignedType);
+    const threshold_vec: VecType = switch (T) {
+        u8, u16 => @splat(@intCast(threshold)),
+        f16 => @splat(@floatCast(@as(f32, @bitCast(threshold)))),
+        f32 => @splat(@bitCast(threshold)),
+        else => unreachable,
+    };
+    const current_value_vec = cmn.loadVec(VecType, srcp[@intCast(half_frames)], offset);
 
-    const threshold_vec: UnsignedVecType = @splat(@as(UnsignedType, @bitCast(threshold)));
-    const current_value_vec: VecType = cmn.loadVec(vec_size, T, srcp[@intCast(half_frames)], offset);
-
-    var sum_vec: UnsignedVecType = @splat(0);
+    const SumType = GetSumType(T);
+    var sum_vec: @Vector(vec_size, SumType) = @splat(0);
 
     for (0..@intCast(frames)) |i| {
         const value_vec = current_value_vec;
-        const frame_value_vec = cmn.loadVec(vec_size, T, srcp[@intCast(i)], offset);
+        const frame_value_vec = cmn.loadVec(VecType, srcp[@intCast(i)], offset);
 
-        const abs_vec = @abs(@as(SignedVecType, value_vec) - frame_value_vec);
+        //TODO: this could be optimized further if there was a good way to
+        //do @abs(value_vec - frame_value_vec) and *not* overflow the integer.
+        //Casting to a higher signed bit depth works, but it's not faster than the max - min approach below.
+        const abs_vec = cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
         const lte_threshold_vec = abs_vec <= threshold_vec;
 
         sum_vec += @select(T, lte_threshold_vec, frame_value_vec, value_vec);
@@ -135,12 +159,12 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
         if (cmn.IsFloat(T)) {
             break :blk sum_vec / @as(VecType, @splat(@floatFromInt(frames)));
         }
-        const half_frames_vec: UnsignedVecType = @splat(@intCast(half_frames));
-        const frames_vec: UnsignedVecType = @splat(frames);
+        const half_frames_vec: VecType = @splat(@intCast(half_frames));
+        const frames_vec: VecType = @splat(frames);
         break :blk @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
     };
 
-    cmn.storeVec(vec_size, T, dstp, offset, result);
+    cmn.storeVec(VecType, dstp, offset, result);
 }
 
 test "process_plane should find the average value" {
@@ -267,11 +291,19 @@ export fn temporalSoftenGetFrame(n: c_int, activation_reason: ar, instance_data:
                 },
                 2 => {
                     // 9-16 bit content
+                    // if (d.vi.format.sampleType == vs.SampleType.Integer) {
                     var srcp: [MAX_DIAMETER][*]const u16 = undefined;
                     for (0..@intCast(diameter)) |i| {
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
                     process_plane_vec(u16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
+                    // } else {
+                    //     var srcp: [MAX_DIAMETER][*]const f16 = undefined;
+                    //     for (0..@intCast(diameter)) |i| {
+                    //         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
+                    //     }
+                    //     process_plane_vec(f16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
+                    // }
                 },
                 4 => {
                     // 32 bit float content
@@ -335,13 +367,13 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     // TODO: Add proper validation to these threshold values. Right now I can pass "-1" and the code takes it.
     // Also passing 655555 works even for floating point values, so I need to
     // properly validate these params as the lossy cast is screwing things up.
-    d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse 4;
+    d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse cmn.scale_8bit_to_format(d.vi.format, 4);
     if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
         d.threshold[1] = d.threshold[0];
     }
 
     if (d.vi.format.colorFamily == vs.ColorFamily.YUV) {
-        d.threshold[1] = vsh.mapGetN(u32, in, "chroma_threshold", 0, vsapi) orelse 8;
+        d.threshold[1] = vsh.mapGetN(u32, in, "chroma_threshold", 0, vsapi) orelse cmn.scale_8bit_to_format(d.vi.format, 8);
     }
 
     d.threshold[2] = d.threshold[1];

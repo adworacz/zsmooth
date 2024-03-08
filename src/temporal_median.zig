@@ -81,7 +81,7 @@ inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]
     var src: [MAX_DIAMETER]VecType = undefined;
 
     for (0..@intCast(diameter)) |r| {
-        src[r] = cmn.loadVec(vec_size, T, srcp[r], offset);
+        src[r] = cmn.loadVec(VecType, srcp[r], offset);
     }
 
     var result: VecType = undefined;
@@ -200,19 +200,19 @@ inline fn median_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]
     }
 
     // Store
-    cmn.storeVec(vec_size, T, dstp, offset, result);
+    cmn.storeVec(VecType, dstp, offset, result);
 }
 
 /// Computes the median of 3 arguments.
 inline fn median3(comptime T: type, a: T, b: T, c: T) T {
-    return @max(@min(a, b), @min(c, @max(a, b)));
+    return cmn.maxFastVec(cmn.minFastVec(a, b), cmn.minFastVec(c, cmn.maxFastVec(a, b)));
 }
 
 /// Computes the min and max of the two arguments, and writes the min to the first
 /// argument and the max to the second argument, effectively sorting the two arguments.
 inline fn swap2(comptime T: type, a: *T, b: *T) void {
-    const min = @min(a.*, b.*);
-    const max = @max(a.*, b.*);
+    const min = cmn.minFastVec(a.*, b.*);
+    const max = cmn.maxFastVec(a.*, b.*);
     a.* = min;
     b.* = max;
 }

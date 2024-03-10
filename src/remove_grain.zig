@@ -34,23 +34,11 @@ fn rgMode1(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7:
     return @max(@min(a1, a2, a3, a4, a5, a6, a7, a8), @min(c, @max(a1, a2, a3, a4, a5, a6, a7, a8)));
 }
 
-test rgMode1 {
-    // In range
-    try std.testing.expectEqual(5, rgMode1(u8, 5, 1, 1, 1, 1, 8, 8, 8, 8));
-
-    // Out of range - high
-    try std.testing.expectEqual(8, rgMode1(u8, 10, 1, 1, 1, 1, 8, 8, 8, 8));
-
-    // Out of range - low
-    try std.testing.expectEqual(2, rgMode1(u8, 1, 2, 2, 2, 2, 8, 8, 8, 8));
-}
-
 /// Same as mode 1, except the second-lowest and second-highest values are used.
 fn rgMode2(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-    // "normal" implementation, but stupid slow due to the sorting algorithm.
     var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+    // "normal" implementation, but stupid slow due to the sorting algorithm.
     // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
-    // // clamp to 2nd lowest and 2nd highest.
     // return std.math.clamp(c, a[2 - 1], a[7 - 1]);
 
     // min-max sorting algorithm.
@@ -67,9 +55,11 @@ fn rgMode2(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7:
     cmn.compare_swap(T, &a[5], &a[7]);
     cmn.compare_swap(T, &a[6], &a[8]);
 
+    // compare pivots
     cmn.compare_swap(T, &a[2], &a[3]);
     cmn.compare_swap(T, &a[6], &a[7]);
 
+    // Sort pixels pairs 4 pixels away
     a[5] = @max(a[1], a[5]); // compare_swap(a[1], a[5]);
     cmn.compare_swap(T, &a[2], &a[6]);
     cmn.compare_swap(T, &a[3], &a[7]);
@@ -84,7 +74,109 @@ fn rgMode2(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7:
     return std.math.clamp(c, a[2], a[7]);
 }
 
-fn process_plane_scalar(comptime T: type, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, mode: u5) void {
+/// Same as mode 1, except the third-lowest and third-highest values are used.
+fn rgMode3(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+    var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+    // "normal" implementation, but stupid slow due to the sorting algorithm.
+    // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
+    // return std.math.clamp(c, a[3 - 1], a[6 - 1]);
+
+    // min-max sorting algorithm.
+
+    // Sort pixel pairs 1 pixel away
+    cmn.compare_swap(T, &a[1], &a[2]);
+    cmn.compare_swap(T, &a[3], &a[4]);
+    cmn.compare_swap(T, &a[5], &a[6]);
+    cmn.compare_swap(T, &a[7], &a[8]);
+
+    // Sort pixel pairs 2 pixels away
+    cmn.compare_swap(T, &a[1], &a[3]);
+    cmn.compare_swap(T, &a[2], &a[4]);
+    cmn.compare_swap(T, &a[5], &a[7]);
+    cmn.compare_swap(T, &a[6], &a[8]);
+
+    // compare pivots
+    cmn.compare_swap(T, &a[2], &a[3]);
+    cmn.compare_swap(T, &a[6], &a[7]);
+
+    // Sort pixels pairs 4 pixels away
+    a[5] = @max(a[1], a[5]); // compare_swap(a[1], a[5]);
+    cmn.compare_swap(T, &a[2], &a[6]);
+    cmn.compare_swap(T, &a[3], &a[7]);
+    a[4] = @min(a[4], a[8]); // compare_swap(a[4], a[8]);
+
+    a[3] = @min(a[3], a[5]); // compare_swap(a[3], a[5]);
+    a[6] = @max(a[4], a[6]); // compare_swap(a[4], a[6]);
+
+    //everything above this line is identical to Mode 2.
+
+    a[3] = @max(a[2], a[3]); // compare_swap(a[2], a[3]);
+    a[6] = @min(a[6], a[7]); // compare_swap(a[6], a[7]);
+
+    return std.math.clamp(c, a[3], a[6]);
+}
+
+/// Same as mode 1, except the fourth-lowest and fourth-highest values are used.
+/// This is identical to std.Median.
+fn rgMode4(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+    var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+    // "normal" implementation, but stupid slow due to the sorting algorithm.
+    // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
+    // return std.math.clamp(c, a[3 - 1], a[6 - 1]);
+
+    // min-max sorting algorithm.
+
+    // Sort pixel pairs 1 pixel away
+    cmn.compare_swap(T, &a[1], &a[2]);
+    cmn.compare_swap(T, &a[3], &a[4]);
+    cmn.compare_swap(T, &a[5], &a[6]);
+    cmn.compare_swap(T, &a[7], &a[8]);
+
+    // Sort pixel pairs 2 pixels away
+    cmn.compare_swap(T, &a[1], &a[3]);
+    cmn.compare_swap(T, &a[2], &a[4]);
+    cmn.compare_swap(T, &a[5], &a[7]);
+    cmn.compare_swap(T, &a[6], &a[8]);
+
+    // compare pivots
+    cmn.compare_swap(T, &a[2], &a[3]);
+    cmn.compare_swap(T, &a[6], &a[7]);
+
+    // Everything above this is identical to mode 1.
+
+    // Sort pixels pairs 4 pixels away
+    a[5] = @max(a[1], a[5]); // compare_swap(a[1], a[5]);
+    a[6] = @max(a[2], a[6]); // compare_swap(a[2], a[6]);
+    a[3] = @min(a[3], a[7]); // compare_swap(a[3], a[7]);
+    a[4] = @min(a[4], a[8]); // compare_swap(a[4], a[8]);
+
+    a[5] = @max(a[3], a[5]); // compare_swap(a[3], a[5]);
+    a[4] = @min(a[4], a[6]); // compare_swap(a[4], a[6]);
+
+    cmn.compare_swap(T, &a[4], &a[5]);
+
+    return std.math.clamp(c, a[4], a[5]);
+}
+
+test "RG Mode 1-4" {
+    // In range
+    try std.testing.expectEqual(5, rgMode1(u8, 5, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(5, rgMode2(u8, 5, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(5, rgMode3(u8, 5, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(5, rgMode4(u8, 5, 1, 2, 3, 4, 6, 7, 8, 9));
+
+    // Out of range - high
+    try std.testing.expectEqual(9, rgMode1(u8, 10, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(8, rgMode2(u8, 10, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(7, rgMode3(u8, 10, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(6, rgMode4(u8, 10, 1, 2, 3, 4, 6, 7, 8, 9));
+
+    // Out of range - low
+    try std.testing.expectEqual(1, rgMode1(u8, 0, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(2, rgMode2(u8, 0, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(3, rgMode3(u8, 0, 1, 2, 3, 4, 6, 7, 8, 9));
+    try std.testing.expectEqual(4, rgMode4(u8, 0, 1, 2, 3, 4, 6, 7, 8, 9));
+}
     // Copy the first line.
     @memcpy(dstp, srcp[0..width]);
 

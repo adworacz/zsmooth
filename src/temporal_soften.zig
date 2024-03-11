@@ -35,24 +35,13 @@ const TemporalSoftenData = struct {
     scenechange: u8,
 };
 
-/// Provides a type for numbers that is compatible with the given type T
-/// and conditionally supports unsigned or signed values.
-fn GetMathType(comptime T: type, isUnsigned: bool) type {
-    return switch (T) {
-        u8, u16 => if (isUnsigned) u32 else i32,
-        f16 => f16,
-        f32 => f32,
-        else => unreachable,
-    };
-}
-
 // Returns a type capable of holding a sum of multiple values of the provided type without overflowing.
 // The maximum temporal radius sets the upper bound here, but we have plenty of head room.
 fn GetSumType(comptime T: type) type {
     return switch (T) {
         u8 => u16,
         u16 => u32,
-        f16 => f16, // Should this be f32???
+        f16 => f32, // Should this be f32???
         f32 => f32, // Should this be a f64 (double)? TODO: Check avisynth.
         // https://github.com/AviSynth/AviSynthPlus/blob/master/avs_core/filters/focus.cpp#L722
         // Looks like they use int for 8-16 bit integer, and float for 32bit float.
@@ -60,16 +49,26 @@ fn GetSumType(comptime T: type) type {
     };
 }
 
-// 68 fps with u8, radius 1
-// 27 fps with u8, radius 7
-// 65 fps with u16, radius 1
-// 26 fps with u16, radius 7
-// 70 fps with f32, radius 1
-// TODO: Fix the types in this, as they're overly wide.
-fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
+fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, _threshold: u32) void {
     const half_frames: u8 = @divTrunc(frames, 2);
-    const UnsignedType = GetMathType(T, true);
-    const SignedType = GetMathType(T, false);
+
+    const threshold = switch (T) {
+        u8, u16 => @as(T, @intCast(_threshold)),
+        f16, f32 => @as(f32, @bitCast(_threshold)),
+        else => unreachable,
+    };
+
+    // It's faster to process f16 as f32 on my machine.
+    // This can likely be dynamically decided based on if the target architecture
+    // supports more advanced f16 instructions, so I'll leave this as a TODO for now
+    // TODO: Determine the best type for f16 calculations based on the target architecture.
+    const SignedType = switch (T) {
+        u8 => i16,
+        u16 => i32,
+        f16 => f32,
+        f32 => f32,
+        else => unreachable,
+    };
 
     for (0..height) |row| {
         for (0..width) |column| {
@@ -81,15 +80,14 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
             for (0..@intCast(frames)) |i| {
                 var value = current_value;
                 const frame_value: T = srcp[@intCast(i)][current_pixel];
-                if (@abs(@as(SignedType, value) - frame_value) <= @as(UnsignedType, @bitCast(threshold))) {
+                if (@abs(@as(SignedType, value) - frame_value) <= threshold) {
                     value = frame_value;
                 }
                 sum += value;
             }
 
             if (cmn.IsFloat(T)) {
-                // Normal division for floating point
-                dstp[current_pixel] = sum / @as(T, @floatFromInt(frames));
+                dstp[current_pixel] = @floatCast(sum / @as(f32, @floatFromInt(frames)));
             } else {
                 // Add half_frames to round the integer value up to the nearest integer value.
                 // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
@@ -99,15 +97,6 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
     }
 }
 
-// 91 fps with u8, radius 1
-// 93 fps with u8, radius 1, float mode optimized
-// 64 fps with u8, radius 7
-// 83 fps with u16, radius 1
-// 87 fps with u16, radius 1, float mode optimized
-// 60 fps with u16, radius 7
-// 76 fps with fp32, radius 1
-// 100 fps with fp32, radius 1, float mode optimized
-// 55 fps with fp32, radius 7
 fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
     const vec_size = cmn.GetVecSize(T);
     const width_simd = width / vec_size * vec_size;
@@ -149,7 +138,33 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
         //TODO: this could be optimized further if there was a good way to
         //do @abs(value_vec - frame_value_vec) and *not* overflow the integer.
         //Casting to a higher signed bit depth works, but it's not faster than the max - min approach below.
-        const abs_vec = cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
+        const abs_vec = blk: {
+            if (cmn.IsFloat(T)) {
+                // Special case for f16 - it's faster if we process it as f32.
+                break :blk @abs(@as(@Vector(vec_size, f32), value_vec) - frame_value_vec);
+            }
+            // TODO: Try tricky/fancy abs diff with bit fiddling.
+            // https://graphics.stanford.edu/~seander/bithacks.html#IntegerAbs
+            // https://stackoverflow.com/questions/22445019/fast-branchless-unsigned-int-absolute-difference
+            // Something like
+            //   const diff: i16 =  a - b;
+            //   const mask: i16 = diff >> 15;
+            //   return @intCast((diff + mask) ^ mask);
+
+            // Actually seems to be slower.
+            // const diff: @Vector(vec_size, i16) = @as(@Vector(vec_size, i16), @intCast(value_vec)) - @as(@Vector(vec_size, i16), @intCast(frame_value_vec));
+            // const mask: @Vector(vec_size, i16) = diff >> @splat(15);
+            // break :blk @as(@Vector(vec_size, u8), @intCast((diff + mask) ^ mask));
+
+            // Seem's about the same performance, maybe faster.
+            // const gt = value_vec > frame_value_vec;
+            // const abdiff = value_vec - frame_value_vec;
+            // const badiff = frame_value_vec - value_vec;
+            // break :blk @select(T, gt, abdiff, badiff);
+
+            break :blk cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
+        };
+
         const lte_threshold_vec = abs_vec <= threshold_vec;
 
         sum_vec += @select(T, lte_threshold_vec, frame_value_vec, value_vec);
@@ -157,7 +172,8 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
 
     const result = blk: {
         if (cmn.IsFloat(T)) {
-            break :blk sum_vec / @as(VecType, @splat(@floatFromInt(frames)));
+            // TODO: This is basically a no-op for f32, so these two branches can likely just be combined together.
+            break :blk @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
         }
         const half_frames_vec: VecType = @splat(@intCast(half_frames));
         const frames_vec: VecType = @splat(frames);

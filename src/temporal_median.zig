@@ -76,7 +76,7 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        inline fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
+        fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
             const vec_size = cmn.GetVecSize(T);
             const VecType = @Vector(vec_size, T);
 

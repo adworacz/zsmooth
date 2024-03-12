@@ -233,6 +233,24 @@ fn RemoveGrain(comptime T: type) type {
             return std.math.clamp(c, mi1, ma1);
         }
 
+        test "RG Mode 5-" {
+            // a1 and a8 clipping.
+            try std.testing.expectEqual(2, rgMode5(1, 2, 6, 6, 6, 7, 7, 7, 3));
+            try std.testing.expectEqual(3, rgMode5(4, 2, 6, 6, 6, 7, 7, 7, 3));
+
+            // a2 and a7 clipping.
+            try std.testing.expectEqual(2, rgMode5(1, 6, 2, 6, 6, 7, 7, 3, 7));
+            try std.testing.expectEqual(3, rgMode5(4, 6, 2, 6, 6, 7, 7, 3, 7));
+
+            // a3 and a6 clipping.
+            try std.testing.expectEqual(2, rgMode5(1, 6, 6, 2, 6, 7, 3, 7, 7));
+            try std.testing.expectEqual(3, rgMode5(4, 6, 6, 2, 6, 7, 3, 7, 7));
+
+            // a4 and a5 clipping.
+            try std.testing.expectEqual(2, rgMode5(1, 6, 6, 6, 2, 3, 7, 7, 7));
+            try std.testing.expectEqual(3, rgMode5(4, 6, 6, 6, 2, 3, 7, 7, 7));
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;

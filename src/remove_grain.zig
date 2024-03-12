@@ -69,19 +69,18 @@ fn RemoveGrain(comptime T: type) type {
 
                 const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frame, core);
 
-                var plane: c_int = 0;
-                while (plane < d.vi.format.numPlanes) : (plane += 1) {
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
                     // Skip planes we aren't supposed to process
-                    if (d.modes[@intCast(plane)] == 0) {
+                    if (d.modes[plane] == 0) {
                         continue;
                     }
 
-                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane)));
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, @intCast(plane))));
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
 
-                    switch (d.modes[@intCast(plane)]) {
+                    switch (d.modes[plane]) {
                         1 => process_plane_scalar(1, srcp, dstp, width, height),
                         2 => process_plane_scalar(2, srcp, dstp, width, height),
                         3 => process_plane_scalar(3, srcp, dstp, width, height),

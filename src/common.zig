@@ -22,6 +22,10 @@ pub inline fn IsFloat(comptime T: type) bool {
     return @typeInfo(T) == .Float;
 }
 
+pub inline fn IsInt(comptime T: type) bool {
+    return @typeInfo(T) == .Int;
+}
+
 test IsFloat {
     try std.testing.expectEqual(true, IsFloat(f32));
     try std.testing.expectEqual(true, IsFloat(f16));

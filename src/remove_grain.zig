@@ -46,112 +46,13 @@ const RemoveGrainData = struct {
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn RemoveGrain(comptime T: type) type {
     return struct {
-        fn removeGrainGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
-
-            const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
-
-            if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-            } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                defer vsapi.?.freeFrame.?(src_frame);
-
-                // Prepare array of frame pointers, with null for planes we will process,
-                // and pointers to the source frame for planes we won't process.
-                var plane_src = [_]?*const vs.Frame{
-                    if (d.modes[0] > 0) null else src_frame,
-                    if (d.modes[1] > 0) null else src_frame,
-                    if (d.modes[2] > 0) null else src_frame,
-                };
-                const planes = [_]c_int{ 0, 1, 2 };
-
-                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frame, core);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-                    // Skip planes we aren't supposed to process
-                    if (d.modes[plane] == 0) {
-                        continue;
-                    }
-
-                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, @intCast(plane))));
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
-
-                    switch (d.modes[plane]) {
-                        1 => process_plane_scalar(1, srcp, dstp, width, height),
-                        2 => process_plane_scalar(2, srcp, dstp, width, height),
-                        3 => process_plane_scalar(3, srcp, dstp, width, height),
-                        4 => process_plane_scalar(4, srcp, dstp, width, height),
-                        else => unreachable,
-                    }
-                }
-
-                return dst;
-            }
-
-            return null;
-        }
-
-        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize) void {
-            // Copy the first line.
-            @memcpy(dstp, srcp[0..width]);
-
-            for (1..height - 1) |h| {
-                //TODO: This will need to change for skipline/interlaced support.
-
-                // Copy the pixel at the beginning of the line.
-                dstp[(h * width)] = srcp[(h * width)];
-                for (1..width - 1) |w| {
-                    // Retrieve pixels from the 3x3 grid surrounding the current pixel
-                    //
-                    // a1 a2 a3
-                    // a4  c a5
-                    // a6 a7 a8
-
-                    // Build c and a1-a8 pixels.
-                    const rowPrev = ((h - 1) * width);
-                    const rowCurr = ((h) * width);
-                    const rowNext = ((h + 1) * width);
-
-                    const a1 = srcp[rowPrev + w - 1];
-                    const a2 = srcp[rowPrev + w];
-                    const a3 = srcp[rowPrev + w + 1];
-
-                    const a4 = srcp[rowCurr + w - 1];
-                    const c = srcp[rowCurr + w];
-                    const a5 = srcp[rowCurr + w + 1];
-
-                    const a6 = srcp[rowNext + w - 1];
-                    const a7 = srcp[rowNext + w];
-                    const a8 = srcp[rowNext + w + 1];
-
-                    // dstp[rowCurr + w] = rg(c, a1, a2, a3, a4, a5, a6, a7, a8);
-                    dstp[rowCurr + w] = switch (mode) {
-                        1 => rgMode1(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        2 => rgMode2(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        3 => rgMode3(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        4 => rgMode4(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        else => unreachable,
-                    };
-                }
-                // Copy the pixel at the end of the line.
-                dstp[(h * width) + (width - 1)] = srcp[(h * width) + (width - 1)];
-            }
-
-            // Copy the last line.
-            const lastLine = ((height - 1) * width);
-            @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
-        }
-
         /// Every pixel is clamped to the lowest and highest values in the pixel's
         /// 3x3 neighborhood, center pixel not included.
         pub fn rgMode1(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             return @max(@min(a1, a2, a3, a4, a5, a6, a7, a8), @min(c, @max(a1, a2, a3, a4, a5, a6, a7, a8)));
         }
 
+        /// Same as mode 1, except the second-lowest and second-highest values are used.
         pub fn rgMode2(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) @TypeOf(c) {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
@@ -192,7 +93,6 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         /// Same as mode 1, except the third-lowest and third-highest values are used.
-        // fn rgMode3(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
         pub fn rgMode3(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
@@ -236,7 +136,6 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 1, except the fourth-lowest and fourth-highest values are used.
         /// This is identical to std.Median.
-        // fn rgMode4(comptime T: type, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
         pub fn rgMode4(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
@@ -295,6 +194,145 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(2, rgMode2(0, 1, 2, 3, 4, 6, 7, 8, 9));
             try std.testing.expectEqual(3, rgMode3(0, 1, 2, 3, 4, 6, 7, 8, 9));
             try std.testing.expectEqual(4, rgMode4(0, 1, 2, 3, 4, 6, 7, 8, 9));
+        }
+
+        /// Line-sensitive clipping giving the minimal change.
+        ///
+        /// Specifically, it clips the center pixel with four pairs
+        /// of opposing pixels respectively, and the pair that results
+        /// in the smallest change to the center pixel is used.
+        pub fn rgMode5(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const ma1 = @max(a1, a8);
+            const mi1 = @min(a1, a8);
+            const ma2 = @max(a2, a7);
+            const mi2 = @min(a2, a7);
+            const ma3 = @max(a3, a6);
+            const mi3 = @min(a3, a6);
+            const ma4 = @max(a4, a5);
+            const mi4 = @min(a4, a5);
+
+            // Casting u8 to i16 instead of i32 is substantially faster on my laptop.
+            // 613 fps vs 470 fps
+            const IntType = if (T == u8) i16 else i32;
+            const cT = if (cmn.IsInt(T)) @as(IntType, @intCast(c)) else c;
+
+            const c1 = @abs(cT - std.math.clamp(c, mi1, ma1));
+            const c2 = @abs(cT - std.math.clamp(c, mi2, ma2));
+            const c3 = @abs(cT - std.math.clamp(c, mi3, ma3));
+            const c4 = @abs(cT - std.math.clamp(c, mi4, ma4));
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            if (mindiff == c4) {
+                return std.math.clamp(c, mi4, ma4);
+            } else if (mindiff == c3) {
+                return std.math.clamp(c, mi3, ma3);
+            } else if (mindiff == c2) {
+                return std.math.clamp(c, mi2, ma2);
+            }
+            return std.math.clamp(c, mi1, ma1);
+        }
+
+        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+            // Assign frame_data to nothing to stop compiler complaints
+            _ = frame_data;
+
+            const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
+
+            if (activation_reason == ar.Initial) {
+                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+            } else if (activation_reason == ar.AllFramesReady) {
+                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                defer vsapi.?.freeFrame.?(src_frame);
+
+                // Prepare array of frame pointers, with null for planes we will process,
+                // and pointers to the source frame for planes we won't process.
+                var plane_src = [_]?*const vs.Frame{
+                    if (d.modes[0] > 0) null else src_frame,
+                    if (d.modes[1] > 0) null else src_frame,
+                    if (d.modes[2] > 0) null else src_frame,
+                };
+                const planes = [_]c_int{ 0, 1, 2 };
+
+                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frame, core);
+
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+                    // Skip planes we aren't supposed to process
+                    if (d.modes[plane] == 0) {
+                        continue;
+                    }
+
+                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, @intCast(plane))));
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
+
+                    switch (d.modes[plane]) {
+                        1 => process_plane_scalar(1, srcp, dstp, width, height),
+                        2 => process_plane_scalar(2, srcp, dstp, width, height),
+                        3 => process_plane_scalar(3, srcp, dstp, width, height),
+                        4 => process_plane_scalar(4, srcp, dstp, width, height),
+                        5 => process_plane_scalar(5, srcp, dstp, width, height),
+                        else => unreachable,
+                    }
+                }
+
+                return dst;
+            }
+
+            return null;
+        }
+
+        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize) void {
+            // Copy the first line.
+            @memcpy(dstp, srcp[0..width]);
+
+            for (1..height - 1) |h| {
+                //TODO: This will need to change for skipline/interlaced support.
+
+                // Copy the pixel at the beginning of the line.
+                dstp[(h * width)] = srcp[(h * width)];
+                for (1..width - 1) |w| {
+                    // Retrieve pixels from the 3x3 grid surrounding the current pixel
+                    //
+                    // a1 a2 a3
+                    // a4  c a5
+                    // a6 a7 a8
+
+                    // Build c and a1-a8 pixels.
+                    const rowPrev = ((h - 1) * width);
+                    const rowCurr = ((h) * width);
+                    const rowNext = ((h + 1) * width);
+
+                    const a1 = srcp[rowPrev + w - 1];
+                    const a2 = srcp[rowPrev + w];
+                    const a3 = srcp[rowPrev + w + 1];
+
+                    const a4 = srcp[rowCurr + w - 1];
+                    const c = srcp[rowCurr + w];
+                    const a5 = srcp[rowCurr + w + 1];
+
+                    const a6 = srcp[rowNext + w - 1];
+                    const a7 = srcp[rowNext + w];
+                    const a8 = srcp[rowNext + w + 1];
+
+                    // dstp[rowCurr + w] = rg(c, a1, a2, a3, a4, a5, a6, a7, a8);
+                    dstp[rowCurr + w] = switch (mode) {
+                        1 => rgMode1(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        2 => rgMode2(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        3 => rgMode3(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        4 => rgMode4(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        5 => rgMode5(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        else => unreachable,
+                    };
+                }
+                // Copy the pixel at the end of the line.
+                dstp[(h * width) + (width - 1)] = srcp[(h * width) + (width - 1)];
+            }
+
+            // Copy the last line.
+            const lastLine = ((height - 1) * width);
+            @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
         }
     };
 }
@@ -421,9 +459,9 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
     };
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &RemoveGrain(u8).removeGrainGetFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).removeGrainGetFrame else &RemoveGrain(f16).removeGrainGetFrame,
-        4 => &RemoveGrain(f32).removeGrainGetFrame,
+        1 => &RemoveGrain(u8).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
+        4 => &RemoveGrain(f32).getFrame,
         else => unreachable,
     };
 

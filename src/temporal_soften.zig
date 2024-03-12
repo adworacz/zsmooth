@@ -203,124 +203,93 @@ test "process_plane should find the average value" {
     try testing.expectEqualDeep(expectedAverage, dstp_vec);
 }
 
-export fn temporalSoftenGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-    // Assign frame_data to nothing to stop compiler complaints
-    _ = frame_data;
+fn TemporalSoften(comptime T: type) type {
+    return struct {
+        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+            // Assign frame_data to nothing to stop compiler complaints
+            _ = frame_data;
 
-    const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
+            const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
 
-    if (activation_reason == ar.Initial) {
-        if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-            vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-        } else {
-            // Request previous, current, and next frames, based on the filter radius.
-            var i = -d.radius;
-            while (i <= d.radius) : (i += 1) {
-                vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
-            }
-        }
-    } else if (activation_reason == ar.AllFramesReady) {
-        // Skip filtering on the first and last frames that lie inside the filter radius,
-        // since we do not have enough information to filter them properly.
-        if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-            return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-        }
-
-        const diameter: u8 = @as(u8, @intCast(d.radius)) * 2 + 1;
-        var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
-
-        //TODO: Commonize requesting frames in a temporal radius. TemporalMedian does it as well.
-
-        // Retrieve all source frames within the filter radius.
-        {
-            var i = -d.radius;
-            while (i <= d.radius) : (i += 1) {
-                src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
-            }
-        }
-        // Free all source frames within the filter radius when this function exits.
-        defer {
-            var i = -d.radius;
-            while (i <= d.radius) : (i += 1) {
-                vsapi.?.freeFrame.?(src_frames[@intCast(d.radius + i)]);
-            }
-        }
-
-        // Prepare array of frame pointers, with null for planes we will process,
-        // and pointers to the source frame for planes we won't process.
-        var plane_src = [_]?*const vs.Frame{
-            if (d.threshold[0] > 0) null else src_frames[@intCast(d.radius)],
-            if (d.threshold[1] > 0) null else src_frames[@intCast(d.radius)],
-            if (d.threshold[2] > 0) null else src_frames[@intCast(d.radius)],
-        };
-        const planes = [_]c_int{ 0, 1, 2 };
-
-        const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[@intCast(d.radius)], core);
-
-        var plane: c_int = 0;
-        while (plane < d.vi.format.numPlanes) : (plane += 1) {
-            // Skip planes we aren't supposed to process
-            if (d.threshold[@intCast(plane)] == 0) {
-                continue;
-            }
-
-            const dstp: [*]u8 = vsapi.?.getWritePtr.?(dst, plane);
-            const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-            const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-
-            // TODO: The original vapoursynth plugin stores the current frame in
-            // srcp[0], and then stores all previous frames, and then next frames in the rest of the array.
-            // Part of the reason it does this is that it respects SceneChanges, which may lead to a variable number of frames to be processed.
-            //
-            // I need to update this implementation to follow a similar behavior.
-
-            //TODO: If Zig gets updated to support functions that return exportable (C compatible) functions,
-            //this whole function can be type-paramed, and shrunk significantly.
-            //
-            //TODO: See if the srcp loading can be optimized a bit more... Maybe a reusable func.
-            //TODO: Support an 'opt' param to switch between vector and scalar algoritms.
-            switch (d.vi.format.bytesPerSample) {
-                1 => {
-                    // 8 bit content
-                    var srcp: [MAX_DIAMETER][*]const u8 = undefined;
-                    for (0..@intCast(diameter)) |i| {
-                        srcp[i] = vsapi.?.getReadPtr.?(src_frames[i], plane);
+            if (activation_reason == ar.Initial) {
+                if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
+                    vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+                } else {
+                    // Request previous, current, and next frames, based on the filter radius.
+                    var i = -d.radius;
+                    while (i <= d.radius) : (i += 1) {
+                        vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
                     }
-                    // process_plane_scalar(u8, srcp, dstp, width, height, diameter, d.threshold[@intCast(plane)]);
-                    process_plane_vec(u8, srcp, dstp, width, height, diameter, d.threshold[@intCast(plane)]);
-                },
-                2 => {
-                    // 9-16 bit content
-                    // if (d.vi.format.sampleType == vs.SampleType.Integer) {
-                    var srcp: [MAX_DIAMETER][*]const u16 = undefined;
+                }
+            } else if (activation_reason == ar.AllFramesReady) {
+                // Skip filtering on the first and last frames that lie inside the filter radius,
+                // since we do not have enough information to filter them properly.
+                if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
+                    return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                }
+
+                const diameter: u8 = @as(u8, @intCast(d.radius)) * 2 + 1;
+                var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+
+                //TODO: Commonize requesting frames in a temporal radius. TemporalMedian does it as well.
+
+                // Retrieve all source frames within the filter radius.
+                {
+                    var i = -d.radius;
+                    while (i <= d.radius) : (i += 1) {
+                        src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
+                    }
+                }
+                // Free all source frames within the filter radius when this function exits.
+                defer {
+                    var i = -d.radius;
+                    while (i <= d.radius) : (i += 1) {
+                        vsapi.?.freeFrame.?(src_frames[@intCast(d.radius + i)]);
+                    }
+                }
+
+                // Prepare array of frame pointers, with null for planes we will process,
+                // and pointers to the source frame for planes we won't process.
+                var plane_src = [_]?*const vs.Frame{
+                    if (d.threshold[0] > 0) null else src_frames[@intCast(d.radius)],
+                    if (d.threshold[1] > 0) null else src_frames[@intCast(d.radius)],
+                    if (d.threshold[2] > 0) null else src_frames[@intCast(d.radius)],
+                };
+                const planes = [_]c_int{ 0, 1, 2 };
+
+                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[@intCast(d.radius)], core);
+
+                var plane: c_int = 0;
+                while (plane < d.vi.format.numPlanes) : (plane += 1) {
+                    // Skip planes we aren't supposed to process
+                    if (d.threshold[@intCast(plane)] == 0) {
+                        continue;
+                    }
+
+                    var srcp: [MAX_DIAMETER][*]const T = undefined;
                     for (0..@intCast(diameter)) |i| {
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
-                    process_plane_vec(u16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
-                    // } else {
-                    //     var srcp: [MAX_DIAMETER][*]const f16 = undefined;
-                    //     for (0..@intCast(diameter)) |i| {
-                    //         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
-                    //     }
-                    //     process_plane_vec(f16, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
-                    // }
-                },
-                4 => {
-                    // 32 bit float content
-                    var srcp: [MAX_DIAMETER][*]const f32 = undefined;
-                    for (0..@intCast(diameter)) |i| {
-                        srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
-                    }
-                    process_plane_vec(f32, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
-                },
-                else => unreachable,
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+
+                    // process_plane_scalar(T, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
+                    process_plane_vec(T, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
+
+                    // TODO: The original vapoursynth plugin stores the current frame in
+                    // srcp[0], and then stores all previous frames, and then next frames in the rest of the array.
+                    // Part of the reason it does this is that it respects SceneChanges, which may lead to a variable number of frames to be processed.
+                    //
+                    // I need to update this implementation to follow a similar behavior.
+                }
+
+                return dst;
             }
+
+            return null;
         }
-
-        return dst;
-    }
-
-    return null;
+    };
 }
 
 export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
@@ -447,5 +416,12 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         },
     };
 
-    vsapi.?.createVideoFilter.?(out, "TemporalSoften2", d.vi, temporalSoftenGetFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
+    const getFrame = switch (d.vi.format.bytesPerSample) {
+        1 => &TemporalSoften(u8).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &TemporalSoften(u16).getFrame else &TemporalSoften(f16).getFrame,
+        4 => &TemporalSoften(f32).getFrame,
+        else => unreachable,
+    };
+
+    vsapi.?.createVideoFilter.?(out, "TemporalSoften2", d.vi, getFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
 }

@@ -160,11 +160,11 @@ test compare_swap {
 // Vector handling
 /////////////////////////////////////////////////
 
-pub inline fn loadVec(comptime T: type, src: [*]const @typeInfo(T).Vector.child, offset: usize) T {
+pub fn loadVec(comptime T: type, src: [*]const @typeInfo(T).Vector.child, offset: usize) T {
     return src[offset..][0..@typeInfo(T).Vector.len].*;
 }
 
-pub inline fn storeVec(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize, result: T) void {
+pub fn storeVec(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize, result: T) void {
     var dst: [*]@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
     inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
         d.* = result[i];
@@ -175,15 +175,15 @@ pub inline fn storeVec(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, off
 // TODO needs more testing. Maybe *slightly* faster than @min/@max, but it's not a major difference.
 // Good testing is provided in TemporalMedian, Radius 4, with 8, 16, and 32 bit depth.
 // Inspired by https://github.com/zig-gamedev/zig-gamedev/blob/main/libs/zmath/src/zmath.zig#L744
-pub inline fn minFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
+pub fn minFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
     return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
 }
 
-pub inline fn maxFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
+pub fn maxFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
     return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
 }
 
-pub inline fn clampFastVec(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax) {
+pub fn clampFastVec(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax) {
     return minFastVec(vmax, maxFastVec(vmin, v));
 }
 

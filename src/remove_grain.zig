@@ -44,7 +44,7 @@ const RemoveGrainData = struct {
 ///
 /// I techinically don't need the generic struct, and can get by with just a comptime mode param to process_plane_scalar,
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
-fn RemoveGrain(comptime T: type, mode: comptime_int) type {
+fn RemoveGrain(comptime T: type) type {
     return struct {
         fn removeGrainGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
@@ -76,56 +76,16 @@ fn RemoveGrain(comptime T: type, mode: comptime_int) type {
                         continue;
                     }
 
-                    const srcp: [*]const u8 = vsapi.?.getReadPtr.?(src_frame, plane);
-                    const dstp: [*]u8 = vsapi.?.getWritePtr.?(dst, plane);
+                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane)));
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    // Yes, there's a bunch of switches here, but it is for optimization purposes
-                    // so that Zig can generate optimized RG functions for each type and mode and pick them at runtime.
-                    switch (d.vi.format.bytesPerSample) {
-                        1 => {
-                            // 8 bit content
-                            switch (d.modes[@intCast(plane)]) {
-                                1 => RemoveGrain(u8, 1).process_plane_scalar(srcp, dstp, width, height),
-                                2 => RemoveGrain(u8, 2).process_plane_scalar(srcp, dstp, width, height),
-                                3 => RemoveGrain(u8, 3).process_plane_scalar(srcp, dstp, width, height),
-                                4 => RemoveGrain(u8, 4).process_plane_scalar(srcp, dstp, width, height),
-                                else => unreachable,
-                            }
-                        },
-                        2 => {
-                            // 9-16 bit content
-                            if (d.vi.format.sampleType == vs.SampleType.Integer) {
-                                switch (d.modes[@intCast(plane)]) {
-                                    1 => RemoveGrain(u16, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    2 => RemoveGrain(u16, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    3 => RemoveGrain(u16, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    4 => RemoveGrain(u16, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    else => unreachable,
-                                }
-                            } else {
-                                // Processing f16 as f16 is dog slow, in both scalar and vector.
-                                // Likely faster if I process it in f32...
-                                switch (d.modes[@intCast(plane)]) {
-                                    1 => RemoveGrain(f16, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    2 => RemoveGrain(f16, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    3 => RemoveGrain(f16, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    4 => RemoveGrain(f16, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                    else => unreachable,
-                                }
-                            }
-                        },
-                        4 => {
-                            // 32 bit float content
-                            switch (d.modes[@intCast(plane)]) {
-                                1 => RemoveGrain(f32, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                2 => RemoveGrain(f32, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                3 => RemoveGrain(f32, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                4 => RemoveGrain(f32, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-                                else => unreachable,
-                            }
-                        },
+                    switch (d.modes[@intCast(plane)]) {
+                        1 => process_plane_scalar(1, srcp, dstp, width, height),
+                        2 => process_plane_scalar(2, srcp, dstp, width, height),
+                        3 => process_plane_scalar(3, srcp, dstp, width, height),
+                        4 => process_plane_scalar(4, srcp, dstp, width, height),
                         else => unreachable,
                     }
                 }
@@ -136,7 +96,7 @@ fn RemoveGrain(comptime T: type, mode: comptime_int) type {
             return null;
         }
 
-        pub fn process_plane_scalar(srcp: [*]const T, dstp: [*]T, width: usize, height: usize) void {
+        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
@@ -402,95 +362,6 @@ fn RemoveGrain(comptime T: type, mode: comptime_int) type {
 //     @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
 // }
 //
-// export fn removeGrainGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-//     // Assign frame_data to nothing to stop compiler complaints
-//     _ = frame_data;
-//
-//     const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
-//
-//     if (activation_reason == ar.Initial) {
-//         vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-//     } else if (activation_reason == ar.AllFramesReady) {
-//         const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-//         defer vsapi.?.freeFrame.?(src_frame);
-//
-//         // Prepare array of frame pointers, with null for planes we will process,
-//         // and pointers to the source frame for planes we won't process.
-//         var plane_src = [_]?*const vs.Frame{
-//             if (d.modes[0] > 0) null else src_frame,
-//             if (d.modes[1] > 0) null else src_frame,
-//             if (d.modes[2] > 0) null else src_frame,
-//         };
-//         const planes = [_]c_int{ 0, 1, 2 };
-//
-//         const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frame, core);
-//
-//         var plane: c_int = 0;
-//         while (plane < d.vi.format.numPlanes) : (plane += 1) {
-//             // Skip planes we aren't supposed to process
-//             if (d.modes[@intCast(plane)] == 0) {
-//                 continue;
-//             }
-//
-//             const srcp: [*]const u8 = vsapi.?.getReadPtr.?(src_frame, plane);
-//             const dstp: [*]u8 = vsapi.?.getWritePtr.?(dst, plane);
-//             const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-//             const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-//
-//             // Yes, there's a bunch of switches here, but it is for optimization purposes
-//             // so that Zig can generate optimized RG functions for each type and mode and pick them at runtime.
-//             switch (d.vi.format.bytesPerSample) {
-//                 1 => {
-//                     // 8 bit content
-//                     switch (d.modes[@intCast(plane)]) {
-//                         1 => RemoveGrain(u8, 1).process_plane_scalar(srcp, dstp, width, height),
-//                         2 => RemoveGrain(u8, 2).process_plane_scalar(srcp, dstp, width, height),
-//                         3 => RemoveGrain(u8, 3).process_plane_scalar(srcp, dstp, width, height),
-//                         4 => RemoveGrain(u8, 4).process_plane_scalar(srcp, dstp, width, height),
-//                         else => unreachable,
-//                     }
-//                 },
-//                 // 2 => {
-//                 //     // 9-16 bit content
-//                 //     if (d.vi.format.sampleType == vs.SampleType.Integer) {
-//                 //         switch (d.modes[@intCast(plane)]) {
-//                 //             1 => RemoveGrain(u16, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             2 => RemoveGrain(u16, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             3 => RemoveGrain(u16, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             4 => RemoveGrain(u16, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             else => unreachable,
-//                 //         }
-//                 //     } else {
-//                 //         // Processing f16 as f16 is dog slow, in both scalar and vector.
-//                 //         // Likely faster if I process it in f32...
-//                 //         switch (d.modes[@intCast(plane)]) {
-//                 //             1 => RemoveGrain(f16, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             2 => RemoveGrain(f16, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             3 => RemoveGrain(f16, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             4 => RemoveGrain(f16, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //             else => unreachable,
-//                 //         }
-//                 //     }
-//                 // },
-//                 // 4 => {
-//                 //     // 32 bit float content
-//                 //     switch (d.modes[@intCast(plane)]) {
-//                 //         1 => RemoveGrain(f32, 1).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //         2 => RemoveGrain(f32, 2).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //         3 => RemoveGrain(f32, 3).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //         4 => RemoveGrain(f32, 4).process_plane_scalar(@ptrCast(@alignCast(srcp)), @ptrCast(@alignCast(dstp)), width, height),
-//                 //         else => unreachable,
-//                 //     }
-//                 // },
-//                 else => unreachable,
-//             }
-//         }
-//
-//         return dst;
-//     }
-//
-//     return null;
-// }
 
 export fn removeGrainFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = core;
@@ -550,15 +421,12 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         },
     };
 
-    // TODO: It looks like I have a potenial way of generating generic GetFrame functions!
-    // const getFrame = switch (d.vi.format.bytesPerSample) {
-    //     1 => &RemoveGrain(u8, 1).removeGrainGetFrame,
-    //     2 => &RemoveGrain(u8, 1).removeGrainGetFrame,
-    //     4 => &RemoveGrain(u8, 1).removeGrainGetFrame,
-    //     else => unreachable,
-    // };
+    const getFrame = switch (d.vi.format.bytesPerSample) {
+        1 => &RemoveGrain(u8).removeGrainGetFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).removeGrainGetFrame else &RemoveGrain(f16).removeGrainGetFrame,
+        4 => &RemoveGrain(f32).removeGrainGetFrame,
+        else => unreachable,
+    };
 
-    // vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, removeGrainGetFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
-    vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, RemoveGrain(u8, 1).removeGrainGetFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
-    // vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, getFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
+    vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, getFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
 }

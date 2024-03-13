@@ -46,10 +46,21 @@ const RemoveGrainData = struct {
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn RemoveGrain(comptime T: type) type {
     return struct {
-        // Signed type - used in arithmetic to safely hold the value in question without overflowing.
+        // Signed type - used in signed arithmetic to safely hold the value in question without overflowing.
         const ST = switch (T) {
             u8 => i16,
             u16 => i32,
+            f16 => f16, //TODO: This might better be f32 on some systems...
+            f32 => f32,
+            else => unreachable,
+        };
+
+        // Unsigned double type - used in unsigned arithmetic to safely hold values without overflowing.
+        const UDT = switch (T) {
+            u8 => u16,
+            u16 => u32,
+            // TODO: These might need to be increased to f32 and f64 respectively.
+            // I'm still considering it.
             f16 => f16, //TODO: This might better be f32 on some systems...
             f32 => f32,
             else => unreachable,
@@ -379,6 +390,51 @@ fn RemoveGrain(comptime T: type) type {
             return clamp1;
         }
 
+        fn rgMode8(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const d1: UDT = sorted.ma1 - sorted.mi1;
+            const d2: UDT = sorted.ma2 - sorted.mi2;
+            const d3: UDT = sorted.ma3 - sorted.mi3;
+            const d4: UDT = sorted.ma4 - sorted.mi4;
+
+            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
+            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
+            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
+            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
+
+            // Max / min Zig comptime + runtime shenanigans.
+            const maxChroma = cmn.get_maximum_for_type(T, true);
+            const maxNoChroma = cmn.get_maximum_for_type(T, false);
+            const minChroma = cmn.get_minimum_for_type(T, true);
+            const minNoChroma = cmn.get_minimum_for_type(T, false);
+
+            const maximum = if (chroma) maxChroma else maxNoChroma;
+            const minimum = if (chroma) minChroma else minNoChroma;
+
+            // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
+            // but it is a small difference and technically our plugins produce different output without casting to f64;
+            const cT = @as(ST, c);
+
+            const c1 = std.math.clamp(@abs(cT - clamp1) + (d1 * 2), minimum, maximum);
+            const c2 = std.math.clamp(@abs(cT - clamp2) + (d2 * 2), minimum, maximum);
+            const c3 = std.math.clamp(@abs(cT - clamp3) + (d3 * 2), minimum, maximum);
+            const c4 = std.math.clamp(@abs(cT - clamp4) + (d4 * 2), minimum, maximum);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -422,6 +478,7 @@ fn RemoveGrain(comptime T: type) type {
                         5 => process_plane_scalar(5, srcp, dstp, width, height, chroma),
                         6 => process_plane_scalar(6, srcp, dstp, width, height, chroma),
                         7 => process_plane_scalar(7, srcp, dstp, width, height, chroma),
+                        8 => process_plane_scalar(8, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -475,6 +532,7 @@ fn RemoveGrain(comptime T: type) type {
                         5 => rgMode5(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         6 => rgMode6(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         7 => rgMode7(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        8 => rgMode8(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         else => unreachable,
                     };
                 }

@@ -46,14 +46,23 @@ const RemoveGrainData = struct {
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn RemoveGrain(comptime T: type) type {
     return struct {
+        // Signed type - used in arithmetic to safely hold the value in question without overflowing.
+        const ST = switch (T) {
+            u8 => i16,
+            u16 => i32,
+            f16 => f16, //TODO: This might better be f32 on some systems...
+            f32 => f32,
+            else => unreachable,
+        };
+
         /// Every pixel is clamped to the lowest and highest values in the pixel's
         /// 3x3 neighborhood, center pixel not included.
-        pub fn rgMode1(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+        fn rgMode1(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             return @max(@min(a1, a2, a3, a4, a5, a6, a7, a8), @min(c, @max(a1, a2, a3, a4, a5, a6, a7, a8)));
         }
 
         /// Same as mode 1, except the second-lowest and second-highest values are used.
-        pub fn rgMode2(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) @TypeOf(c) {
+        fn rgMode2(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) @TypeOf(c) {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
             // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
@@ -93,7 +102,7 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         /// Same as mode 1, except the third-lowest and third-highest values are used.
-        pub fn rgMode3(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+        fn rgMode3(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
             // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
@@ -136,7 +145,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 1, except the fourth-lowest and fourth-highest values are used.
         /// This is identical to std.Median.
-        pub fn rgMode4(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+        fn rgMode4(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
             // "normal" implementation, but stupid slow due to the sorting algorithm.
             // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
@@ -196,20 +205,39 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(4, rgMode4(0, 1, 2, 3, 4, 6, 7, 8, 9));
         }
 
+        fn sortPixels(a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { ma1: T, mi1: T, ma2: T, mi2: T, ma3: T, mi3: T, ma4: T, mi4: T } {
+            return .{
+                .ma1 = @max(a1, a8),
+                .mi1 = @min(a1, a8),
+                .ma2 = @max(a2, a7),
+                .mi2 = @min(a2, a7),
+                .ma3 = @max(a3, a6),
+                .mi3 = @min(a3, a6),
+                .ma4 = @max(a4, a5),
+                .mi4 = @min(a4, a5),
+            };
+        }
+
+        test sortPixels {
+            const sorted = sortPixels(2, 4, 6, 8, 7, 5, 3, 1);
+
+            try std.testing.expectEqual(2, sorted.ma1);
+            try std.testing.expectEqual(1, sorted.mi1);
+            try std.testing.expectEqual(4, sorted.ma2);
+            try std.testing.expectEqual(3, sorted.mi2);
+            try std.testing.expectEqual(6, sorted.ma3);
+            try std.testing.expectEqual(5, sorted.mi3);
+            try std.testing.expectEqual(8, sorted.ma4);
+            try std.testing.expectEqual(7, sorted.mi4);
+        }
+
         /// Line-sensitive clipping giving the minimal change.
         ///
         /// Specifically, it clips the center pixel with four pairs
         /// of opposing pixels respectively, and the pair that results
         /// in the smallest change to the center pixel is used.
-        pub fn rgMode5(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const ma1 = @max(a1, a8);
-            const mi1 = @min(a1, a8);
-            const ma2 = @max(a2, a7);
-            const mi2 = @min(a2, a7);
-            const ma3 = @max(a3, a6);
-            const mi3 = @min(a3, a6);
-            const ma4 = @max(a4, a5);
-            const mi4 = @min(a4, a5);
+        fn rgMode5(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
             // TODO: RGSF uses double (f64) for it's math.
             // Consider whether this is necessary or not.
@@ -217,28 +245,27 @@ fn RemoveGrain(comptime T: type) type {
 
             // Casting u8 to i16 instead of i32 is substantially faster on my laptop.
             // 613 fps vs 470 fps
-            const IntType = if (T == u8) i16 else i32;
-            const cT = if (cmn.IsInt(T)) @as(IntType, @intCast(c)) else c;
+            const cT = @as(ST, c);
 
-            const c1 = @abs(cT - std.math.clamp(c, mi1, ma1));
-            const c2 = @abs(cT - std.math.clamp(c, mi2, ma2));
-            const c3 = @abs(cT - std.math.clamp(c, mi3, ma3));
-            const c4 = @abs(cT - std.math.clamp(c, mi4, ma4));
+            const c1 = @abs(cT - std.math.clamp(c, sorted.mi1, sorted.ma1));
+            const c2 = @abs(cT - std.math.clamp(c, sorted.mi2, sorted.ma2));
+            const c3 = @abs(cT - std.math.clamp(c, sorted.mi3, sorted.ma3));
+            const c4 = @abs(cT - std.math.clamp(c, sorted.mi4, sorted.ma4));
 
             const mindiff = @min(c1, c2, c3, c4);
 
             // This order matters to match RGVS output.
             if (mindiff == c4) {
-                return std.math.clamp(c, mi4, ma4);
+                return std.math.clamp(c, sorted.mi4, sorted.ma4);
             } else if (mindiff == c2) {
-                return std.math.clamp(c, mi2, ma2);
+                return std.math.clamp(c, sorted.mi2, sorted.ma2);
             } else if (mindiff == c3) {
-                return std.math.clamp(c, mi3, ma3);
+                return std.math.clamp(c, sorted.mi3, sorted.ma3);
             }
-            return std.math.clamp(c, mi1, ma1);
+            return std.math.clamp(c, sorted.mi1, sorted.ma1);
         }
 
-        test "RG Mode 5-" {
+        test "RG Mode 5" {
             // a1 and a8 clipping.
             try std.testing.expectEqual(2, rgMode5(1, 2, 6, 6, 6, 7, 7, 7, 3));
             try std.testing.expectEqual(3, rgMode5(4, 2, 6, 6, 6, 7, 7, 7, 3));
@@ -264,25 +291,18 @@ fn RemoveGrain(comptime T: type) type {
         ///
         /// The change applied to the center pixel is prioritized
         /// (ratio 2:1) in this mode.
-        pub fn rgMode6(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
-            const ma1 = @max(a1, a8);
-            const mi1 = @min(a1, a8);
-            const ma2 = @max(a2, a7);
-            const mi2 = @min(a2, a7);
-            const ma3 = @max(a3, a6);
-            const mi3 = @min(a3, a6);
-            const ma4 = @max(a4, a5);
-            const mi4 = @min(a4, a5);
+        fn rgMode6(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1 = ma1 - mi1;
-            const d2 = ma2 - mi2;
-            const d3 = ma3 - mi3;
-            const d4 = ma4 - mi4;
+            const d1 = sorted.ma1 - sorted.mi1;
+            const d2 = sorted.ma2 - sorted.mi2;
+            const d3 = sorted.ma3 - sorted.mi3;
+            const d4 = sorted.ma4 - sorted.mi4;
 
-            const clamp1 = std.math.clamp(c, mi1, ma1);
-            const clamp2 = std.math.clamp(c, mi2, ma2);
-            const clamp3 = std.math.clamp(c, mi3, ma3);
-            const clamp4 = std.math.clamp(c, mi4, ma4);
+            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
+            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
+            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
+            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
 
             // Max / min Zig comptime + runtime shenanigans.
             const maxChroma = cmn.get_maximum_for_type(T, true);
@@ -295,8 +315,7 @@ fn RemoveGrain(comptime T: type) type {
 
             // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
             // but it is a small difference and technically our plugins produce different output without casting to f64;
-            const SignedType = if (T == u8) i16 else if (T == u16) i32 else T;
-            const cT = if (cmn.IsInt(T)) @as(SignedType, @intCast(c)) else c;
+            const cT = @as(ST, c);
 
             // The following produces output identical to RGSF
             // const SignedType = if (T == u8) i16 else if (T == u16) i32 else if (T == f16) f32 else f64;
@@ -321,6 +340,9 @@ fn RemoveGrain(comptime T: type) type {
             return clamp1;
         }
 
+        // // TODO: Add tests for RG mode 6
+        // test "RG Mode 6" {
+        // }
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;

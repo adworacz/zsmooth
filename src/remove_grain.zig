@@ -343,6 +343,42 @@ fn RemoveGrain(comptime T: type) type {
         // // TODO: Add tests for RG mode 6
         // test "RG Mode 6" {
         // }
+
+        /// Same as mode 6, except the ratio is 1:1 in this mode.
+        fn rgMode7(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const d1 = sorted.ma1 - sorted.mi1;
+            const d2 = sorted.ma2 - sorted.mi2;
+            const d3 = sorted.ma3 - sorted.mi3;
+            const d4 = sorted.ma4 - sorted.mi4;
+
+            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
+            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
+            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
+            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
+
+            const cT = @as(ST, c);
+
+            const c1 = @abs(cT - clamp1) + d1;
+            const c2 = @abs(cT - clamp2) + d2;
+            const c3 = @abs(cT - clamp3) + d3;
+            const c4 = @abs(cT - clamp4) + d4;
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -385,6 +421,7 @@ fn RemoveGrain(comptime T: type) type {
                         4 => process_plane_scalar(4, srcp, dstp, width, height, chroma),
                         5 => process_plane_scalar(5, srcp, dstp, width, height, chroma),
                         6 => process_plane_scalar(6, srcp, dstp, width, height, chroma),
+                        7 => process_plane_scalar(7, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -396,6 +433,7 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, chroma: bool) void {
+            // @setFloatMode(.Optimized);
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
@@ -436,6 +474,7 @@ fn RemoveGrain(comptime T: type) type {
                         4 => rgMode4(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         5 => rgMode5(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         6 => rgMode6(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
+                        7 => rgMode7(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

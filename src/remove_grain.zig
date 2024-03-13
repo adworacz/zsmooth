@@ -211,6 +211,10 @@ fn RemoveGrain(comptime T: type) type {
             const ma4 = @max(a4, a5);
             const mi4 = @min(a4, a5);
 
+            // TODO: RGSF uses double (f64) for it's math.
+            // Consider whether this is necessary or not.
+            // https://github.com/IFeelBloated/RGSF/blob/master/RemoveGrain.cpp#L97-L100
+
             // Casting u8 to i16 instead of i32 is substantially faster on my laptop.
             // 613 fps vs 470 fps
             const IntType = if (T == u8) i16 else i32;
@@ -223,12 +227,13 @@ fn RemoveGrain(comptime T: type) type {
 
             const mindiff = @min(c1, c2, c3, c4);
 
+            // This order matters to match RGVS output.
             if (mindiff == c4) {
                 return std.math.clamp(c, mi4, ma4);
-            } else if (mindiff == c3) {
-                return std.math.clamp(c, mi3, ma3);
             } else if (mindiff == c2) {
                 return std.math.clamp(c, mi2, ma2);
+            } else if (mindiff == c3) {
+                return std.math.clamp(c, mi3, ma3);
             }
             return std.math.clamp(c, mi1, ma1);
         }
@@ -249,6 +254,71 @@ fn RemoveGrain(comptime T: type) type {
             // a4 and a5 clipping.
             try std.testing.expectEqual(2, rgMode5(1, 6, 6, 6, 2, 3, 7, 7, 7));
             try std.testing.expectEqual(3, rgMode5(4, 6, 6, 6, 2, 3, 7, 7, 7));
+        }
+
+        /// Line-sensitive clipping, intermediate.
+        ///
+        /// It considers the range of the clipping operation
+        /// (the difference between the two opposing pixels)
+        /// as well as the change applied to the center pixel.
+        ///
+        /// The change applied to the center pixel is prioritized
+        /// (ratio 2:1) in this mode.
+        pub fn rgMode6(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
+            const ma1 = @max(a1, a8);
+            const mi1 = @min(a1, a8);
+            const ma2 = @max(a2, a7);
+            const mi2 = @min(a2, a7);
+            const ma3 = @max(a3, a6);
+            const mi3 = @min(a3, a6);
+            const ma4 = @max(a4, a5);
+            const mi4 = @min(a4, a5);
+
+            const d1 = ma1 - mi1;
+            const d2 = ma2 - mi2;
+            const d3 = ma3 - mi3;
+            const d4 = ma4 - mi4;
+
+            const clamp1 = std.math.clamp(c, mi1, ma1);
+            const clamp2 = std.math.clamp(c, mi2, ma2);
+            const clamp3 = std.math.clamp(c, mi3, ma3);
+            const clamp4 = std.math.clamp(c, mi4, ma4);
+
+            // Max / min Zig comptime + runtime shenanigans.
+            const maxChroma = cmn.get_maximum_for_type(T, true);
+            const maxNoChroma = cmn.get_maximum_for_type(T, false);
+            const minChroma = cmn.get_minimum_for_type(T, true);
+            const minNoChroma = cmn.get_minimum_for_type(T, false);
+
+            const maximum = if (chroma) maxChroma else maxNoChroma;
+            const minimum = if (chroma) minChroma else minNoChroma;
+
+            // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
+            // but it is a small difference and technically our plugins produce different output without casting to f64;
+            const SignedType = if (T == u8) i16 else if (T == u16) i32 else T;
+            const cT = if (cmn.IsInt(T)) @as(SignedType, @intCast(c)) else c;
+
+            // The following produces output identical to RGSF
+            // const SignedType = if (T == u8) i16 else if (T == u16) i32 else if (T == f16) f32 else f64;
+            // const cT = if (cmn.IsInt(T)) @as(SignedType, @intCast(c)) else @as(SignedType, @floatCast(c));
+
+            const c1 = std.math.clamp((@abs(cT - clamp1) * 2) + d1, minimum, maximum);
+            const c2 = std.math.clamp((@abs(cT - clamp2) * 2) + d2, minimum, maximum);
+            const c3 = std.math.clamp((@abs(cT - clamp3) * 2) + d3, minimum, maximum);
+            const c4 = std.math.clamp((@abs(cT - clamp4) * 2) + d4, minimum, maximum);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
         }
 
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
@@ -284,13 +354,15 @@ fn RemoveGrain(comptime T: type) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
+                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
                     switch (d.modes[plane]) {
-                        1 => process_plane_scalar(1, srcp, dstp, width, height),
-                        2 => process_plane_scalar(2, srcp, dstp, width, height),
-                        3 => process_plane_scalar(3, srcp, dstp, width, height),
-                        4 => process_plane_scalar(4, srcp, dstp, width, height),
-                        5 => process_plane_scalar(5, srcp, dstp, width, height),
+                        1 => process_plane_scalar(1, srcp, dstp, width, height, chroma),
+                        2 => process_plane_scalar(2, srcp, dstp, width, height, chroma),
+                        3 => process_plane_scalar(3, srcp, dstp, width, height, chroma),
+                        4 => process_plane_scalar(4, srcp, dstp, width, height, chroma),
+                        5 => process_plane_scalar(5, srcp, dstp, width, height, chroma),
+                        6 => process_plane_scalar(6, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -301,7 +373,7 @@ fn RemoveGrain(comptime T: type) type {
             return null;
         }
 
-        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize) void {
+        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
@@ -341,6 +413,7 @@ fn RemoveGrain(comptime T: type) type {
                         3 => rgMode3(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         4 => rgMode4(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         5 => rgMode5(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        6 => rgMode6(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         else => unreachable,
                     };
                 }

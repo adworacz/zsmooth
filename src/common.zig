@@ -38,8 +38,9 @@ test IsFloat {
 /////////////////////////////////////////////////
 
 /// Scales a value from 8bit to the bit depth pertinent to the provided type.
-/// Use the chroma param to indicate if the value is for a chroma plane,
-/// which range from -0.5 to 0.5 instead of 0.0-1.0 like the luma plane
+/// Use the chroma param to indicate if the value is for a YUV chroma plane,
+/// which range from -0.5 to 0.5 instead of 0.0-1.0 like the luma plane.
+/// RGB float values range from 0.0 to 1.0;
 pub fn scale_8bit(comptime T: type, value: u8, chroma: bool) T {
     if (T == f16 or T == f32) {
         const out = @as(T, @floatFromInt(value)) / 255.0;
@@ -87,6 +88,23 @@ pub fn get_peak(vf: vs.VideoFormat) u32 {
     return switch (vf.bytesPerSample) {
         1 => 255,
         2 => 65535,
+        else => unreachable,
+    };
+}
+
+pub inline fn get_maximum_for_type(comptime T: type, comptime chroma: bool) T {
+    return switch (T) {
+        u8 => 255,
+        u16 => 65535,
+        f16, f32 => if (chroma) 0.5 else 1.0,
+        else => unreachable,
+    };
+}
+
+pub inline fn get_minimum_for_type(comptime T: type, comptime chroma: bool) T {
+    return switch (T) {
+        u8, u16 => 0,
+        f16, f32 => if (chroma) -0.5 else 0.0,
         else => unreachable,
     };
 }

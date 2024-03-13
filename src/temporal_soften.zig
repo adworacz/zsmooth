@@ -372,19 +372,6 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         return;
     }
 
-    // Scale the thresholds accordingly.
-    // TODO: Add scale_param support to simplify
-    // for (&d.threshold, 0..) |*t, i| {
-    //     const isChroma = d.vi.format.colorFamily == vs.ColorFamily.RGB or i > 0;
-    //
-    //     t.* = switch (d.vi.format.bytesPerSample) {
-    //         1 => t.*,
-    //         2 => if (d.vi.format.sampleType == vs.SampleType.Integer) cmn.scale_8bit(u16, @intCast(t.*), false) else @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
-    //         4 => @bitCast(cmn.scale_8bit(f32, @intCast(t.*), isChroma)),
-    //         else => unreachable,
-    //     };
-    // }
-
     // Since the value passed in may be negative or overly large,
     // using a local variable to
     if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {

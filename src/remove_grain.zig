@@ -93,7 +93,7 @@ fn RemoveGrain(comptime T: type) type {
             cmn.compare_swap(T, &a[5], &a[7]);
             cmn.compare_swap(T, &a[6], &a[8]);
 
-            // compare pivots
+            // Sort pivots
             cmn.compare_swap(T, &a[2], &a[3]);
             cmn.compare_swap(T, &a[6], &a[7]);
 
@@ -133,7 +133,7 @@ fn RemoveGrain(comptime T: type) type {
             cmn.compare_swap(T, &a[5], &a[7]);
             cmn.compare_swap(T, &a[6], &a[8]);
 
-            // compare pivots
+            // Sort pivots
             cmn.compare_swap(T, &a[2], &a[3]);
             cmn.compare_swap(T, &a[6], &a[7]);
 
@@ -390,6 +390,8 @@ fn RemoveGrain(comptime T: type) type {
             return clamp1;
         }
 
+        /// Same as mode 6, except the difference between the two opposing
+        /// pixels is prioritized in this mode, again with a 2:1 ratio.
         fn rgMode8(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
@@ -433,6 +435,32 @@ fn RemoveGrain(comptime T: type) type {
                 return clamp3;
             }
             return clamp1;
+        }
+
+        /// Line-sensitive clipping on a line where the neighbours pixels are the closest.
+        /// Only the difference between the two opposing pixels is considered in this mode,
+        /// and the pair with the smallest difference is used for cliping the center pixel.
+        /// This can be useful to fix interrupted lines, as long as the length of the gap never exceeds one pixel.
+        fn rgMode9(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const d1 = sorted.ma1 - sorted.mi1;
+            const d2 = sorted.ma2 - sorted.mi2;
+            const d3 = sorted.ma3 - sorted.mi3;
+            const d4 = sorted.ma4 - sorted.mi4;
+
+            const mindiff = @min(d1, d2, d3, d4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == d4) {
+                return std.math.clamp(c, sorted.mi4, sorted.ma4);
+            } else if (mindiff == d2) {
+                return std.math.clamp(c, sorted.mi2, sorted.ma2);
+            } else if (mindiff == d3) {
+                return std.math.clamp(c, sorted.mi3, sorted.ma3);
+            }
+            return std.math.clamp(c, sorted.mi1, sorted.ma1);
         }
 
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
@@ -479,6 +507,7 @@ fn RemoveGrain(comptime T: type) type {
                         6 => process_plane_scalar(6, srcp, dstp, width, height, chroma),
                         7 => process_plane_scalar(7, srcp, dstp, width, height, chroma),
                         8 => process_plane_scalar(8, srcp, dstp, width, height, chroma),
+                        9 => process_plane_scalar(9, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -533,6 +562,7 @@ fn RemoveGrain(comptime T: type) type {
                         6 => rgMode6(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         7 => rgMode7(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         8 => rgMode8(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
+                        9 => rgMode9(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

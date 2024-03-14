@@ -463,6 +463,26 @@ fn RemoveGrain(comptime T: type) type {
             return std.math.clamp(c, sorted.mi1, sorted.ma1);
         }
 
+        test "RG Mode 9" {
+            // TODO: Add testing based on the difference directions (d4, d2, d3, d1) to ensure that the proper order is followed.
+
+            // a1 and a8 clipping.
+            try std.testing.expectEqual(2, rgMode9(1, 2, 0, 0, 0, 100, 100, 100, 3));
+            try std.testing.expectEqual(3, rgMode9(4, 2, 0, 0, 0, 100, 100, 100, 3));
+
+            // a2 and a7 clipping.
+            try std.testing.expectEqual(2, rgMode9(1, 0, 2, 0, 0, 100, 100, 3, 100));
+            try std.testing.expectEqual(3, rgMode9(4, 0, 2, 0, 0, 100, 100, 3, 100));
+
+            // a3 and a6 clipping.
+            try std.testing.expectEqual(2, rgMode9(1, 0, 0, 2, 0, 100, 3, 100, 100));
+            try std.testing.expectEqual(3, rgMode9(4, 0, 0, 2, 0, 100, 3, 100, 100));
+
+            // a4 and a5 clipping.
+            try std.testing.expectEqual(2, rgMode9(1, 0, 0, 0, 2, 3, 100, 100, 100));
+            try std.testing.expectEqual(3, rgMode9(4, 0, 0, 0, 2, 3, 100, 100, 100));
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;

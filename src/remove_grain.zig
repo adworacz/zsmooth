@@ -483,6 +483,42 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(3, rgMode9(4, 0, 0, 0, 2, 3, 100, 100, 100));
         }
 
+        /// Replaces the center pixel with the closest neighbour. "Very poor denoise sharpener"
+        fn rgMode10(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const cT: ST = c;
+
+            const d1 = @abs(cT - a1);
+            const d2 = @abs(cT - a2);
+            const d3 = @abs(cT - a3);
+            const d4 = @abs(cT - a4);
+            const d5 = @abs(cT - a5);
+            const d6 = @abs(cT - a6);
+            const d7 = @abs(cT - a7);
+            const d8 = @abs(cT - a8);
+
+            const mindiff = @min(d1, d2, d3, d4, d5, d6, d7, d8);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+
+            return if (mindiff == d7)
+                a7
+            else if (mindiff == d8)
+                a8
+            else if (mindiff == d6)
+                a6
+            else if (mindiff == d2)
+                a2
+            else if (mindiff == d3)
+                a3
+            else if (mindiff == d1)
+                a1
+            else if (mindiff == d5)
+                a5
+            else
+                a4;
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -528,6 +564,7 @@ fn RemoveGrain(comptime T: type) type {
                         7 => process_plane_scalar(7, srcp, dstp, width, height, chroma),
                         8 => process_plane_scalar(8, srcp, dstp, width, height, chroma),
                         9 => process_plane_scalar(9, srcp, dstp, width, height, chroma),
+                        10 => process_plane_scalar(10, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -583,6 +620,7 @@ fn RemoveGrain(comptime T: type) type {
                         7 => rgMode7(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         8 => rgMode8(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         9 => rgMode9(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        10 => rgMode10(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

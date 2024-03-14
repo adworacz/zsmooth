@@ -531,6 +531,21 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(2, rgMode10(1, 3, 4, 5, 6, 7, 8, 9, 2));
         }
 
+        /// Every pixel is replaced with a weighted arithmetic mean of its 3x3
+        /// neighborhood.
+        /// The center pixel has a weight of 4, the pixels above, below, to the
+        /// left, and to the right of the center pixel each have a weight of 2,
+        /// and the corner pixels each have a weight of 1.
+        ///
+        /// Identical to Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
+        fn rgMode1112(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sum = 4 * @as(UDT, c) + 2 * (@as(UDT, a2) + @as(UDT, a4) + @as(UDT, a5) + @as(UDT, a7)) + @as(UDT, a1) + @as(UDT, a3) + @as(UDT, a6) + @as(UDT, a8);
+            return if (cmn.IsFloat(T))
+                sum / 16
+            else
+                @intCast((sum + 8) / 16);
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -577,6 +592,7 @@ fn RemoveGrain(comptime T: type) type {
                         8 => process_plane_scalar(8, srcp, dstp, width, height, chroma),
                         9 => process_plane_scalar(9, srcp, dstp, width, height, chroma),
                         10 => process_plane_scalar(10, srcp, dstp, width, height, chroma),
+                        11, 12 => process_plane_scalar(11, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -633,6 +649,7 @@ fn RemoveGrain(comptime T: type) type {
                         8 => rgMode8(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         9 => rgMode9(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         10 => rgMode10(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        11, 12 => rgMode1112(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

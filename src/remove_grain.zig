@@ -539,13 +539,20 @@ fn RemoveGrain(comptime T: type) type {
         ///
         /// Identical to Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
         fn rgMode1112(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sum = 4 * @as(UDT, c) + 2 * (@as(UDT, a2) + @as(UDT, a4) + @as(UDT, a5) + @as(UDT, a7)) + @as(UDT, a1) + @as(UDT, a3) + @as(UDT, a6) + @as(UDT, a8);
+            const sum = 4 * @as(UDT, c) + 2 * (@as(UDT, a2) + a4 + a5 + a7) + a1 + a3 + a6 + a8;
             return if (cmn.IsFloat(T))
                 sum / 16
             else
                 @intCast((sum + 8) / 16);
         }
 
+        test "RG Mode 11-12" {
+            if (cmn.IsInt(T)) {
+                try std.testing.expectEqual(5, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
+            } else {
+                try std.testing.expectEqual(5.25, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
+            }
+        }
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;

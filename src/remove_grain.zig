@@ -642,6 +642,14 @@ fn RemoveGrain(comptime T: type) type {
             return std.math.clamp(c, @min(l, u), @max(l, u));
         }
 
+        test "RG Mode 17" {
+            // Clip to the lowest maximum
+            try std.testing.expectEqual(5, rgMode17(10, 1, 1, 1, 1, 5, 6, 7, 8));
+
+            // Clip to the highest minimum
+            try std.testing.expectEqual(4, rgMode17(0, 1, 2, 3, 4, 5, 5, 5, 5));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {

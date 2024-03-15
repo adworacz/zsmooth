@@ -600,13 +600,40 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 3, 100, 100));
         }
 
+        /// RG15 - Bob mode, interpolates top field. Same as mode 13 but with a more complicated interpolation formula.
+        /// RG16 - Bob mode, interpolates bottom field. Same as mode 14 but with a more complicated interpolation formula.
+        fn rgMode1516(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            // TODO: simply remove the function parameters for this function.
+            _ = c;
+            _ = a4;
+            _ = a5;
+
+            const d1 = @abs(@as(SAT, a1) - a8);
+            const d2 = @abs(@as(SAT, a2) - a7);
+            const d3 = @abs(@as(SAT, a3) - a6);
+
+            const mindiff = @min(d1, d2, d3);
+
+            const average = if (cmn.IsFloat(T))
+                (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8) / 8
+            else
+                (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8 + 4) / 8;
+
+            if (mindiff == d2) {
+                return cmn.lossyCast(T, std.math.clamp(average, @min(a2, a7), @max(a2, a7)));
+            } else if (mindiff == d3) {
+                return cmn.lossyCast(T, std.math.clamp(average, @min(a3, a6), @max(a3, a6)));
+            }
+            return cmn.lossyCast(T, std.math.clamp(average, @min(a1, a8), @max(a1, a8)));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
-            if (mode == 13) {
+            if (mode == 13 or mode == 15) {
                 // Even lines should be processed, so skip when line is an odd number.
                 return (line & 1) != 0;
-            } else if (mode == 14) {
+            } else if (mode == 14 or mode == 16) {
                 // Odd lines should be processed, so skip when line is an even number.
                 return (line & 1) == 0;
             }
@@ -682,6 +709,8 @@ fn RemoveGrain(comptime T: type) type {
                         11, 12 => process_plane_scalar(11, srcp, dstp, width, height, chroma),
                         13 => process_plane_scalar(13, srcp, dstp, width, height, chroma),
                         14 => process_plane_scalar(14, srcp, dstp, width, height, chroma),
+                        15 => process_plane_scalar(15, srcp, dstp, width, height, chroma),
+                        16 => process_plane_scalar(16, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -745,6 +774,7 @@ fn RemoveGrain(comptime T: type) type {
                         10 => rgMode10(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         11, 12 => rgMode1112(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         13, 14 => rgMode1314(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        15, 16 => rgMode1516(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }
@@ -881,9 +911,8 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
     };
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
-        // 1 => &RemoveGrain(u8).getFrame,
-        // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
-        2 => &RemoveGrain(f16).getFrame,
+        1 => &RemoveGrain(u8).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
         4 => &RemoveGrain(f32).getFrame,
         else => unreachable,
     };

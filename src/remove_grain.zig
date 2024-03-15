@@ -751,9 +751,30 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, std.math.clamp(c, min, max));
         }
 
-        test "RG Mode 21" {
+        /// Same as mode 21 but simpler and faster. (rounding handled differently)
+        /// Identical for floating point.
+        fn rgMode22(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            if (cmn.IsFloat(T)) {
+                return rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8);
+            }
+
+            const l1 = (@as(UAT, a1) + a8 + 1) / 2;
+            const l2 = (@as(UAT, a2) + a7 + 1) / 2;
+            const l3 = (@as(UAT, a3) + a6 + 1) / 2;
+            const l4 = (@as(UAT, a4) + a5 + 1) / 2;
+
+            const min = @min(l1, l2, l3, l4);
+            const max = @max(l1, l2, l3, l4);
+
+            return cmn.lossyCast(T, std.math.clamp(c, min, max));
+        }
+
+        test "RG Mode 21-22" {
             try std.testing.expectEqual(1, rgMode21(0, 1, 2, 3, 4, 4, 3, 2, 1));
             try std.testing.expectEqual(4, rgMode21(5, 1, 2, 3, 4, 4, 3, 2, 1));
+
+            try std.testing.expectEqual(1, rgMode22(0, 1, 2, 3, 4, 4, 3, 2, 1));
+            try std.testing.expectEqual(4, rgMode22(5, 1, 2, 3, 4, 4, 3, 2, 1));
         }
 
         /// Based on the RG mode, we want to skip certain lines,
@@ -849,6 +870,7 @@ fn RemoveGrain(comptime T: type) type {
                         19 => process_plane_scalar(19, srcp, dstp, width, height, chroma),
                         20 => process_plane_scalar(20, srcp, dstp, width, height, chroma),
                         21 => process_plane_scalar(21, srcp, dstp, width, height, chroma),
+                        22 => process_plane_scalar(22, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -918,6 +940,7 @@ fn RemoveGrain(comptime T: type) type {
                         19 => rgMode19(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         20 => rgMode20(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         21 => rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        22 => rgMode22(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

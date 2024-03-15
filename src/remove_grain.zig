@@ -729,6 +729,33 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(5, rgMode20(9, 1, 2, 3, 4, 5, 6, 7, 8));
         }
 
+        /// The center pixel is clipped to the smallest and the biggest average of the four surrounding pairs.
+        fn rgMode21(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const l1l = (@as(UAT, a1) + a8) / 2;
+            const l2l = (@as(UAT, a2) + a7) / 2;
+            const l3l = (@as(UAT, a3) + a6) / 2;
+            const l4l = (@as(UAT, a4) + a5) / 2;
+
+            // Unused for integer
+            const l1h = (@as(UAT, a1) + a8 + 1) / 2;
+            const l2h = (@as(UAT, a2) + a7 + 1) / 2;
+            const l3h = (@as(UAT, a3) + a6 + 1) / 2;
+            const l4h = (@as(UAT, a4) + a5 + 1) / 2;
+
+            const min = @min(l1l, l2l, l3l, l4l);
+            const max = if (cmn.IsInt(T))
+                @max(l1h, l2h, l3h, l4h)
+            else
+                @max(l1l, l2l, l3l, l4l);
+
+            return cmn.lossyCast(T, std.math.clamp(c, min, max));
+        }
+
+        test "RG Mode 21" {
+            try std.testing.expectEqual(1, rgMode21(0, 1, 2, 3, 4, 4, 3, 2, 1));
+            try std.testing.expectEqual(4, rgMode21(5, 1, 2, 3, 4, 4, 3, 2, 1));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
@@ -821,6 +848,7 @@ fn RemoveGrain(comptime T: type) type {
                         18 => process_plane_scalar(18, srcp, dstp, width, height, chroma),
                         19 => process_plane_scalar(19, srcp, dstp, width, height, chroma),
                         20 => process_plane_scalar(20, srcp, dstp, width, height, chroma),
+                        21 => process_plane_scalar(21, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -889,6 +917,7 @@ fn RemoveGrain(comptime T: type) type {
                         18 => rgMode18(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         19 => rgMode19(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         20 => rgMode20(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        21 => rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

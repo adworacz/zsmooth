@@ -553,6 +553,77 @@ fn RemoveGrain(comptime T: type) type {
                 try std.testing.expectEqual(5.25, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
             }
         }
+
+        /// RG 13 - Bob mode, interpolates top field from the line where the neighbours pixels are the closest.
+        /// RG 14 - Bob mode, interpolates bottom field from the line where the neighbours pixels are the closest.
+        fn rgMode1314(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            // TODO: simply remove the function parameters for this function.
+            _ = c;
+            _ = a4;
+            _ = a5;
+
+            const d1 = @abs(@as(ST, a1) - a8);
+            const d2 = @abs(@as(ST, a2) - a7);
+            const d3 = @abs(@as(ST, a3) - a6);
+
+            const mindiff = @min(d1, d2, d3);
+
+            if (mindiff == d2) {
+                return if (cmn.IsFloat(T))
+                    (@as(UDT, a2) + a7) / 2
+                else
+                    @intCast((@as(UDT, a2) + a7 + 1) / 2);
+            } else if (mindiff == d3) {
+                return if (cmn.IsFloat(T))
+                    (@as(UDT, a3) + a6) / 2
+                else
+                    @intCast((@as(UDT, a3) + a6 + 1) / 2);
+            }
+            return if (cmn.IsFloat(T))
+                (@as(UDT, a1) + a8) / 2
+            else
+                @intCast((@as(UDT, a1) + a8 + 1) / 2);
+        }
+
+        test "RG Mode 13-14" {
+            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 100, 100, 3));
+            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 100, 3, 100));
+            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 3, 100, 100));
+        }
+
+        /// Based on the RG mode, we want to skip certain lines,
+        /// like when processing interlaced fields (even or odd fields).
+        fn shouldSkipLine(mode: comptime_int, line: usize) bool {
+            if (mode == 13) {
+                // Even lines should be processed, so skip when line is an odd number.
+                return (line & 1) != 0;
+            } else if (mode == 14) {
+                // Odd lines should be processed, so skip when line is an even number.
+                return (line & 1) == 0;
+            }
+            return false;
+        }
+
+        test shouldSkipLine {
+            // Skip odd lines (process even lines) for mode 13
+            try std.testing.expectEqual(false, shouldSkipLine(13, 2));
+            try std.testing.expectEqual(true, shouldSkipLine(13, 3));
+
+            // Skip even lines (process odd lines) for mode 14
+            try std.testing.expectEqual(true, shouldSkipLine(14, 2));
+            try std.testing.expectEqual(false, shouldSkipLine(14, 3));
+
+            // Other modes should process all lines
+            inline for (0..25) |mode| {
+                if (mode == 13 or mode == 14) {
+                    continue;
+                }
+
+                try std.testing.expectEqual(false, shouldSkipLine(mode, 2));
+                try std.testing.expectEqual(false, shouldSkipLine(mode, 3));
+            }
+        }
+
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -600,6 +671,8 @@ fn RemoveGrain(comptime T: type) type {
                         9 => process_plane_scalar(9, srcp, dstp, width, height, chroma),
                         10 => process_plane_scalar(10, srcp, dstp, width, height, chroma),
                         11, 12 => process_plane_scalar(11, srcp, dstp, width, height, chroma),
+                        13 => process_plane_scalar(13, srcp, dstp, width, height, chroma),
+                        14 => process_plane_scalar(14, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -616,7 +689,12 @@ fn RemoveGrain(comptime T: type) type {
             @memcpy(dstp, srcp[0..width]);
 
             for (1..height - 1) |h| {
-                //TODO: This will need to change for skipline/interlaced support.
+                // Handle interlacing (top field/bottom field) modes
+                if (shouldSkipLine(mode, h)) {
+                    const currentLine = (h * width);
+                    @memcpy(dstp[currentLine..], srcp[currentLine..(currentLine + width)]);
+                    continue;
+                }
 
                 // Copy the pixel at the beginning of the line.
                 dstp[(h * width)] = srcp[(h * width)];
@@ -657,6 +735,7 @@ fn RemoveGrain(comptime T: type) type {
                         9 => rgMode9(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         10 => rgMode10(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         11, 12 => rgMode1112(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        13, 14 => rgMode1314(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

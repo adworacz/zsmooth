@@ -712,6 +712,23 @@ fn RemoveGrain(comptime T: type) type {
             }
         }
 
+        /// Every pixel is replaced with the arithmetic mean of its 3x3 neighborhood.
+        /// In other words, all 9 pixels are summed up and the sum is divided by 9.
+        ///
+        /// Identical to Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
+        fn rgMode20(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sum = @as(UAT, a1) + a2 + a3 + c + a4 + a5 + a6 + a7 + a8;
+
+            return if (cmn.IsFloat(T))
+                sum / 9
+            else
+                @intCast((sum + 4) / 9);
+        }
+
+        test "RG Mode 20" {
+            try std.testing.expectEqual(5, rgMode20(9, 1, 2, 3, 4, 5, 6, 7, 8));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
@@ -803,6 +820,7 @@ fn RemoveGrain(comptime T: type) type {
                         17 => process_plane_scalar(17, srcp, dstp, width, height, chroma),
                         18 => process_plane_scalar(18, srcp, dstp, width, height, chroma),
                         19 => process_plane_scalar(19, srcp, dstp, width, height, chroma),
+                        20 => process_plane_scalar(20, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -870,6 +888,7 @@ fn RemoveGrain(comptime T: type) type {
                         17 => rgMode17(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         18 => rgMode18(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         19 => rgMode19(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        20 => rgMode20(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

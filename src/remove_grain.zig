@@ -627,6 +627,12 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, std.math.clamp(average, @min(a1, a8), @max(a1, a8)));
         }
 
+        test "RG Mode 15-16" {
+            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 100, 100, 3));
+            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 100, 3, 100));
+            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 3, 100, 100));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
@@ -641,17 +647,21 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         test shouldSkipLine {
-            // Skip odd lines (process even lines) for mode 13
+            // Skip odd lines (process even lines) for mode 13 and 15
             try std.testing.expectEqual(false, shouldSkipLine(13, 2));
+            try std.testing.expectEqual(false, shouldSkipLine(15, 2));
             try std.testing.expectEqual(true, shouldSkipLine(13, 3));
+            try std.testing.expectEqual(true, shouldSkipLine(15, 3));
 
-            // Skip even lines (process odd lines) for mode 14
+            // Skip even lines (process odd lines) for mode 14 and 16
             try std.testing.expectEqual(true, shouldSkipLine(14, 2));
+            try std.testing.expectEqual(true, shouldSkipLine(16, 2));
             try std.testing.expectEqual(false, shouldSkipLine(14, 3));
+            try std.testing.expectEqual(false, shouldSkipLine(16, 3));
 
             // Other modes should process all lines
             inline for (0..25) |mode| {
-                if (mode == 13 or mode == 14) {
+                if (mode == 13 or mode == 14 or mode == 15 or mode == 16) {
                     continue;
                 }
 

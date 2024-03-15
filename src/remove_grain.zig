@@ -633,6 +633,15 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 3, 100, 100));
         }
 
+        /// Clips the pixel with the minimum and maximum of respectively the maximum and minimum of each pair of opposite neighbour pixels.
+        fn rgMode17(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+            const l = @max(sorted.mi1, sorted.mi2, sorted.mi3, sorted.mi4);
+            const u = @min(sorted.ma1, sorted.ma2, sorted.ma3, sorted.ma4);
+
+            return std.math.clamp(c, @min(l, u), @max(l, u));
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
@@ -721,6 +730,7 @@ fn RemoveGrain(comptime T: type) type {
                         14 => process_plane_scalar(14, srcp, dstp, width, height, chroma),
                         15 => process_plane_scalar(15, srcp, dstp, width, height, chroma),
                         16 => process_plane_scalar(16, srcp, dstp, width, height, chroma),
+                        17 => process_plane_scalar(17, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -785,6 +795,7 @@ fn RemoveGrain(comptime T: type) type {
                         11, 12 => rgMode1112(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         13, 14 => rgMode1314(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         15, 16 => rgMode1516(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        17 => rgMode17(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

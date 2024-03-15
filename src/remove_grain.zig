@@ -225,30 +225,30 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(4, rgMode4(0, 1, 2, 3, 4, 6, 7, 8, 9));
         }
 
-        fn sortPixels(a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { ma1: T, mi1: T, ma2: T, mi2: T, ma3: T, mi3: T, ma4: T, mi4: T } {
+        fn sortPixels(a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
             return .{
-                .ma1 = @max(a1, a8),
-                .mi1 = @min(a1, a8),
-                .ma2 = @max(a2, a7),
-                .mi2 = @min(a2, a7),
-                .ma3 = @max(a3, a6),
-                .mi3 = @min(a3, a6),
-                .ma4 = @max(a4, a5),
-                .mi4 = @min(a4, a5),
+                .max1 = @max(a1, a8),
+                .min1 = @min(a1, a8),
+                .max2 = @max(a2, a7),
+                .min2 = @min(a2, a7),
+                .max3 = @max(a3, a6),
+                .min3 = @min(a3, a6),
+                .max4 = @max(a4, a5),
+                .min4 = @min(a4, a5),
             };
         }
 
         test sortPixels {
             const sorted = sortPixels(2, 4, 6, 8, 7, 5, 3, 1);
 
-            try std.testing.expectEqual(2, sorted.ma1);
-            try std.testing.expectEqual(1, sorted.mi1);
-            try std.testing.expectEqual(4, sorted.ma2);
-            try std.testing.expectEqual(3, sorted.mi2);
-            try std.testing.expectEqual(6, sorted.ma3);
-            try std.testing.expectEqual(5, sorted.mi3);
-            try std.testing.expectEqual(8, sorted.ma4);
-            try std.testing.expectEqual(7, sorted.mi4);
+            try std.testing.expectEqual(2, sorted.max1);
+            try std.testing.expectEqual(1, sorted.min1);
+            try std.testing.expectEqual(4, sorted.max2);
+            try std.testing.expectEqual(3, sorted.min2);
+            try std.testing.expectEqual(6, sorted.max3);
+            try std.testing.expectEqual(5, sorted.min3);
+            try std.testing.expectEqual(8, sorted.max4);
+            try std.testing.expectEqual(7, sorted.min4);
         }
 
         /// Line-sensitive clipping giving the minimal change.
@@ -267,22 +267,22 @@ fn RemoveGrain(comptime T: type) type {
             // 613 fps vs 470 fps
             const cT = @as(SAT, c);
 
-            const c1 = @abs(cT - std.math.clamp(c, sorted.mi1, sorted.ma1));
-            const c2 = @abs(cT - std.math.clamp(c, sorted.mi2, sorted.ma2));
-            const c3 = @abs(cT - std.math.clamp(c, sorted.mi3, sorted.ma3));
-            const c4 = @abs(cT - std.math.clamp(c, sorted.mi4, sorted.ma4));
+            const c1 = @abs(cT - std.math.clamp(c, sorted.min1, sorted.max1));
+            const c2 = @abs(cT - std.math.clamp(c, sorted.min2, sorted.max2));
+            const c3 = @abs(cT - std.math.clamp(c, sorted.min3, sorted.max3));
+            const c4 = @abs(cT - std.math.clamp(c, sorted.min4, sorted.max4));
 
             const mindiff = @min(c1, c2, c3, c4);
 
             // This order matters to match RGVS output.
             if (mindiff == c4) {
-                return std.math.clamp(c, sorted.mi4, sorted.ma4);
+                return std.math.clamp(c, sorted.min4, sorted.max4);
             } else if (mindiff == c2) {
-                return std.math.clamp(c, sorted.mi2, sorted.ma2);
+                return std.math.clamp(c, sorted.min2, sorted.max2);
             } else if (mindiff == c3) {
-                return std.math.clamp(c, sorted.mi3, sorted.ma3);
+                return std.math.clamp(c, sorted.min3, sorted.max3);
             }
-            return std.math.clamp(c, sorted.mi1, sorted.ma1);
+            return std.math.clamp(c, sorted.min1, sorted.max1);
         }
 
         test "RG Mode 5" {
@@ -314,15 +314,15 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode6(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1 = sorted.ma1 - sorted.mi1;
-            const d2 = sorted.ma2 - sorted.mi2;
-            const d3 = sorted.ma3 - sorted.mi3;
-            const d4 = sorted.ma4 - sorted.mi4;
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
-            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
-            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
-            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
+            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
             const maxChroma = cmn.get_maximum_for_type(T, true);
@@ -368,15 +368,15 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode7(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1 = sorted.ma1 - sorted.mi1;
-            const d2 = sorted.ma2 - sorted.mi2;
-            const d3 = sorted.ma3 - sorted.mi3;
-            const d4 = sorted.ma4 - sorted.mi4;
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
-            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
-            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
-            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
+            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
 
             const cT = @as(SAT, c);
 
@@ -404,15 +404,15 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode8(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1: UAT = sorted.ma1 - sorted.mi1;
-            const d2: UAT = sorted.ma2 - sorted.mi2;
-            const d3: UAT = sorted.ma3 - sorted.mi3;
-            const d4: UAT = sorted.ma4 - sorted.mi4;
+            const d1: UAT = sorted.max1 - sorted.min1;
+            const d2: UAT = sorted.max2 - sorted.min2;
+            const d3: UAT = sorted.max3 - sorted.min3;
+            const d4: UAT = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
-            const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
-            const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
-            const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
+            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
             const maxChroma = cmn.get_maximum_for_type(T, true);
@@ -453,23 +453,23 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode9(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1 = sorted.ma1 - sorted.mi1;
-            const d2 = sorted.ma2 - sorted.mi2;
-            const d3 = sorted.ma3 - sorted.mi3;
-            const d4 = sorted.ma4 - sorted.mi4;
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
 
             const mindiff = @min(d1, d2, d3, d4);
 
             // This order matters in order to match the exact
             // same output of RGVS
             if (mindiff == d4) {
-                return std.math.clamp(c, sorted.mi4, sorted.ma4);
+                return std.math.clamp(c, sorted.min4, sorted.max4);
             } else if (mindiff == d2) {
-                return std.math.clamp(c, sorted.mi2, sorted.ma2);
+                return std.math.clamp(c, sorted.min2, sorted.max2);
             } else if (mindiff == d3) {
-                return std.math.clamp(c, sorted.mi3, sorted.ma3);
+                return std.math.clamp(c, sorted.min3, sorted.max3);
             }
-            return std.math.clamp(c, sorted.mi1, sorted.ma1);
+            return std.math.clamp(c, sorted.min1, sorted.max1);
         }
 
         test "RG Mode 9" {
@@ -636,8 +636,8 @@ fn RemoveGrain(comptime T: type) type {
         /// Clips the pixel with the minimum and maximum of respectively the maximum and minimum of each pair of opposite neighbour pixels.
         fn rgMode17(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
-            const l = @max(sorted.mi1, sorted.mi2, sorted.mi3, sorted.mi4);
-            const u = @min(sorted.ma1, sorted.ma2, sorted.ma3, sorted.ma4);
+            const l = @max(sorted.min1, sorted.min2, sorted.min3, sorted.min4);
+            const u = @min(sorted.max1, sorted.max2, sorted.max3, sorted.max4);
 
             return std.math.clamp(c, @min(l, u), @max(l, u));
         }
@@ -648,6 +648,68 @@ fn RemoveGrain(comptime T: type) type {
 
             // Clip to the highest minimum
             try std.testing.expectEqual(4, rgMode17(0, 1, 2, 3, 4, 5, 5, 5, 5));
+        }
+
+        /// Line-sensitive clipping using opposite neighbours whose greatest distance from the current pixel is minimal.
+        fn rgMode18(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const cT = @as(SAT, c);
+            const d1 = @max(@abs(cT - a1), @abs(cT - a8));
+            const d2 = @max(@abs(cT - a2), @abs(cT - a7));
+            const d3 = @max(@abs(cT - a3), @abs(cT - a6));
+            const d4 = @max(@abs(cT - a4), @abs(cT - a5));
+
+            const mindiff = @min(d1, d2, d3, d4);
+
+            return if (mindiff == d4)
+                std.math.clamp(c, @min(a4, a5), @max(a4, a5))
+            else if (mindiff == d2)
+                std.math.clamp(c, @min(a2, a7), @max(a2, a7))
+            else if (mindiff == d3)
+                std.math.clamp(c, @min(a3, a6), @max(a3, a6))
+            else
+                std.math.clamp(c, @min(a1, a8), @max(a1, a8));
+        }
+
+        test "RG Mode 18" {
+            // a1 and a8 clipping.
+            try std.testing.expectEqual(2, rgMode18(1, 2, 100, 100, 100, 100, 100, 100, 3));
+            try std.testing.expectEqual(3, rgMode18(4, 2, 100, 100, 100, 100, 100, 100, 3));
+
+            // a2 and a7 clipping.
+            try std.testing.expectEqual(2, rgMode18(1, 100, 2, 100, 100, 100, 100, 3, 100));
+            try std.testing.expectEqual(3, rgMode18(4, 100, 2, 100, 100, 100, 100, 3, 100));
+
+            // a3 and a6 clipping
+            try std.testing.expectEqual(2, rgMode18(1, 100, 100, 2, 100, 100, 3, 100, 100));
+            try std.testing.expectEqual(3, rgMode18(4, 100, 100, 2, 100, 100, 3, 100, 100));
+
+            // a4 and a5 clipping
+            try std.testing.expectEqual(2, rgMode18(1, 100, 100, 100, 2, 3, 100, 100, 100));
+            try std.testing.expectEqual(3, rgMode18(4, 100, 100, 100, 2, 3, 100, 100, 100));
+        }
+
+        /// Every pixel is replaced with the arithmetic mean of its 3x3 neighborhood,
+        /// center pixel not included. In other words, the 8 neighbors are summed up
+        /// and the sum is divided by 8.
+        ///
+        /// Identical to Convolution(matrix=[1, 1, 1, 1, 0, 1, 1, 1, 1])
+        fn rgMode19(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            // TODO: remove c arg.
+            _ = c;
+            const sum = @as(UAT, a1) + a2 + a3 + a4 + a5 + a6 + a7 + a8;
+
+            return if (cmn.IsFloat(T))
+                sum / 8
+            else
+                @intCast((sum + 4) / 8);
+        }
+
+        test "RG Mode 19" {
+            if (cmn.IsFloat(T)) {
+                try std.testing.expectEqual(4.5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
+            } else {
+                try std.testing.expectEqual(5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
+            }
         }
 
         /// Based on the RG mode, we want to skip certain lines,
@@ -739,6 +801,8 @@ fn RemoveGrain(comptime T: type) type {
                         15 => process_plane_scalar(15, srcp, dstp, width, height, chroma),
                         16 => process_plane_scalar(16, srcp, dstp, width, height, chroma),
                         17 => process_plane_scalar(17, srcp, dstp, width, height, chroma),
+                        18 => process_plane_scalar(18, srcp, dstp, width, height, chroma),
+                        19 => process_plane_scalar(19, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -804,6 +868,8 @@ fn RemoveGrain(comptime T: type) type {
                         13, 14 => rgMode1314(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         15, 16 => rgMode1516(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         17 => rgMode17(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        18 => rgMode18(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        19 => rgMode19(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

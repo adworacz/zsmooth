@@ -46,22 +46,31 @@ const RemoveGrainData = struct {
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn RemoveGrain(comptime T: type) type {
     return struct {
-        // Signed type - used in signed arithmetic to safely hold the value in question without overflowing.
-        const ST = switch (T) {
+        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
+        /// the values (particularly integers) without overflowing when doing
+        /// signed arithmetic.
+        const SAT = switch (T) {
             u8 => i16,
             u16 => i32,
-            f16 => f16, //TODO: This might better be f32 on some systems...
+            // RGSF uses double values for its computations,
+            // while Avisynth uses single precision float for its computations.
+            // I'm using single (and half) precision just like Avisynth since
+            // double is unnecessary in most cases and twice as slow than single precision.
+            // And I mean literally unnecessary - RGSF uses double on operations that are completely
+            // safe for f32 calculations without any loss in precision, so it's *unnecessarily* slow.
+            f16 => f16, //TODO: This might be more performant as f32 on some systems.
             f32 => f32,
             else => unreachable,
         };
 
-        // Unsigned double type - used in unsigned arithmetic to safely hold values without overflowing.
-        const UDT = switch (T) {
+        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
+        /// hold values (particularly integers) without overflowing when doing
+        /// unsigned arithmetic.
+        const UAT = switch (T) {
             u8 => u16,
             u16 => u32,
-            // TODO: These might need to be increased to f32 and f64 respectively.
-            // I'm still considering it.
-            f16 => f16, //TODO: This might better be f32 on some systems...
+            // See note on floating point precision above.
+            f16 => f16, //TODO: This might be more performant as f32 on some systems.
             f32 => f32,
             else => unreachable,
         };
@@ -256,7 +265,7 @@ fn RemoveGrain(comptime T: type) type {
 
             // Casting u8 to i16 instead of i32 is substantially faster on my laptop.
             // 613 fps vs 470 fps
-            const cT = @as(ST, c);
+            const cT = @as(SAT, c);
 
             const c1 = @abs(cT - std.math.clamp(c, sorted.mi1, sorted.ma1));
             const c2 = @abs(cT - std.math.clamp(c, sorted.mi2, sorted.ma2));
@@ -326,7 +335,7 @@ fn RemoveGrain(comptime T: type) type {
 
             // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
             // but it is a small difference and technically our plugins produce different output without casting to f64;
-            const cT = @as(ST, c);
+            const cT = @as(SAT, c);
 
             // The following produces output identical to RGSF
             // const SignedType = if (T == u8) i16 else if (T == u16) i32 else if (T == f16) f32 else f64;
@@ -369,7 +378,7 @@ fn RemoveGrain(comptime T: type) type {
             const clamp3 = std.math.clamp(c, sorted.mi3, sorted.ma3);
             const clamp4 = std.math.clamp(c, sorted.mi4, sorted.ma4);
 
-            const cT = @as(ST, c);
+            const cT = @as(SAT, c);
 
             const c1 = @abs(cT - clamp1) + d1;
             const c2 = @abs(cT - clamp2) + d2;
@@ -395,10 +404,10 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode8(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            const d1: UDT = sorted.ma1 - sorted.mi1;
-            const d2: UDT = sorted.ma2 - sorted.mi2;
-            const d3: UDT = sorted.ma3 - sorted.mi3;
-            const d4: UDT = sorted.ma4 - sorted.mi4;
+            const d1: UAT = sorted.ma1 - sorted.mi1;
+            const d2: UAT = sorted.ma2 - sorted.mi2;
+            const d3: UAT = sorted.ma3 - sorted.mi3;
+            const d4: UAT = sorted.ma4 - sorted.mi4;
 
             const clamp1 = std.math.clamp(c, sorted.mi1, sorted.ma1);
             const clamp2 = std.math.clamp(c, sorted.mi2, sorted.ma2);
@@ -416,7 +425,7 @@ fn RemoveGrain(comptime T: type) type {
 
             // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
             // but it is a small difference and technically our plugins produce different output without casting to f64;
-            const cT = @as(ST, c);
+            const cT = @as(SAT, c);
 
             const c1 = std.math.clamp(@abs(cT - clamp1) + (d1 * 2), minimum, maximum);
             const c2 = std.math.clamp(@abs(cT - clamp2) + (d2 * 2), minimum, maximum);
@@ -485,7 +494,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Replaces the center pixel with the closest neighbour. "Very poor denoise sharpener"
         fn rgMode10(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const cT: ST = c;
+            const cT: SAT = c;
 
             const d1 = @abs(cT - a1);
             const d2 = @abs(cT - a2);
@@ -539,7 +548,7 @@ fn RemoveGrain(comptime T: type) type {
         ///
         /// Identical to Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
         fn rgMode1112(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sum = 4 * @as(UDT, c) + 2 * (@as(UDT, a2) + a4 + a5 + a7) + a1 + a3 + a6 + a8;
+            const sum = 4 * @as(UAT, c) + 2 * (@as(UAT, a2) + a4 + a5 + a7) + a1 + a3 + a6 + a8;
             return if (cmn.IsFloat(T))
                 sum / 16
             else
@@ -562,27 +571,27 @@ fn RemoveGrain(comptime T: type) type {
             _ = a4;
             _ = a5;
 
-            const d1 = @abs(@as(ST, a1) - a8);
-            const d2 = @abs(@as(ST, a2) - a7);
-            const d3 = @abs(@as(ST, a3) - a6);
+            const d1 = @abs(@as(SAT, a1) - a8);
+            const d2 = @abs(@as(SAT, a2) - a7);
+            const d3 = @abs(@as(SAT, a3) - a6);
 
             const mindiff = @min(d1, d2, d3);
 
             if (mindiff == d2) {
                 return if (cmn.IsFloat(T))
-                    (@as(UDT, a2) + a7) / 2
+                    (@as(UAT, a2) + a7) / 2
                 else
-                    @intCast((@as(UDT, a2) + a7 + 1) / 2);
+                    @intCast((@as(UAT, a2) + a7 + 1) / 2);
             } else if (mindiff == d3) {
                 return if (cmn.IsFloat(T))
-                    (@as(UDT, a3) + a6) / 2
+                    (@as(UAT, a3) + a6) / 2
                 else
-                    @intCast((@as(UDT, a3) + a6 + 1) / 2);
+                    @intCast((@as(UAT, a3) + a6 + 1) / 2);
             }
             return if (cmn.IsFloat(T))
-                (@as(UDT, a1) + a8) / 2
+                (@as(UAT, a1) + a8) / 2
             else
-                @intCast((@as(UDT, a1) + a8 + 1) / 2);
+                @intCast((@as(UAT, a1) + a8 + 1) / 2);
         }
 
         test "RG Mode 13-14" {
@@ -872,8 +881,9 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
     };
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &RemoveGrain(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
+        // 1 => &RemoveGrain(u8).getFrame,
+        // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
+        2 => &RemoveGrain(f16).getFrame,
         4 => &RemoveGrain(f32).getFrame,
         else => unreachable,
     };

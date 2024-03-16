@@ -327,11 +327,8 @@ fn RemoveGrain(comptime T: type) type {
             // Max / min Zig comptime + runtime shenanigans.
             const maxChroma = cmn.get_maximum_for_type(T, true);
             const maxNoChroma = cmn.get_maximum_for_type(T, false);
-            const minChroma = cmn.get_minimum_for_type(T, true);
-            const minNoChroma = cmn.get_minimum_for_type(T, false);
 
             const maximum = if (chroma) maxChroma else maxNoChroma;
-            const minimum = if (chroma) minChroma else minNoChroma;
 
             // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
             // but it is a small difference and technically our plugins produce different output without casting to f64;
@@ -341,10 +338,10 @@ fn RemoveGrain(comptime T: type) type {
             // const SignedType = if (T == u8) i16 else if (T == u16) i32 else if (T == f16) f32 else f64;
             // const cT = if (cmn.IsInt(T)) @as(SignedType, @intCast(c)) else @as(SignedType, @floatCast(c));
 
-            const c1 = std.math.clamp((@abs(cT - clamp1) * 2) + d1, minimum, maximum);
-            const c2 = std.math.clamp((@abs(cT - clamp2) * 2) + d2, minimum, maximum);
-            const c3 = std.math.clamp((@abs(cT - clamp3) * 2) + d3, minimum, maximum);
-            const c4 = std.math.clamp((@abs(cT - clamp4) * 2) + d4, minimum, maximum);
+            const c1 = @min((@abs(cT - clamp1) * 2) + d1, maximum);
+            const c2 = @min((@abs(cT - clamp2) * 2) + d2, maximum);
+            const c3 = @min((@abs(cT - clamp3) * 2) + d3, maximum);
+            const c4 = @min((@abs(cT - clamp4) * 2) + d4, maximum);
 
             const mindiff = @min(c1, c2, c3, c4);
 
@@ -777,6 +774,40 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(4, rgMode22(5, 1, 2, 3, 4, 4, 3, 2, 1));
         }
 
+        /// Small edge and halo removal, but reportedly useless.
+        fn rgMode23(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const linediff1 = sorted.max1 - sorted.min1;
+            const linediff2 = sorted.max2 - sorted.min2;
+            const linediff3 = sorted.max3 - sorted.min3;
+            const linediff4 = sorted.max4 - sorted.min4;
+
+            const cT = @as(SAT, c);
+
+            const h1 = @min(cT - sorted.max1, linediff1);
+            const h2 = @min(cT - sorted.max2, linediff2);
+            const h3 = @min(cT - sorted.max3, linediff3);
+            const h4 = @min(cT - sorted.max4, linediff4);
+
+            // Note: For YUV chroma planes, Avisynth uses 0 here, and RGSF uses -0.5.
+            // In my testing, 0 appears visually correct and to match integer output.
+            // -0.5 seems to break the image, and is likely a bug in RGSF.
+            //
+            // Reference:
+            // * https://github.com/pinterf/RgTools/blob/a9cff29cb228b8a6fb52148f334554f4c3823798/RgTools/rg_functions_c.h#L1296
+            // * https://github.com/IFeelBloated/RGSF/blob/master/RemoveGrain.cpp#L475
+            const h = @max(0, h1, h2, h3, h4);
+
+            const l1 = @min(sorted.min1 - cT, linediff1);
+            const l2 = @min(sorted.min2 - cT, linediff2);
+            const l3 = @min(sorted.min3 - cT, linediff3);
+            const l4 = @min(sorted.min4 - cT, linediff4);
+            const l = @max(0, l1, l2, l3, l4);
+
+            return cmn.lossyCast(T, c - h + l);
+        }
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {
@@ -871,6 +902,7 @@ fn RemoveGrain(comptime T: type) type {
                         20 => process_plane_scalar(20, srcp, dstp, width, height, chroma),
                         21 => process_plane_scalar(21, srcp, dstp, width, height, chroma),
                         22 => process_plane_scalar(22, srcp, dstp, width, height, chroma),
+                        23 => process_plane_scalar(23, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -941,6 +973,7 @@ fn RemoveGrain(comptime T: type) type {
                         20 => rgMode20(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         21 => rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         22 => rgMode22(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        23 => rgMode23(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

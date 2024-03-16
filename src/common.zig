@@ -34,6 +34,43 @@ test IsFloat {
 }
 
 /////////////////////////////////////////////////
+// Math
+/////////////////////////////////////////////////
+
+/// My own modified version of std.math.lossyCast without that min/maxInt checks
+/// since I want to avoid branching as much as possible and the usages of this
+/// function should be on values that are guarranteed *by the programmer* NOT
+/// to be out of range of the target type.
+///
+/// So yes, this is a more dangerous lossyCast, but also a faster (no branches)
+/// version.
+pub fn lossyCast(comptime T: type, value: anytype) T {
+    switch (@typeInfo(T)) {
+        .Float => {
+            switch (@typeInfo(@TypeOf(value))) {
+                .Int => return @as(T, @floatFromInt(value)),
+                .Float => return @as(T, @floatCast(value)),
+                .ComptimeInt => return @as(T, value),
+                .ComptimeFloat => return @as(T, value),
+                else => @compileError("bad type"),
+            }
+        },
+        .Int => {
+            switch (@typeInfo(@TypeOf(value))) {
+                .Int, .ComptimeInt => {
+                    return @as(T, @intCast(value));
+                },
+                .Float, .ComptimeFloat => {
+                    return @as(T, @intFromFloat(value));
+                },
+                else => @compileError("bad type"),
+            }
+        },
+        else => @compileError("bad result type"),
+    }
+}
+
+/////////////////////////////////////////////////
 // Video format utilities (value scaling, peak finding, etc)
 /////////////////////////////////////////////////
 
@@ -94,8 +131,8 @@ pub fn get_peak(vf: vs.VideoFormat) u32 {
 
 pub inline fn get_maximum_for_type(comptime T: type, comptime chroma: bool) T {
     return switch (T) {
-        u8 => 255,
-        u16 => 65535,
+        u8 => 255, // 0xFF
+        u16 => 65535, // 0xFFFF
         f16, f32 => if (chroma) 0.5 else 1.0,
         else => unreachable,
     };

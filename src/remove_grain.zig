@@ -325,6 +325,13 @@ fn RemoveGrain(comptime T: type) type {
             const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
+            // TODO: Pretty sure there's a bug here.
+            // This maximum should likely be the maximum of the video bit depth,
+            // not the processing bit depth.
+            // Avisynth uses a max of the video bit depth, but RGVS uses a max of 0xFFFF.
+            // Maybe it doesn't matter...
+            // In theory it would only be an issue if every pixel around this
+            // pixel was white and this one was black
             const maxChroma = cmn.get_maximum_for_type(T, true);
             const maxNoChroma = cmn.get_maximum_for_type(T, false);
 

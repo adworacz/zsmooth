@@ -87,7 +87,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
                 sum += value;
             }
 
-            if (cmn.IsFloat(T)) {
+            if (cmn.isFloat(T)) {
                 // Normal division for floating point
                 dstp[current_pixel] = sum / @as(T, @floatFromInt(frames));
             } else {
@@ -109,7 +109,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
 // 100 fps with fp32, radius 1, float mode optimized
 // 55 fps with fp32, radius 7
 fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
-    const vec_size = cmn.GetVecSize(T);
+    const vec_size = cmn.getVecSize(T);
     const width_simd = width / vec_size * vec_size;
 
     for (0..height) |h| {
@@ -128,7 +128,7 @@ fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]
 inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
     @setFloatMode(.Optimized);
     const half_frames: u8 = @divTrunc(frames, 2);
-    const vec_size = cmn.GetVecSize(T);
+    const vec_size = cmn.getVecSize(T);
     const VecType = @Vector(vec_size, T);
 
     const threshold_vec: VecType = switch (T) {
@@ -156,7 +156,7 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
     }
 
     const result = blk: {
-        if (cmn.IsFloat(T)) {
+        if (cmn.isFloat(T)) {
             break :blk sum_vec / @as(VecType, @splat(@floatFromInt(frames)));
         }
         const half_frames_vec: VecType = @splat(@intCast(half_frames));
@@ -336,26 +336,26 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     // TODO: Add proper validation to these threshold values. Right now I can pass "-1" and the code takes it.
     // Also passing 655555 works even for floating point values, so I need to
     // properly validate these params as the lossy cast is screwing things up.
-    d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse cmn.scale_8bit_to_format(d.vi.format, 4);
+    d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse cmn.scaleToSample(d.vi.format, 4);
     if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
         d.threshold[1] = d.threshold[0];
     }
 
     if (d.vi.format.colorFamily == vs.ColorFamily.YUV) {
-        d.threshold[1] = vsh.mapGetN(u32, in, "chroma_threshold", 0, vsapi) orelse cmn.scale_8bit_to_format(d.vi.format, 8);
+        d.threshold[1] = vsh.mapGetN(u32, in, "chroma_threshold", 0, vsapi) orelse cmn.scaleToSample(d.vi.format, 8);
     }
 
     d.threshold[2] = d.threshold[1];
 
-    // TODO: There's a bug with checking floating point values, as get_peak returns a u32 that should be @bitCast.
-    if (d.threshold[0] < 0 or d.threshold[0] > cmn.get_peak(d.vi.format)) {
-        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: luma_threshold must be between 0 and {d} (inclusive)", .{cmn.get_peak(d.vi.format)}).ptr);
+    // TODO: There's a bug with checking floating point values, as getPeak returns a u32 that should be @bitCast.
+    if (d.threshold[0] < 0 or d.threshold[0] > cmn.getPeak(d.vi.format)) {
+        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: luma_threshold must be between 0 and {d} (inclusive)", .{cmn.getPeak(d.vi.format)}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }
 
-    if (d.threshold[1] < 0 or d.threshold[1] > cmn.get_peak(d.vi.format)) {
-        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: chroma_threshold must be between 0 and {d} (inclusive)", .{cmn.get_peak(d.vi.format)}).ptr);
+    if (d.threshold[1] < 0 or d.threshold[1] > cmn.getPeak(d.vi.format)) {
+        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: chroma_threshold must be between 0 and {d} (inclusive)", .{cmn.getPeak(d.vi.format)}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }

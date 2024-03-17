@@ -58,7 +58,7 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
-            const vec_size = cmn.GetVecSize(T);
+            const vec_size = cmn.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |h| {
@@ -77,7 +77,7 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
-            const vec_size = cmn.GetVecSize(T);
+            const vec_size = cmn.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
             var src: [MAX_DIAMETER]VecType = undefined;
@@ -313,11 +313,7 @@ fn TemporalMedian(comptime T: type) type {
             var src: [MAX_DIAMETER][*]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
-                if (cmn.IsFloat(T)) {
-                    @memset(frame, @floatFromInt(i + 1));
-                } else {
-                    @memset(frame, @intCast(i + 1));
-                }
+                @memset(frame, cmn.lossyCast(T, i + 1));
 
                 src[i] = frame.ptr;
             }

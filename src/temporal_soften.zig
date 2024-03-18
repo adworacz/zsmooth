@@ -33,6 +33,8 @@ const TemporalSoftenData = struct {
     // maybe use @bitCast to cast back and forth between u32 and f32, etc.
     threshold: [3]u32,
     scenechange: u8,
+    scenechange_prop_prev: []const u8,
+    scenechange_prop_next: []const u8,
 };
 
 /// Provides a type for numbers that is compatible with the given type T
@@ -74,7 +76,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
     for (0..height) |row| {
         for (0..width) |column| {
             const current_pixel = row * width + column;
-            const current_value: T = srcp[@intCast(half_frames)][current_pixel];
+            const current_value: T = srcp[0][current_pixel];
 
             var sum: GetSumType(T) = 0;
 
@@ -137,7 +139,7 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
         f32 => @splat(@bitCast(threshold)),
         else => unreachable,
     };
-    const current_value_vec = cmn.loadVec(VecType, srcp[@intCast(half_frames)], offset);
+    const current_value_vec = cmn.loadVec(VecType, srcp[0], offset);
 
     const SumType = GetSumType(T);
     var sum_vec: @Vector(vec_size, SumType) = @splat(0);
@@ -205,83 +207,102 @@ test "process_plane should find the average value" {
 
 fn TemporalSoften(comptime T: type) type {
     return struct {
-        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
             const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
+            const n: usize = math.lossyCast(usize, _n);
+            const radius: usize = math.lossyCast(usize, d.radius);
+
+            const first: usize = n -| radius;
+            const last: usize = @min(n + radius, math.lossyCast(usize, d.vi.numFrames - 1));
 
             if (activation_reason == ar.Initial) {
-                if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                    vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-                } else {
-                    // Request previous, current, and next frames, based on the filter radius.
-                    var i = -d.radius;
-                    while (i <= d.radius) : (i += 1) {
-                        vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
-                    }
+                for (first..(last + 1)) |i| {
+                    vsapi.?.requestFrameFilter.?(@intCast(i), d.node, frame_ctx);
                 }
             } else if (activation_reason == ar.AllFramesReady) {
-                // Skip filtering on the first and last frames that lie inside the filter radius,
-                // since we do not have enough information to filter them properly.
-                if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                    return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                }
-
-                const diameter: u8 = @as(u8, @intCast(d.radius)) * 2 + 1;
+                var err: vs.MapPropertyError = undefined;
                 var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                // The current frame is always stored at the first (0) index.
+                src_frames[0] = vsapi.?.getFrameFilter.?(_n, d.node, frame_ctx);
+                var frames: u8 = 1;
 
-                //TODO: Commonize requesting frames in a temporal radius. TemporalMedian does it as well.
+                var sc_prev = if (d.scenechange > 0) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), d.scenechange_prop_prev.ptr, 0, &err) else 0;
+                var sc_next = if (d.scenechange > 0) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), d.scenechange_prop_next.ptr, 0, &err) else 0;
 
-                // Retrieve all source frames within the filter radius.
-                {
-                    var i = -d.radius;
-                    while (i <= d.radius) : (i += 1) {
-                        src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
+                // Request previous frames, up until we hit a scene change, if using scene change detection.
+                // Even though we aren't going to use all of the frames in a scene change
+                // we still need to request them so that we can free those unused frames.
+                for (1..(n - first + 1)) |i| {
+                    src_frames[frames] = vsapi.?.getFrameFilter.?(_n - @as(c_int, @intCast(i)), d.node, frame_ctx);
+
+                    if (sc_prev != 0) {
+                        // This frame is a scene change, so let's ditch it and continue;
+                        vsapi.?.freeFrame.?(src_frames[frames]);
+                        continue;
                     }
+
+                    if (d.scenechange > 0) {
+                        sc_prev = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), d.scenechange_prop_prev.ptr, 0, &err);
+                    }
+
+                    frames += 1;
                 }
-                // Free all source frames within the filter radius when this function exits.
+
+                // Retrieve next frames, up until we hit a scene change, if using scene change detection.
+                for (1..(last - n + 1)) |i| {
+                    src_frames[frames] = vsapi.?.getFrameFilter.?(_n + @as(c_int, @intCast(i)), d.node, frame_ctx);
+
+                    if (sc_next != 0) {
+                        // This frame is a scene change, so let's ditch it and continue;
+                        vsapi.?.freeFrame.?(src_frames[frames]);
+                        continue;
+                    }
+
+                    if (d.scenechange > 0) {
+                        sc_next = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), d.scenechange_prop_next.ptr, 0, &err);
+                    }
+
+                    frames += 1;
+                }
+
                 defer {
-                    var i = -d.radius;
-                    while (i <= d.radius) : (i += 1) {
-                        vsapi.?.freeFrame.?(src_frames[@intCast(d.radius + i)]);
+                    for (0..frames) |i| {
+                        vsapi.?.freeFrame.?(src_frames[i]);
                     }
                 }
 
                 // Prepare array of frame pointers, with null for planes we will process,
                 // and pointers to the source frame for planes we won't process.
                 var plane_src = [_]?*const vs.Frame{
-                    if (d.threshold[0] > 0) null else src_frames[@intCast(d.radius)],
-                    if (d.threshold[1] > 0) null else src_frames[@intCast(d.radius)],
-                    if (d.threshold[2] > 0) null else src_frames[@intCast(d.radius)],
+                    if (d.threshold[0] > 0) null else src_frames[radius],
+                    if (d.threshold[1] > 0) null else src_frames[radius],
+                    if (d.threshold[2] > 0) null else src_frames[radius],
                 };
                 const planes = [_]c_int{ 0, 1, 2 };
 
-                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[@intCast(d.radius)], core);
+                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[radius], core);
 
-                var plane: c_int = 0;
-                while (plane < d.vi.format.numPlanes) : (plane += 1) {
+                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
+                    const plane: c_int = @intCast(_plane);
+
                     // Skip planes we aren't supposed to process
-                    if (d.threshold[@intCast(plane)] == 0) {
+                    if (d.threshold[_plane] == 0) {
                         continue;
                     }
 
                     var srcp: [MAX_DIAMETER][*]const T = undefined;
-                    for (0..@intCast(diameter)) |i| {
+                    for (0..frames) |i| {
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    // process_plane_scalar(T, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
-                    process_plane_vec(T, srcp, @ptrCast(@alignCast(dstp)), width, height, diameter, d.threshold[@intCast(plane)]);
-
-                    // TODO: The original vapoursynth plugin stores the current frame in
-                    // srcp[0], and then stores all previous frames, and then next frames in the rest of the array.
-                    // Part of the reason it does this is that it respects SceneChanges, which may lead to a variable number of frames to be processed.
-                    //
-                    // I need to update this implementation to follow a similar behavior.
+                    // process_plane_scalar(T, srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[@intCast(plane)]);
+                    process_plane_vec(T, srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[_plane]);
                 }
 
                 return dst;
@@ -385,7 +406,13 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         d.scenechange = 0;
     }
 
-    if (d.scenechange > 0 and d.vi.format.colorFamily != vs.ColorFamily.RGB) {
+    if (d.scenechange > 0) {
+        if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
+            vsapi.?.mapSetError.?(out, "TemporalSoften2: Scene change support does not work with RGB.");
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+
         // TODO: Support more scene change plugins via custom scene change property specification.
         if (vsapi.?.getPluginByID.?("com.vapoursynth.misc", core)) |misc_plugin| {
             const args = vsapi.?.createMap.?();
@@ -398,6 +425,8 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
 
             if (vsapi.?.mapGetNode.?(ret, "clip", 0, &err)) |node| {
                 d.node = node;
+                d.scenechange_prop_prev = "_SceneChange_Prev";
+                d.scenechange_prop_next = "_SceneChange_Next";
                 vsapi.?.freeMap.?(ret);
             } else {
                 vsapi.?.mapSetError.?(out, vsapi.?.mapGetError.?(ret));

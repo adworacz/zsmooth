@@ -385,6 +385,32 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         d.scenechange = 0;
     }
 
+    if (d.scenechange > 0 and d.vi.format.colorFamily != vs.ColorFamily.RGB) {
+        // TODO: Support more scene change plugins via custom scene change property specification.
+        if (vsapi.?.getPluginByID.?("com.vapoursynth.misc", core)) |misc_plugin| {
+            const args = vsapi.?.createMap.?();
+            _ = vsapi.?.mapSetNode.?(args, "clip", d.node, vs.MapAppendMode.Replace);
+            vsapi.?.freeNode.?(d.node);
+            _ = vsapi.?.mapSetFloat.?(args, "threshold", @as(f64, @floatFromInt(d.scenechange)) / 255.0, vs.MapAppendMode.Replace);
+
+            const ret = vsapi.?.invoke.?(misc_plugin, "SCDetect", args);
+            vsapi.?.freeMap.?(args);
+
+            if (vsapi.?.mapGetNode.?(ret, "clip", 0, &err)) |node| {
+                d.node = node;
+                vsapi.?.freeMap.?(ret);
+            } else {
+                vsapi.?.mapSetError.?(out, vsapi.?.mapGetError.?(ret));
+                vsapi.?.freeMap.?(ret);
+                return;
+            }
+        } else {
+            vsapi.?.mapSetError.?(out, "TemporalSoften2: Miscellaneous filters plugin is required in order to use scene change detection.");
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+    }
+
     const mode = vsh.mapGetN(u8, in, "mode", 0, vsapi) orelse 2;
 
     if (mode != 2) {

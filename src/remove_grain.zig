@@ -259,12 +259,6 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode5(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
 
-            // TODO: RGSF uses double (f64) for it's math.
-            // Consider whether this is necessary or not.
-            // https://github.com/IFeelBloated/RGSF/blob/master/RemoveGrain.cpp#L97-L100
-
-            // Casting u8 to i16 instead of i32 is substantially faster on my laptop.
-            // 613 fps vs 470 fps
             const cT = @as(SAT, c);
 
             const c1 = @abs(cT - std.math.clamp(c, sorted.min1, sorted.max1));
@@ -337,13 +331,7 @@ fn RemoveGrain(comptime T: type) type {
 
             const maximum = if (chroma) maxChroma else maxNoChroma;
 
-            // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
-            // but it is a small difference and technically our plugins produce different output without casting to f64;
             const cT = @as(SAT, c);
-
-            // The following produces output identical to RGSF
-            // const SignedType = if (T == u8) i16 else if (T == u16) i32 else if (T == f16) f32 else f64;
-            // const cT = if (cmn.isInt(T)) @as(SignedType, @intCast(c)) else @as(SignedType, @floatCast(c));
 
             const c1 = @min((@abs(cT - clamp1) * 2) + d1, maximum);
             const c2 = @min((@abs(cT - clamp2) * 2) + d2, maximum);
@@ -364,9 +352,7 @@ fn RemoveGrain(comptime T: type) type {
             return clamp1;
         }
 
-        // // TODO: Add tests for RG mode 6
-        // test "RG Mode 6" {
-        // }
+        // TODO: Add tests for RG mode 6
 
         /// Same as mode 6, except the ratio is 1:1 in this mode.
         fn rgMode7(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
@@ -427,8 +413,6 @@ fn RemoveGrain(comptime T: type) type {
             const maximum = if (chroma) maxChroma else maxNoChroma;
             const minimum = if (chroma) minChroma else minNoChroma;
 
-            // TODO: RGSF uses double for it's math here. I'm not sure how much it matters
-            // but it is a small difference and technically our plugins produce different output without casting to f64;
             const cT = @as(SAT, c);
 
             const c1 = std.math.clamp(@abs(cT - clamp1) + (d1 * 2), minimum, maximum);
@@ -1074,15 +1058,6 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
 
     d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
     d.vi = vsapi.?.getVideoInfo.?(d.node);
-
-    // Check video format.
-    // TODO: This doesn't actually matter does it? Since this is a strictly spatial filter
-    // it shouldn't matter right?
-    if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "RemoveGrain: only constant format video is supported");
-        vsapi.?.freeNode.?(d.node);
-        return;
-    }
 
     const numModes = vsapi.?.mapNumElements.?(in, "mode");
     if (numModes > d.vi.format.numPlanes) {

@@ -55,9 +55,7 @@ fn GetSumType(comptime T: type) type {
         u8 => u16,
         u16 => u32,
         f16 => f16, // Should this be f32???
-        f32 => f32, // Should this be a f64 (double)? TODO: Check avisynth.
-        // https://github.com/AviSynth/AviSynthPlus/blob/master/avs_core/filters/focus.cpp#L722
-        // Looks like they use int for 8-16 bit integer, and float for 32bit float.
+        f32 => f32, // Avisynth version uses f32 here as well, not double/f64, see https://github.com/AviSynth/AviSynthPlus/blob/master/avs_core/filters/focus.cpp#L722
         else => unreachable,
     };
 }
@@ -324,10 +322,15 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     _ = user_data;
     var d: TemporalSoftenData = undefined;
 
-    // TODO: Add error handling.
-    var err: vs.MapPropertyError = undefined;
+    var err: vs.MapPropertyError = undefined; // Just used for C API shimming. We use optionals for handling errors.
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
+    if (vsapi.?.mapGetNode.?(in, "clip", 0, &err)) |node| {
+        d.node = node;
+    } else {
+        vsapi.?.mapSetError.?(out, "TemporalSoften: Please provide a clip.");
+        return;
+    }
+
     d.vi = vsapi.?.getVideoInfo.?(d.node);
 
     // Check video format.

@@ -19,7 +19,7 @@ radius = 1
 cppsoften = clip.focus2.TemporalSoften2(radius=radius)
 cppsoften.set_output(1)
 
-zmooth = clip.zmooth.TemporalSoften2(radius=radius)
+zmooth = clip.zmooth.TemporalSoften(radius=radius);
 zmooth.set_output(2)
 
 

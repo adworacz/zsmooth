@@ -277,9 +277,9 @@ fn TemporalSoften(comptime T: type) type {
                 // Prepare array of frame pointers, with null for planes we will process,
                 // and pointers to the source frame for planes we won't process.
                 var plane_src = [_]?*const vs.Frame{
-                    if (d.threshold[0] > 0) null else src_frames[radius],
-                    if (d.threshold[1] > 0) null else src_frames[radius],
-                    if (d.threshold[2] > 0) null else src_frames[radius],
+                    if (d.threshold[0] > 0) null else src_frames[0],
+                    if (d.threshold[1] > 0) null else src_frames[0],
+                    if (d.threshold[2] > 0) null else src_frames[0],
                 };
                 const planes = [_]c_int{ 0, 1, 2 };
 
@@ -353,51 +353,71 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         d.radius = 1;
     }
 
-    // check luma_threshold param
-    // TODO: Add proper validation to these threshold values. Right now I can pass "-1" and the code takes it.
-    // Also passing 655555 works even for floating point values, so I need to
-    // properly validate these params as the lossy cast is screwing things up.
-    d.threshold[0] = vsh.mapGetN(u32, in, "luma_threshold", 0, vsapi) orelse cmn.scaleToSample(d.vi.format, 4);
-    if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
-        d.threshold[1] = d.threshold[0];
-    }
+    // Check threshold param
+    d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
+        [_]u32{ cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 4) }
+    else
+        [_]u32{ cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 8), cmn.scaleToSample(d.vi.format, 8) };
 
-    if (d.vi.format.colorFamily == vs.ColorFamily.YUV) {
-        d.threshold[1] = vsh.mapGetN(u32, in, "chroma_threshold", 0, vsapi) orelse cmn.scaleToSample(d.vi.format, 8);
-    }
+    for (0..3) |i| {
+        // Supporting int and float here at runtime is surprisingly complex. (comptime would be a breeze)
+        // Any ideas for how to clean up this code are quite welcome.
+        if (d.vi.format.sampleType == st.Float) {
+            // Float support
+            if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |t| {
+                const formatMaximum: f32 = @bitCast(cmn.getFormatMaximum(d.vi.format, i > 0));
+                const formatMinimum: f32 = @bitCast(cmn.getFormatMinimum(d.vi.format, i > 0));
 
-    d.threshold[2] = d.threshold[1];
+                if ((t < formatMinimum or t > formatMaximum)) {
+                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, t, formatMinimum, formatMaximum }).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                }
+                // TODO: Add scalep support.
+                d.threshold[i] = @bitCast(t);
+            } else {
+                // No threshold value specified for this index.
+                if (i > 0) {
+                    d.threshold[i] = d.threshold[i - 1];
+                }
+            }
+        } else {
+            // Integer support.
+            if (vsh.mapGetN(i64, in, "threshold", @intCast(i), vsapi)) |t| {
+                const formatMaximum = cmn.getFormatMaximum(d.vi.format, false); // Integer formats don't care about chroma.
+                const formatMinimum = cmn.getFormatMinimum(d.vi.format, false); // Integer formats don't care about chroma.
 
-    // TODO: There's a bug with checking floating point values, as getPeak returns a u32 that should be @bitCast.
-    if (d.threshold[0] < 0 or d.threshold[0] > cmn.getPeak(d.vi.format)) {
-        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: luma_threshold must be between 0 and {d} (inclusive)", .{cmn.getPeak(d.vi.format)}).ptr);
-        vsapi.?.freeNode.?(d.node);
-        return;
-    }
-
-    if (d.threshold[1] < 0 or d.threshold[1] > cmn.getPeak(d.vi.format)) {
-        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften2: chroma_threshold must be between 0 and {d} (inclusive)", .{cmn.getPeak(d.vi.format)}).ptr);
-        vsapi.?.freeNode.?(d.node);
-        return;
+                if ((t < formatMinimum or t > formatMaximum)) {
+                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, t, formatMinimum, formatMaximum }).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                }
+                // TODO: Add scalep support.
+                d.threshold[i] = @intCast(t);
+            } else {
+                // No threshold value specified for this index.
+                if (i > 0) {
+                    d.threshold[i] = d.threshold[i - 1];
+                }
+            }
+        }
     }
 
     if (d.threshold[0] == 0 and (d.vi.format.colorFamily == vs.ColorFamily.RGB or d.vi.format.colorFamily == vs.ColorFamily.Gray)) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften2: luma_threshold must not be 0 when input is RGB or Gray");
+        vsapi.?.mapSetError.?(out, "TemporalSoften: threshold at index 0 must not be 0 when input is RGB or Gray");
         vsapi.?.freeNode.?(d.node);
         return;
     }
 
-    if (d.threshold[0] == 0 and d.threshold[1] == 0) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften2: luma_threshold and chroma_threshold can't both be 0");
+    if (d.threshold[0] == 0 and d.threshold[1] == 0 and d.threshold[2] == 0) {
+        vsapi.?.mapSetError.?(out, "TemporalSoften: All thresholds cannot be 0.");
         vsapi.?.freeNode.?(d.node);
         return;
     }
 
-    // Since the value passed in may be negative or overly large,
-    // using a local variable to
     if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {
         if (scenechange < 0 or scenechange > 254) {
-            vsapi.?.mapSetError.?(out, "TemporalSoften2: scenechange must be between 0 and 254 (inclusive)");
+            vsapi.?.mapSetError.?(out, "TemporalSoften: scenechange must be between 0 and 254 (inclusive)");
             vsapi.?.freeNode.?(d.node);
             return;
         }
@@ -408,7 +428,7 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
 
     if (d.scenechange > 0) {
         if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
-            vsapi.?.mapSetError.?(out, "TemporalSoften2: Scene change support does not work with RGB.");
+            vsapi.?.mapSetError.?(out, "TemporalSoften: Scene change support does not work with RGB.");
             vsapi.?.freeNode.?(d.node);
             return;
         }
@@ -434,18 +454,10 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
                 return;
             }
         } else {
-            vsapi.?.mapSetError.?(out, "TemporalSoften2: Miscellaneous filters plugin is required in order to use scene change detection.");
+            vsapi.?.mapSetError.?(out, "TemporalSoften: Miscellaneous filters plugin is required in order to use scene change detection.");
             vsapi.?.freeNode.?(d.node);
             return;
         }
-    }
-
-    const mode = vsh.mapGetN(u8, in, "mode", 0, vsapi) orelse 2;
-
-    if (mode != 2) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften2: mode must be 2. mode 1 is not implemented.");
-        vsapi.?.freeNode.?(d.node);
-        return;
     }
 
     const data: *TemporalSoftenData = allocator.create(TemporalSoftenData) catch unreachable;
@@ -465,5 +477,5 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "TemporalSoften2", d.vi, getFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
+    vsapi.?.createVideoFilter.?(out, "TemporalSoften", d.vi, getFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
 }

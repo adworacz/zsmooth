@@ -115,9 +115,9 @@ pub fn scaleToSample(vf: vs.VideoFormat, value: u8) u32 {
     return value;
 }
 
-pub fn getPeak(vf: vs.VideoFormat) u32 {
+pub fn getFormatMaximum(vf: vs.VideoFormat, chroma: bool) u32 {
     if (vf.sampleType == vs.SampleType.Float) {
-        return @bitCast(@as(f32, 1.0));
+        return @bitCast(@as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) 0.5 else 1.0));
     }
 
     return switch (vf.bytesPerSample) {
@@ -125,6 +125,14 @@ pub fn getPeak(vf: vs.VideoFormat) u32 {
         2 => 65535,
         else => unreachable,
     };
+}
+
+pub fn getFormatMinimum(vf: vs.VideoFormat, chroma: bool) u32 {
+    if (vf.sampleType == vs.SampleType.Float) {
+        return @bitCast(@as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) -0.5 else 0.0));
+    }
+
+    return 0;
 }
 
 pub inline fn getTypeMaximum(comptime T: type, comptime chroma: bool) T {
@@ -144,7 +152,7 @@ pub inline fn getTypeMinimum(comptime T: type, comptime chroma: bool) T {
     };
 }
 
-test getPeak {
+test getFormatMaximum {
     const float_vf: vs.VideoFormat = .{
         .sampleType = vs.SampleType.Float,
         .colorFamily = vs.ColorFamily.RGB,
@@ -173,9 +181,9 @@ test getPeak {
         .subSamplingH = 2,
     };
 
-    try std.testing.expectEqual(1.0, @as(f32, @bitCast(getPeak(float_vf))));
-    try std.testing.expectEqual(255, getPeak(u8_vf));
-    try std.testing.expectEqual(65535, getPeak(u16_vf));
+    try std.testing.expectEqual(1.0, @as(f32, @bitCast(getFormatMaximum(float_vf, false))));
+    try std.testing.expectEqual(255, getFormatMaximum(u8_vf, false));
+    try std.testing.expectEqual(65535, getFormatMaximum(u16_vf, false));
 }
 
 /////////////////////////////////////////////////

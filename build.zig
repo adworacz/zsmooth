@@ -1,4 +1,5 @@
 const std = @import("std");
+const version = @import("src/version.zig").version;
 
 pub const min_zig_version = std.SemanticVersion{ .major = 0, .minor = 12, .patch = 0, .pre = "dev.2158" };
 
@@ -12,6 +13,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/zmooth.zig" },
         .target = target,
         .optimize = optimize,
+        .version = version,
     });
 
     const vapoursynth_dep = b.dependency("vapoursynth", .{

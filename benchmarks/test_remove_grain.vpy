@@ -33,4 +33,4 @@ if mode == 20:
 
 
 
-clip.zmooth.RemoveGrain(mode).set_output(2)
+clip.zsmooth.RemoveGrain(mode).set_output(2)

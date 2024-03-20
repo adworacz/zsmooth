@@ -9,8 +9,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const lib = b.addSharedLibrary(.{
-        .name = "zmooth",
-        .root_source_file = .{ .path = "src/zmooth.zig" },
+        .name = "zsmooth",
+        .root_source_file = .{ .path = "src/zsmooth.zig" },
         .target = target,
         .optimize = optimize,
         .version = version,
@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/zmooth.zig" },
+        .root_source_file = .{ .path = "src/zsmooth.zig" },
         .target = target,
         .optimize = optimize,
     });

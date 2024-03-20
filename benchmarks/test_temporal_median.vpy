@@ -19,11 +19,11 @@ radius = 1
 cppmedian = clip.tmedian.TemporalMedian(radius=radius)
 cppmedian.set_output(1)
 
-zmooth = clip.zmooth.TemporalMedian(radius=radius)
-zmooth.set_output(2)
+zsmooth = clip.zsmooth.TemporalMedian(radius=radius)
+zsmooth.set_output(2)
 
 neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 neo.set_output(3)
 
-# core.std.MakeDiff(clip, zmooth).set_output(4)
-# core.std.MakeDiff(cppmedian, zmooth).set_output(5)
+# core.std.MakeDiff(clip, zsmooth).set_output(4)
+# core.std.MakeDiff(cppmedian, zsmooth).set_output(5)

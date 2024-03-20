@@ -12,12 +12,94 @@ Goals:
 * [x] TemporalSoften (scene detection support not yet implemented)
 * [x] RemoveGrain
 * [] Repair
-* [] Cleanse
+* [] Clense
 * [] FluxSmooth
 * [] MiniDeen
 * [] CCD
 * [] Dogway's IQMST/IQMS functions
 * [] Avisynth support
+
+## Function Documentation
+### Temporal Median
+TemporalMedian is a temporal denoising filter. It replaces every pixel with the median of its temporal neighbourhood.
+
+This filter will introduce ghosting, so use with caution.
+
+```py
+core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]])
+```
+
+Parameters:
+* clip
+  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
+  colorspaces are supported.
+
+* radius
+  Range: 1 - 10, default: 1
+  Size of the temporal window.
+  The first and last *radius* frames of a clip are not filtered.
+
+* planes
+  Default: [0, 1, 2] (all planes)
+  Any unfiltered planes are simply copied from the input clip.
+
+### Temporal Soften
+
+TemporalSoften averages radius * 2 + 1 frames. 
+A pixel is included in the average only if the absolute difference between
+it and the middle frame's corresponding pixel is less than the threshold.
+
+If the scenechange parameter is greater than 0, TemporalSoften will not average
+frames from different scenes.
+
+```py
+core.zsmooth.TemporalSoften(clip clip[, int radius = 4, int[] threshold = [], int scenechange = 0])
+```
+
+Parameters:
+
+* clip
+  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
+  colorspaces are supported.
+
+* radius
+  Range: 1 - 7, default: 4
+  Size of the temporal window. This is an upper bound. At the beginning and end of the clip,
+  only legally accessible frames are incorporated into the radius. So if radius if 4, then on
+  the first frame, only frames 0, 1, 2, and 3 are incorporated into the result.
+
+* threshold 
+  Default: [4, 4, 4] for RGB, [4, 8, 8] for YUV, [4] for GRAY.
+  Specifies the 
+
+* scenechange
+  Range: 0-255, default: 0
+  Calculated as a percent internally (scenechange/255) to qualify if a frame is a scenechange or not.
+  Currently requires the SCDetect filter from the Miscellaneous filters plugin, but
+  future plans include specifying custom scene change properties to accomidate other
+  scene change detection mechanisms.
+
+### RemoveGrain 
+
+RemoveGrain is a spatial denoising filter.
+
+Modes 0-24 are implemented. Different modes can be
+specified for each plane. If there are fewer modes than planes, the last
+mode specified will be used for the remaining planes.
+
+```py
+core.zsmooth.RemoveGrain(clip clip, int[] mode)
+```
+
+Parameters:
+* clip
+  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
+  colorspaces are supported.
+
+* mode
+  Required, no default.
+  For a description of each mode, see the docs from the original Vapoursynth documentation here:
+  https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst
 
 ## Building
 All build artifacts are placed under `zig-out/lib`.

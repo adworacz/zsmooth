@@ -86,7 +86,7 @@ fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: 
                 sum += value;
             }
 
-            if (cmn.IsFloat(T)) {
+            if (cmn.isFloat(T)) {
                 dstp[current_pixel] = @floatCast(sum / @as(f32, @floatFromInt(frames)));
             } else {
                 // Add half_frames to round the integer value up to the nearest integer value.
@@ -139,7 +139,7 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
         //do @abs(value_vec - frame_value_vec) and *not* overflow the integer.
         //Casting to a higher signed bit depth works, but it's not faster than the max - min approach below.
         const abs_vec = blk: {
-            if (cmn.IsFloat(T)) {
+            if (cmn.isFloat(T)) {
                 // Special case for f16 - it's faster if we process it as f32.
                 break :blk @abs(@as(@Vector(vec_size, f32), value_vec) - frame_value_vec);
             }
@@ -171,7 +171,7 @@ inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, 
     }
 
     const result = blk: {
-        if (cmn.IsFloat(T)) {
+        if (cmn.isFloat(T)) {
             break :blk @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
         }
         const half_frames_vec: VecType = @splat(@intCast(half_frames));

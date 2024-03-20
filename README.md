@@ -115,10 +115,10 @@ zig build -Doptimize=ReleaseFast
 Zig has excellent cross-compilation support, letting us create Windows, Mac, or Linux compatible libraries from any of
 those same operating systems and architectures.
 
-To generate Windows compatible DLLs:
+To generate Windows compatible DLLs, with AVX2 support:
 
 ```sh
-zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows
+zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows -Dcpu=x86_64_v3
 ```
 
 To generate Windows compatible DLLs with AVX512 support:

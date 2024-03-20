@@ -368,7 +368,7 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         }
         d.radius = @intCast(radius);
     } else {
-        d.radius = 1;
+        d.radius = 4;
     }
 
     // Check threshold param

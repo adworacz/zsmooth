@@ -1,6 +1,6 @@
 Welcome to Zsmooth, home of various smoothing filters for Vapoursynth written in Zig.
 
-Goals:
+**Goals**
 1. Clean, easy to read code, with a standard scalar (non-SIMD) implementation for every algorithm.
 1. Support for 8-16 bit integer bit depths.
 1. Support for 16-32 bit float bit depths.
@@ -8,16 +8,16 @@ Goals:
 1. Support for RGB, YUV, and GREY colorspaces (assuming an algorithm isn't designed for a specific color space).
 
 ## Implemented Functions
-* [x] TemporalMedian
-* [x] TemporalSoften (scene detection support not yet implemented)
-* [x] RemoveGrain
-* [] Repair
-* [] Clense
-* [] FluxSmooth
-* [] MiniDeen
-* [] CCD
-* [] Dogway's IQMST/IQMS functions
-* [] Avisynth support
+- [x] TemporalMedian
+- [x] TemporalSoften (scene detection support not yet implemented)
+- [x] RemoveGrain
+- [] Repair
+- [] Clense
+- [] FluxSmooth
+- [] MiniDeen
+- [] CCD
+- [] Dogway's IQMST/IQMS functions
+- [] Avisynth support
 
 ## Function Documentation
 ### Temporal Median

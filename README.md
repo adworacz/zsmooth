@@ -11,13 +11,13 @@ Welcome to Zsmooth, home of various smoothing filters for Vapoursynth written in
 - [x] TemporalMedian
 - [x] TemporalSoften (scene detection support not yet implemented)
 - [x] RemoveGrain
-- [] Repair
-- [] Clense
-- [] FluxSmooth
-- [] MiniDeen
-- [] CCD
-- [] Dogway's IQMST/IQMS functions
-- [] Avisynth support
+- [ ] Repair
+- [ ] Clense
+- [ ] FluxSmooth
+- [ ] MiniDeen
+- [ ] CCD
+- [ ] Dogway's IQMST/IQMS functions
+- [ ] Avisynth support
 
 ## Function Documentation
 ### Temporal Median

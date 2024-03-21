@@ -871,6 +871,21 @@ fn RemoveGrain(comptime T: type) type {
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
                     const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
+                    // While these double switches may seem excessive at first glance, it's actually a substantial performance
+                    // optimization. By having this switch operate at run time, process_plane_scalar can be
+                    // optimized *at compile time* for *each* mode. This allows it to autovectorize each
+                    // remove grain function for maximum performance.
+                    //
+                    // If I change the code to use function pointers, passing in the remove grain function into
+                    // process_plane_scalar, FPS drops from 750+ to 48. Again, this is because the compiler can't
+                    // properly optimize each RG function and its use in process_plane_scalar.
+                    //
+                    // Function pointers would likely work if I implemented a full @Vector support, but
+                    // when the compiler can produce such performance code using my *scalar* implementation,
+                    // there's literally no point for such an explosion in code.
+                    //
+                    // These double switches (see the other in process_plane_scalar, which operates at comptime)
+                    // are a bit gratuitous but they are *FAST*.
                     switch (d.modes[plane]) {
                         1 => process_plane_scalar(1, srcp, dstp, width, height, chroma),
                         2 => process_plane_scalar(2, srcp, dstp, width, height, chroma),

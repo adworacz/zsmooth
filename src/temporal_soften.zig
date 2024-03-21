@@ -37,189 +37,168 @@ const TemporalSoftenData = struct {
     scenechange_prop_next: []const u8,
 };
 
-// Returns a type capable of holding a sum of multiple values of the provided type without overflowing.
-// The maximum temporal radius sets the upper bound here, but we have plenty of head room.
-fn GetSumType(comptime T: type) type {
-    return switch (T) {
-        u8 => u16,
-        u16 => u32,
-        f16 => f32,
-        f32 => f32, // Avisynth version uses f32 here as well, not double/f64, see https://github.com/AviSynth/AviSynthPlus/blob/master/avs_core/filters/focus.cpp#L722
-        else => unreachable,
-    };
-}
-
-fn process_plane_scalar(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, _threshold: u32) void {
-    const half_frames: u8 = @divTrunc(frames, 2);
-
-    const threshold = switch (T) {
-        u8, u16 => @as(T, @intCast(_threshold)),
-        f16, f32 => @as(f32, @bitCast(_threshold)),
-        else => unreachable,
-    };
-
-    // It's faster to process f16 as f32 on my machine.
-    // This can likely be dynamically decided based on if the target architecture
-    // supports more advanced f16 instructions, so I'll leave this as a TODO for now
-    // TODO: Determine the best type for f16 calculations based on the target architecture.
-    const SignedType = switch (T) {
-        u8 => i16,
-        u16 => i32,
-        f16 => f32,
-        f32 => f32,
-        else => unreachable,
-    };
-
-    for (0..height) |row| {
-        for (0..width) |column| {
-            const current_pixel = row * width + column;
-            const current_value: T = srcp[0][current_pixel];
-
-            var sum: GetSumType(T) = 0;
-
-            for (0..@intCast(frames)) |i| {
-                var value = current_value;
-                const frame_value: T = srcp[@intCast(i)][current_pixel];
-                if (@abs(@as(SignedType, value) - frame_value) <= threshold) {
-                    value = frame_value;
-                }
-                sum += value;
-            }
-
-            if (cmn.isFloat(T)) {
-                dstp[current_pixel] = @floatCast(sum / @as(f32, @floatFromInt(frames)));
-            } else {
-                // Add half_frames to round the integer value up to the nearest integer value.
-                // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
-                dstp[current_pixel] = @intCast((sum + half_frames) / frames);
-            }
-        }
-    }
-}
-
-fn process_plane_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
-    const vec_size = cmn.getVecSize(T);
-    const width_simd = width / vec_size * vec_size;
-
-    for (0..height) |h| {
-        var x: usize = 0;
-        while (x < width_simd) : (x += vec_size) {
-            const offset = h * width + x;
-            temporal_smooth_vec(T, srcp, dstp, offset, frames, threshold);
-        }
-
-        if (width_simd < width) {
-            temporal_smooth_vec(T, srcp, dstp, width - vec_size, frames, threshold);
-        }
-    }
-}
-
-inline fn temporal_smooth_vec(comptime T: type, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
-    @setFloatMode(.Optimized);
-    const half_frames: u8 = @divTrunc(frames, 2);
-    const vec_size = cmn.getVecSize(T);
-    const VecType = @Vector(vec_size, T);
-
-    const threshold_vec: VecType = switch (T) {
-        u8, u16 => @splat(@intCast(threshold)),
-        f16 => @splat(@floatCast(@as(f32, @bitCast(threshold)))),
-        f32 => @splat(@bitCast(threshold)),
-        else => unreachable,
-    };
-    const current_value_vec = cmn.loadVec(VecType, srcp[0], offset);
-
-    const SumType = GetSumType(T);
-    var sum_vec: @Vector(vec_size, SumType) = @splat(0);
-
-    for (0..@intCast(frames)) |i| {
-        const value_vec = current_value_vec;
-        const frame_value_vec = cmn.loadVec(VecType, srcp[@intCast(i)], offset);
-
-        //TODO: this could be optimized further if there was a good way to
-        //do @abs(value_vec - frame_value_vec) and *not* overflow the integer.
-        //Casting to a higher signed bit depth works, but it's not faster than the max - min approach below.
-        const abs_vec = blk: {
-            if (cmn.isFloat(T)) {
-                // Special case for f16 - it's faster if we process it as f32.
-                break :blk @abs(@as(@Vector(vec_size, f32), value_vec) - frame_value_vec);
-            }
-            // TODO: Try tricky/fancy abs diff with bit fiddling.
-            // https://graphics.stanford.edu/~seander/bithacks.html#IntegerAbs
-            // https://stackoverflow.com/questions/22445019/fast-branchless-unsigned-int-absolute-difference
-            // Something like
-            //   const diff: i16 =  a - b;
-            //   const mask: i16 = diff >> 15;
-            //   return @intCast((diff + mask) ^ mask);
-
-            // Actually seems to be slower.
-            // const diff: @Vector(vec_size, i16) = @as(@Vector(vec_size, i16), @intCast(value_vec)) - @as(@Vector(vec_size, i16), @intCast(frame_value_vec));
-            // const mask: @Vector(vec_size, i16) = diff >> @splat(15);
-            // break :blk @as(@Vector(vec_size, u8), @intCast((diff + mask) ^ mask));
-
-            // Seem's about the same performance, maybe faster.
-            // const gt = value_vec > frame_value_vec;
-            // const abdiff = value_vec - frame_value_vec;
-            // const badiff = frame_value_vec - value_vec;
-            // break :blk @select(T, gt, abdiff, badiff);
-
-            break :blk cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
-        };
-
-        const lte_threshold_vec = abs_vec <= threshold_vec;
-
-        sum_vec += @select(T, lte_threshold_vec, frame_value_vec, value_vec);
-    }
-
-    const result = blk: {
-        if (cmn.isFloat(T)) {
-            break :blk @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
-        }
-        const half_frames_vec: VecType = @splat(@intCast(half_frames));
-        const frames_vec: VecType = @splat(frames);
-        break :blk @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
-    };
-
-    cmn.storeVec(VecType, dstp, offset, result);
-}
-
-test "process_plane should find the average value" {
-    //Emulate a 2 x 64 (height x width) video.
-    const T = u8;
-    const height = 2;
-    const width = 64;
-    const size = width * height;
-
-    const radius = 2;
-    const diameter = radius * 2 + 1;
-    const threshold = 4;
-    const expectedAverage = ([_]T{3} ** size)[0..];
-
-    var src: [MAX_DIAMETER][*]const T = undefined;
-    for (0..diameter) |i| {
-        const frame = try testingAllocator.alloc(T, size);
-        @memset(frame, @intCast(i + 1));
-        src[i] = frame.ptr;
-    }
-    defer {
-        for (0..diameter) |i| {
-            testingAllocator.free(src[i][0..size]);
-        }
-    }
-
-    const dstp_scalar = try testingAllocator.alloc(T, size);
-    const dstp_vec = try testingAllocator.alloc(T, size);
-    defer testingAllocator.free(dstp_scalar);
-    defer testingAllocator.free(dstp_vec);
-
-    process_plane_scalar(T, src, dstp_scalar.ptr, width, height, diameter, threshold);
-    process_plane_vec(T, src, dstp_vec.ptr, width, height, diameter, threshold);
-
-    try testing.expectEqualDeep(expectedAverage, dstp_scalar);
-    try testing.expectEqualDeep(expectedAverage, dstp_vec);
-}
-
 fn TemporalSoften(comptime T: type) type {
     return struct {
+        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
+        /// the values (particularly integers) without overflowing when doing
+        /// signed arithmetic.
+        const SAT = switch (T) {
+            u8 => i16,
+            u16 => i32,
+            f16 => f32,
+            f32 => f32,
+            else => unreachable,
+        };
+
+        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
+        /// hold values (particularly integers) without overflowing when doing
+        /// unsigned arithmetic.
+        const UAT = switch (T) {
+            u8 => u16,
+            u16 => u32,
+            f16 => f32,
+            f32 => f32,
+            else => unreachable,
+        };
+
+        fn process_plane_scalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, _threshold: u32) void {
+            const half_frames: u8 = @divTrunc(frames, 2);
+
+            const threshold = switch (T) {
+                u8, u16 => @as(T, @intCast(_threshold)),
+                f16, f32 => @as(f32, @bitCast(_threshold)),
+                else => unreachable,
+            };
+
+            for (0..height) |row| {
+                for (0..width) |column| {
+                    const current_pixel = row * width + column;
+                    const current_value: T = srcp[0][current_pixel];
+
+                    var sum: UAT = 0;
+
+                    for (0..@intCast(frames)) |i| {
+                        var value = current_value;
+                        const frame_value: T = srcp[@intCast(i)][current_pixel];
+                        if (@abs(@as(SAT, value) - frame_value) <= threshold) {
+                            value = frame_value;
+                        }
+                        sum += value;
+                    }
+
+                    if (cmn.isFloat(T)) {
+                        dstp[current_pixel] = @floatCast(sum / @as(f32, @floatFromInt(frames)));
+                    } else {
+                        // Add half_frames to round the integer value up to the nearest integer value.
+                        // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
+                        dstp[current_pixel] = @intCast((sum + half_frames) / frames);
+                    }
+                }
+            }
+        }
+
+        fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
+            const vec_size = cmn.getVecSize(T);
+            const width_simd = width / vec_size * vec_size;
+
+            for (0..height) |h| {
+                var x: usize = 0;
+                while (x < width_simd) : (x += vec_size) {
+                    const offset = h * width + x;
+                    temporal_smooth_vec(srcp, dstp, offset, frames, threshold);
+                }
+
+                if (width_simd < width) {
+                    temporal_smooth_vec(srcp, dstp, width - vec_size, frames, threshold);
+                }
+            }
+        }
+
+        fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
+            @setFloatMode(.Optimized);
+            const half_frames: u8 = @divTrunc(frames, 2);
+            const vec_size = cmn.getVecSize(T);
+            const VecType = @Vector(vec_size, T);
+
+            const threshold_vec: VecType = switch (T) {
+                u8, u16 => @splat(@intCast(threshold)),
+                f16 => @splat(@floatCast(@as(f32, @bitCast(threshold)))),
+                f32 => @splat(@bitCast(threshold)),
+                else => unreachable,
+            };
+            const current_value_vec = cmn.loadVec(VecType, srcp[0], offset);
+
+            var sum_vec: @Vector(vec_size, UAT) = @splat(0);
+
+            for (0..@intCast(frames)) |i| {
+                const value_vec = current_value_vec;
+                const frame_value_vec = cmn.loadVec(VecType, srcp[@intCast(i)], offset);
+
+                const abs_vec = blk: {
+                    if (cmn.isFloat(T)) {
+                        break :blk @abs(@as(@Vector(vec_size, f32), value_vec) - frame_value_vec);
+                    }
+
+                    break :blk cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
+                };
+
+                const lte_threshold_vec = abs_vec <= threshold_vec;
+
+                sum_vec += @select(T, lte_threshold_vec, frame_value_vec, value_vec);
+            }
+
+            const result = blk: {
+                if (cmn.isFloat(T)) {
+                    break :blk @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
+                }
+                const half_frames_vec: VecType = @splat(@intCast(half_frames));
+                const frames_vec: VecType = @splat(frames);
+                break :blk @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
+            };
+
+            cmn.storeVec(VecType, dstp, offset, result);
+        }
+
+        test "process_plane should find the average value" {
+            //Emulate a 2 x 64 (height x width) video.
+            // const T = u8;
+            const height = 2;
+            const width = 64;
+            const size = width * height;
+
+            const radius = 2;
+            const diameter = radius * 2 + 1;
+            const threshold = 4;
+            const expectedAverage = ([_]T{3} ** size)[0..];
+
+            var src: [MAX_DIAMETER][*]const T = undefined;
+            for (0..diameter) |i| {
+                const frame = try testingAllocator.alloc(T, size);
+                if (cmn.isFloat(T)) {
+                    @memset(frame, @floatFromInt(i + 1));
+                } else {
+                    @memset(frame, @intCast(i + 1));
+                }
+                src[i] = frame.ptr;
+            }
+            defer {
+                for (0..diameter) |i| {
+                    testingAllocator.free(src[i][0..size]);
+                }
+            }
+
+            const dstp_scalar = try testingAllocator.alloc(T, size);
+            const dstp_vec = try testingAllocator.alloc(T, size);
+            defer testingAllocator.free(dstp_scalar);
+            defer testingAllocator.free(dstp_vec);
+
+            process_plane_scalar(src, dstp_scalar.ptr, width, height, diameter, threshold);
+            process_plane_vec(src, dstp_vec.ptr, width, height, diameter, threshold);
+
+            try testing.expectEqualDeep(expectedAverage, dstp_scalar);
+            try testing.expectEqualDeep(expectedAverage, dstp_vec);
+        }
+
         pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -314,8 +293,8 @@ fn TemporalSoften(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    // process_plane_scalar(T, srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[@intCast(plane)]);
-                    process_plane_vec(T, srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[_plane]);
+                    // process_plane_scalar(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[@intCast(plane)]);
+                    process_plane_vec(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[_plane]);
                 }
 
                 return dst;

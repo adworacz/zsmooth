@@ -87,6 +87,17 @@ Modes 0-24 are implemented. Different modes can be
 specified for each plane. If there are fewer modes than planes, the last
 mode specified will be used for the remaining planes.
 
+**Note on RGSF differences**: 
+This plugin operates slightly differently than RGSF, the 'single precision' floating
+point Vapoursynth implementation of RemoveGrain. Specifically, RGSF isn't actually 'single precision' -
+it's double precision. Even for operations that don't benefit from increased floating point precision.
+This means that RGSF is actually significantly slower than it needs to be for some/most operations.
+
+The implementation in this plugin properly uses single precision floating point for all modes.
+This is exactly the same approach that the Avisynth version of RgTools takes. It does mean that
+for some operations, the output will very sligtly differ between RGSF and this plugin, as RGSF is
+technically doing higher precision (but much slower) calculations.
+
 ```py
 core.zsmooth.RemoveGrain(clip clip, int[] mode)
 ```

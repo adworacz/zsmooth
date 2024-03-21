@@ -45,7 +45,7 @@ Parameters:
 
 * radius
   Range: 1 - 10, default: 1
-  Size of the temporal window.
+  Size of the temporal window. Only radius 1-4 are vectorized/SIMD ready.
   The first and last *radius* frames of a clip are not filtered.
 
 * planes
@@ -171,6 +171,143 @@ zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos -Dcpu=apple_m1
 ```
 
 Use `zig targets` to see an exhaustive list of all architectures, CPUs, and operating systems that Zig supports.
+
+## Benchmarks
+These are just some rough benchmarks for now. A more comprehensive set of benchmarks will come in the future.
+
+All benchmarks were taken on a AMD Ryzen Threadripper 3960x, with 128GB DDR4 3600Mhz RAM, on Archlinux, CPU Governor set
+to `performance`, running a library produced with `zig build -Doptimize=ReleaseFast`.
+
+Clip is generated from `BlankClip`, 1920x1080, in RGB, in the bit depth specified.
+
+FPS taken from the best of 3 runs.
+
+### TemporalMedian
+Plugin version: 0.1
+
+8 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 1 | 1647 | 
+| Tmedian | Radius 1 | 1645 | 
+| Neo_Tmedian | Radius 1 | 1742| 
+| Zsmooth | Radius 4 | 953 | 
+| Tmedian | Radius 4 | 180 | 
+| Neo_Tmedian | Radius 4 |907| 
+| Zsmooth | Radius 10 | 112 | 
+| Tmedian | Radius 10 | 69 | 
+| Neo_Tmedian | Radius 10 | 57 | 
+
+16 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 1 | 838 | 
+| Tmedian | Radius 1 | 843 | 
+| Neo_Tmedian | Radius 1 | 841 | 
+| Zsmooth | Radius 4 | 468 | 
+| Tmedian | Radius 4 | 135 | 
+| Neo_Tmedian | Radius 4 | 451 | 
+| Zsmooth | Radius 10 | 95 | 
+| Tmedian | Radius 10 | 49 | 
+| Neo_Tmedian | Radius 10 | 56  | 
+
+16 bit float, 16 threads
+(Tmedian and Neo_Tmedian don't support FP16)
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 1 | 478 | 
+| Zsmooth | Radius 4 | 77 | 
+| Zsmooth | Radius 10 | 67 | 
+
+32 bit float, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 1 | 421 | 
+| Tmedian | Radius 1 | 422 | 
+| Neo_Tmedian | Radius 1 | 424 | 
+| Zsmooth | Radius 4 | 228 | 
+| Tmedian | Radius 4 | 159 | 
+| Neo_Tmedian | Radius 4 | 223 | 
+| Zsmooth | Radius 10 | 79 | 
+| Tmedian | Radius 10 | 52 | 
+| Neo_Tmedian | Radius 10 | 52 | 
+
+### TemporalSoften
+Plugin Version: 0.1
+
+8 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 7 | 517 | 
+| TemporalSoften2 | Radius 7 | 581 | 
+
+16 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 7 | 311 | 
+| TemporalSoften2 | Radius 7 | 266 | 
+
+16 bit float, 16 threads
+TemporalSoften2 doesn't support FP16
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 7 | 315 | 
+
+32 bit float, 16 threads
+TemporalSoften2 doesn't support FP32
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Radius 7 | 155 | 
+
+### RemoveGrain
+Plugin Version: 0.1
+
+8 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Mode 1 | 2230 | 
+| RGVS/RGSF | Mode 1 | 2298 | 
+| Zsmooth | Mode 4 | 2236 | 
+| RGVS/RGSF | Mode 4 | 2224 | 
+| std.Median | Mode 4 | 2270 | 
+| Zsmooth | Mode 11 | 2340 | 
+| RGVS/RGSF | Mode 11 | 2259 | 
+| std.Convolution | Mode 11 | 2232 | 
+
+16 bit integer, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Mode 1 | 1153 | 
+| RGVS/RGSF | Mode 1 | 1152 | 
+| Zsmooth | Mode 4 | 1155 | 
+| RGVS/RGSF | Mode 4 | 1144 | 
+| std.Median | Mode 4 | 1145 | 
+| Zsmooth | Mode 11 | 1154 | 
+| RGVS/RGSF | Mode 11 | 1157 | 
+| std.Convolution | Mode 11 | 1156 | 
+
+32 bit float, 16 threads
+
+| Plugin | Parameters | FPS |
+| --- | --- |  --- |
+| Zsmooth | Mode 1 | 577 | 
+| RGVS/RGSF | Mode 1 | 578| 
+| Zsmooth | Mode 4 | 578 | 
+| RGVS/RGSF | Mode 4 | 206 | 
+| std.Median | Mode 4 | 580 | 
+| Zsmooth | Mode 11 | 578 | 
+| RGVS/RGSF | Mode 11 | 579 | 
+| std.Convolution | Mode 11 | 578 | 
 
 ## References
 The following open source software provided great inspiration and guidance, and this plugin wouldn't exist

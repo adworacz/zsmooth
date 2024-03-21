@@ -1,13 +1,22 @@
-Welcome to Zsmooth, home of various smoothing filters for Vapoursynth written in Zig.
+# Zsmooth - cross-platform, cross-architecture video smoothing functions for Vapoursynth, written in Zig
 
 **Goals**
 1. Clean, easy to read code, with a standard scalar (non-SIMD) implementation for every algorithm.
 1. Support for 8-16 bit integer bit depths.
-1. Support for 16-32 bit float bit depths.
+1. Support for 16-32 bit float bit depths. (See FP16 note below)
 1. Tests for all filters, covering the scalar and vector implementations.
-1. Support for RGB, YUV, and GREY colorspaces (assuming an algorithm isn't designed for a specific color space).
+1. Support for RGB, YUV, and GRAY colorspaces (assuming an algorithm isn't designed for a specific color space).
+1. Support Linux, Windows, and Mac.
+1. Support x86_64 and aarch64 CPU architectures, with all architectures supported by the Zig compiler being possible in
+   theory.
+1. (Eventually) Vapoursynth and Avisynth support. (Whenever I get the spare time and motivation.)
 
-## Implemented Functions
+Note: FP16 support is a work in progress. All functions support it but some are much slower than they need to be. I'm
+currently suspecting that this is a bug in Zig's compiler, as explicitly processing FP16 data with FP32 operations is much faster.
+The Zig compiler should really be handling this FP16->FP32 processing on its own, so I'm currently investigating the
+issue.
+
+## Implemented Features/Functions
 - [x] TemporalMedian
 - [x] TemporalSoften (scene detection support not yet implemented)
 - [x] RemoveGrain

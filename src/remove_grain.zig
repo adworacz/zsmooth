@@ -799,6 +799,8 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, c - h + l);
         }
 
+        // TODO: Implement Mode 24!!
+
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
         fn shouldSkipLine(mode: comptime_int, line: usize) bool {

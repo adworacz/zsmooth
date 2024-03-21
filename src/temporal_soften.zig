@@ -73,13 +73,13 @@ fn TemporalSoften(comptime T: type) type {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * width + column;
-                    const current_value: T = srcp[0][current_pixel];
+                    const current_value = srcp[0][current_pixel];
 
-                    var sum: UAT = 0;
+                    var sum: UAT = current_value;
 
-                    for (0..@intCast(frames)) |i| {
+                    for (1..@intCast(frames)) |i| {
                         var value = current_value;
-                        const frame_value: T = srcp[@intCast(i)][current_pixel];
+                        const frame_value = srcp[i][current_pixel];
                         if (@abs(@as(SAT, value) - frame_value) <= threshold) {
                             value = frame_value;
                         }
@@ -128,23 +128,22 @@ fn TemporalSoften(comptime T: type) type {
             };
             const current_value_vec = cmn.loadVec(VecType, srcp[0], offset);
 
-            var sum_vec: @Vector(vec_size, UAT) = @splat(0);
+            var sum_vec: @Vector(vec_size, UAT) = current_value_vec;
 
-            for (0..@intCast(frames)) |i| {
-                const value_vec = current_value_vec;
-                const frame_value_vec = cmn.loadVec(VecType, srcp[@intCast(i)], offset);
+            for (1..@intCast(frames)) |i| {
+                const frame_value_vec = cmn.loadVec(VecType, srcp[i], offset);
 
                 const abs_vec = blk: {
                     if (cmn.isFloat(T)) {
-                        break :blk @abs(@as(@Vector(vec_size, f32), value_vec) - frame_value_vec);
+                        break :blk @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec);
                     }
 
-                    break :blk cmn.maxFastVec(value_vec, frame_value_vec) - cmn.minFastVec(value_vec, frame_value_vec);
+                    break :blk cmn.maxFastVec(current_value_vec, frame_value_vec) - cmn.minFastVec(current_value_vec, frame_value_vec);
                 };
 
                 const lte_threshold_vec = abs_vec <= threshold_vec;
 
-                sum_vec += @select(T, lte_threshold_vec, frame_value_vec, value_vec);
+                sum_vec += @select(T, lte_threshold_vec, frame_value_vec, current_value_vec);
             }
 
             const result = blk: {

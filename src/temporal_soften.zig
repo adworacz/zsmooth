@@ -167,7 +167,7 @@ fn TemporalSoften(comptime T: type) type {
 
             const radius = 2;
             const diameter = radius * 2 + 1;
-            const threshold = 4;
+            const threshold: u32 = if (cmn.isInt(T)) 4 else @bitCast(@as(f32, 4));
             const expectedAverage = ([_]T{3} ** size)[0..];
 
             var src: [MAX_DIAMETER][*]const T = undefined;

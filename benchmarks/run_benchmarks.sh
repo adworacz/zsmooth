@@ -1,3 +1,13 @@
 #!/bin/sh
-hyperfine --show-output -L radius 1,4,10 -L output 1,2 -N 'vspipe --arg radius={radius} --start 0 --end 700 --outputindex {output} test_temporal_median.vpy --'
-hyperfine --show-output -L radius 1,7 -L output 1,2 -N 'vspipe --arg radius={radius} --start 0 --end 700 --outputindex {output} test_temporal_soften.vpy --'
+
+# Temporal Median benchmarks
+hyperfine --show-output --shell=none \
+    --runs 3 --sort command --export-csv bench_temporal_median.csv --export-markdown bench_temporal_median.md \
+    --parameter-list output 2,1,3 --parameter-list radius 1,4,10 --parameter-list format u8,u16,f16,f32 \
+    'vspipe --arg radius={radius} --arg format={format} --outputindex {output} test_temporal_median.vpy --' \
+
+# Temporal Soften benchmarks
+hyperfine --show-output --shell=none \
+    --runs 3 --sort command --export-csv bench_temporal_soften.csv --export-markdown bench_temporal_soften.md \
+    --parameter-list output 2,1 --parameter-list radius 1,7 --parameter-list format u8,u16,f16,f32 \
+    'vspipe --arg radius={radius} --arg format={format} --outputindex {output} test_temporal_soften.vpy --' \

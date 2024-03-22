@@ -133,12 +133,12 @@ fn TemporalSoften(comptime T: type) type {
             for (1..@intCast(frames)) |i| {
                 const frame_value_vec = cmn.loadVec(VecType, srcp[i], offset);
 
-                const abs_vec = blk: {
+                const abs_vec = abs: {
                     if (cmn.isFloat(T)) {
-                        break :blk @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec);
+                        break :abs @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec);
                     }
 
-                    break :blk cmn.maxFastVec(current_value_vec, frame_value_vec) - cmn.minFastVec(current_value_vec, frame_value_vec);
+                    break :abs cmn.maxFastVec(current_value_vec, frame_value_vec) - cmn.minFastVec(current_value_vec, frame_value_vec);
                 };
 
                 const lte_threshold_vec = abs_vec <= threshold_vec;
@@ -146,13 +146,13 @@ fn TemporalSoften(comptime T: type) type {
                 sum_vec += @select(T, lte_threshold_vec, frame_value_vec, current_value_vec);
             }
 
-            const result = blk: {
+            const result = result: {
                 if (cmn.isFloat(T)) {
-                    break :blk @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
+                    break :result @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
                 }
                 const half_frames_vec: VecType = @splat(@intCast(half_frames));
                 const frames_vec: VecType = @splat(frames);
-                break :blk @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
+                break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
             };
 
             cmn.storeVec(VecType, dstp, offset, result);
@@ -160,7 +160,6 @@ fn TemporalSoften(comptime T: type) type {
 
         test "process_plane should find the average value" {
             //Emulate a 2 x 64 (height x width) video.
-            // const T = u8;
             const height = 2;
             const width = 64;
             const size = width * height;

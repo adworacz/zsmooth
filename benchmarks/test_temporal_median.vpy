@@ -7,8 +7,9 @@ core = vs.core
 
 # format = 'u8'
 # radius = 1
+# output = zsmooth
 
-length = 3000
+length = 1000
 match format:
     case 'u8':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, length=length)
@@ -27,13 +28,16 @@ match format:
 # clip = depth(clip, 32)
 clip.set_output(0)
 
-
-cppmedian = clip.tmedian.TemporalMedian(radius=radius)
-cppmedian.set_output(1)
+if format != 'f16':
+    tmedian = clip.tmedian.TemporalMedian(radius=radius)
+    neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 
 zsmooth = clip.zsmooth.TemporalMedian(radius=radius)
-zsmooth.set_output(2)
 
-neo = clip.neo_tmedian.TemporalMedian(radius=radius)
-neo.set_output(3)
-
+match output:
+    case 'zsmooth':
+        zsmooth.set_output()
+    case 'tmedian':
+        tmedian.set_output()
+    case 'neo':
+        neo.set_output()

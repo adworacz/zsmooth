@@ -11,6 +11,7 @@ length = 1500
 # clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH, length=length)
 # clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, length=length)
 # clip = depth(clip, 16)
+# clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
 clip.set_output(0)
 

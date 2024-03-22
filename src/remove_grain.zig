@@ -799,7 +799,49 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, c - h + l);
         }
 
-        // TODO: Implement Mode 24!!
+        /// Same as mode 23 but considerably more conservative and slightly slower. Preferred.
+        fn rgMode24(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const linediff1 = sorted.max1 - sorted.min1;
+            const linediff2 = sorted.max2 - sorted.min2;
+            const linediff3 = sorted.max3 - sorted.min3;
+            const linediff4 = sorted.max4 - sorted.min4;
+
+            const cT = @as(SAT, c);
+
+            const th1 = cT - sorted.max1;
+            const th2 = cT - sorted.max2;
+            const th3 = cT - sorted.max3;
+            const th4 = cT - sorted.max4;
+
+            const h1 = @min(th1, linediff1 - th1);
+            const h2 = @min(th2, linediff2 - th2);
+            const h3 = @min(th3, linediff3 - th3);
+            const h4 = @min(th4, linediff4 - th4);
+
+            // Note: For YUV chroma planes, Avisynth uses 0 here, and RGSF uses -0.5.
+            // In my testing, 0 appears visually correct and to match integer output.
+            // -0.5 seems to break the image, and is likely a bug in RGSF.
+            //
+            // Reference:
+            // * https://github.com/pinterf/RgTools/blob/a9cff29cb228b8a6fb52148f334554f4c3823798/RgTools/rg_functions_c.h#L1296
+            // * https://github.com/IFeelBloated/RGSF/blob/master/RemoveGrain.cpp#L475
+            const h = @max(0, h1, h2, h3, h4);
+
+            const tl1 = sorted.min1 - cT;
+            const tl2 = sorted.min2 - cT;
+            const tl3 = sorted.min3 - cT;
+            const tl4 = sorted.min4 - cT;
+
+            const l1 = @min(tl1, linediff1 - tl1);
+            const l2 = @min(tl2, linediff2 - tl2);
+            const l3 = @min(tl3, linediff3 - tl3);
+            const l4 = @min(tl4, linediff4 - tl4);
+            const l = @max(0, l1, l2, l3, l4);
+
+            return cmn.lossyCast(T, c - h + l);
+        }
 
         /// Based on the RG mode, we want to skip certain lines,
         /// like when processing interlaced fields (even or odd fields).
@@ -911,6 +953,7 @@ fn RemoveGrain(comptime T: type) type {
                         21 => process_plane_scalar(21, srcp, dstp, width, height, chroma),
                         22 => process_plane_scalar(22, srcp, dstp, width, height, chroma),
                         23 => process_plane_scalar(23, srcp, dstp, width, height, chroma),
+                        24 => process_plane_scalar(24, srcp, dstp, width, height, chroma),
                         else => unreachable,
                     }
                 }
@@ -960,7 +1003,6 @@ fn RemoveGrain(comptime T: type) type {
                     const a7 = srcp[rowNext + w];
                     const a8 = srcp[rowNext + w + 1];
 
-                    // dstp[rowCurr + w] = rg(c, a1, a2, a3, a4, a5, a6, a7, a8);
                     dstp[rowCurr + w] = switch (mode) {
                         1 => rgMode1(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         2 => rgMode2(c, a1, a2, a3, a4, a5, a6, a7, a8),
@@ -982,6 +1024,7 @@ fn RemoveGrain(comptime T: type) type {
                         21 => rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         22 => rgMode22(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         23 => rgMode23(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        24 => rgMode24(c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

@@ -138,19 +138,6 @@ fn TemporalMedian(comptime T: type) type {
             return result;
         }
 
-        fn gather2(VS: comptime_int, slice: anytype, index: [VS]usize) @Vector(
-            VS,
-            @typeInfo(@TypeOf(slice)).Pointer.child,
-        ) {
-            const Elem = @typeInfo(@TypeOf(slice)).Pointer.child;
-            var result: [VS]Elem = undefined;
-            comptime var vec_i = 0;
-            inline while (vec_i < VS) : (vec_i += 1) {
-                result[vec_i] = slice[index[vec_i]];
-            }
-            return result;
-        }
-
         // fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
         fn median_vec(srcp: []const T, dstp: [*]T, offset: usize, diameter: i8) void {
             const vec_size = cmn.getVecSize(T);
@@ -159,7 +146,11 @@ fn TemporalMedian(comptime T: type) type {
             var src: [MAX_DIAMETER]VecType = undefined;
             const udiameter: usize = @intCast(diameter);
 
-            const index: [vec_size]usize = index: {
+            // Create an index of offsets so that we can properly index into
+            // the interleaved array. We can use the same index for all
+            // frames in the temporal diameter since they're all stored the same
+            // distance appart (distance = diameter).
+            const index: @Vector(vec_size, usize) = index: {
                 var init_index: [vec_size]usize = undefined;
                 for (&init_index, 0..vec_size) |*i, n| {
                     i.* = (n * @as(usize, udiameter));
@@ -167,12 +158,9 @@ fn TemporalMedian(comptime T: type) type {
                 break :index init_index;
             };
 
-            // This code is wrong, but very close.
             for (0..udiameter) |r| {
                 // src[r] = cmn.loadVec(VecType, srcp[r], offset);
-                // const index: Vector(vec_size, usize) = .{ 0 + r, diameter + r, 2 * diameter + r, 3 * diameter + r}
-                // src[r] = gather(srcp[(offset * diameter)..], index);
-                src[r] = gather2(vec_size, srcp[(offset * udiameter + r)..], index);
+                src[r] = gather(srcp[(offset * udiameter + r)..], index);
             }
 
             var result: VecType = undefined;

@@ -50,9 +50,38 @@ fn TemporalMedian(comptime T: type) type {
 
                     // 60fps with radius 1
                     // 7 fps with radius 10
-                    std.mem.sortUnstable(T, temp[0..@intCast(diameter)], {}, comptime std.sort.asc(T));
+                    // std.mem.sortUnstable(T, temp[0..@intCast(diameter)], {}, comptime std.sort.asc(T));
 
-                    dstp[current_pixel] = temp[@intCast(@divTrunc(diameter, 2))];
+                    dstp[current_pixel] = @max(@min(temp[0], temp[1]), @min(temp[2], @max(temp[0], temp[1])));
+
+                    // dstp[current_pixel] = temp[@intCast(@divTrunc(diameter, 2))];
+                }
+            }
+        }
+
+        fn process_plane_scalar_interleaved(srcp: []const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+            // var temp: [MAX_DIAMETER]T = undefined;
+            const udiameter: usize = @intCast(diameter);
+
+            for (0..height) |row| {
+                for (0..width) |column| {
+                    const current_pixel = row * width + column;
+
+                    // for (0..@intCast(diameter)) |i| {
+                    //     temp[i] = srcp[current_pixel * @as(usize, @intCast(diameter)) + i];
+                    // }
+                    const a = srcp[current_pixel * udiameter + 0];
+                    const b = srcp[current_pixel * udiameter + 1];
+                    const c = srcp[current_pixel * udiameter + 2];
+
+                    // 60fps with radius 1
+                    // 7 fps with radius 10
+                    // std.mem.sortUnstable(T, temp[0..@intCast(diameter)], {}, comptime std.sort.asc(T));
+
+                    // dstp[current_pixel] = @max(@min(temp[0], temp[1]), @min(temp[2], @max(temp[0], temp[1])));
+                    dstp[current_pixel] = @max(@min(a, b), @min(c, @max(a, b)));
+
+                    // dstp[current_pixel] = temp[@intCast(@divTrunc(diameter, 2))];
                 }
             }
         }
@@ -76,6 +105,39 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
+        fn process_plane_vec_interleaved(srcp: []const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+            const vec_size = cmn.getVecSize(T);
+            const width_simd = width / vec_size * vec_size;
+
+            for (0..height) |h| {
+                var x: usize = 0;
+                while (x < width_simd) : (x += vec_size) {
+                    const offset = h * width + x;
+                    median_vec(srcp, dstp, offset, diameter);
+                }
+
+                // If the video width is not perfectly aligned with the vector width, do one
+                // last operation at the end of the plane to cover what's leftover from the loop above.
+                if (width_simd < width) {
+                    median_vec(srcp, dstp, width - vec_size, diameter);
+                }
+            }
+        }
+
+        fn gather(slice: anytype, index: anytype) @Vector(
+            @typeInfo(@TypeOf(index)).Vector.len,
+            @typeInfo(@TypeOf(slice)).Pointer.child,
+        ) {
+            const vector_len = @typeInfo(@TypeOf(index)).Vector.len;
+            const Elem = @typeInfo(@TypeOf(slice)).Pointer.child;
+            var result: [vector_len]Elem = undefined;
+            comptime var vec_i = 0;
+            inline while (vec_i < vector_len) : (vec_i += 1) {
+                result[vec_i] = slice[index[vec_i]];
+            }
+            return result;
+        }
+
         fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
             const vec_size = cmn.getVecSize(T);
             const VecType = @Vector(vec_size, T);
@@ -83,7 +145,9 @@ fn TemporalMedian(comptime T: type) type {
             var src: [MAX_DIAMETER]VecType = undefined;
 
             for (0..@intCast(diameter)) |r| {
-                src[r] = cmn.loadVec(VecType, srcp[r], offset);
+                // src[r] = cmn.loadVec(VecType, srcp[r], offset);
+                // const index: Vector(vec_size, usize) = .{ 0 + r, diameter + r, 2 * diameter + r, 3 * diameter + r}
+                src[r] = gather(srcp[(offset * diameter)..], index);
             }
 
             var result: VecType = undefined;
@@ -278,19 +342,32 @@ fn TemporalMedian(comptime T: type) type {
                         continue;
                     }
 
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+
                     var srcp: [MAX_DIAMETER][*]const T = undefined;
                     for (0..@intCast(diameter)) |i| {
                         srcp[i] = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane)));
                     }
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    if (d.radius <= 4) {
-                        process_plane_vec(srcp, dstp, width, height, diameter);
-                    } else {
-                        process_plane_scalar(srcp, dstp, width, height, diameter);
+                    const udiameter: usize = @intCast(diameter);
+                    const size: usize = width * height * udiameter;
+                    const src = allocator.alloc(T, size) catch return null;
+                    defer allocator.free(src);
+
+                    for (0..size) |i| {
+                        src[i] = srcp[i % udiameter][i / udiameter];
                     }
+
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
+
+                    // if (d.radius <= 4) {
+                    // process_plane_vec(srcp, dstp, width, height, diameter);
+                    // process_plane_vec(srcp, dstp, width, height, diameter);
+                    // } else {
+                    // process_plane_scalar(srcp, dstp, width, height, diameter);
+                    process_plane_scalar_interleaved(src, dstp, width, height, diameter);
+                    // }
                 }
 
                 return dst;

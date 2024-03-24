@@ -33,6 +33,8 @@ const TemporalMedianData = struct {
 
     // Which planes we will process.
     process: [3]bool,
+
+    threadpool: *std.Thread.Pool,
 };
 
 fn TemporalMedian(comptime T: type) type {
@@ -57,7 +59,8 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+        fn process_plane_vec(wg: *std.Thread.WaitGroup, srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+            // fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
             const vec_size = cmn.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -74,6 +77,7 @@ fn TemporalMedian(comptime T: type) type {
                     median_vec(srcp, dstp, width - vec_size, diameter);
                 }
             }
+            wg.finish();
         }
 
         fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
@@ -271,6 +275,15 @@ fn TemporalMedian(comptime T: type) type {
 
                 const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[@intCast(d.radius)], core);
 
+                // var threads: [3]std.Thread = undefined;
+
+                // var threadpool: std.Thread.Pool = undefined;
+                // threadpool.init(.{ .allocator = allocator, .n_jobs = 3 }) catch return null;
+                // defer threadpool.deinit();
+
+                var waitgroup: std.Thread.WaitGroup = undefined;
+                waitgroup.reset();
+
                 var plane: c_int = 0;
                 while (plane < d.vi.format.numPlanes) : (plane += 1) {
                     // Skip planes we aren't supposed to process
@@ -286,12 +299,26 @@ fn TemporalMedian(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    if (d.radius <= 4) {
-                        process_plane_vec(srcp, dstp, width, height, diameter);
-                    } else {
-                        process_plane_scalar(srcp, dstp, width, height, diameter);
-                    }
+                    // if (d.radius <= 4) {
+
+                    // threads[@intCast(plane)] = std.Thread.spawn(.{}, process_plane_vec, .{ srcp, dstp, width, height, diameter }) catch return null;
+
+                    // threadpool.spawn(process_plane_vec, .{ srcp, dstp, width, height, diameter }) catch return null;
+
+                    waitgroup.start();
+                    d.threadpool.spawn(process_plane_vec, .{ &waitgroup, srcp, dstp, width, height, diameter }) catch return null;
+
+                    // process_plane_vec(srcp, dstp, width, height, diameter);
+                    // } else {
+                    //     process_plane_scalar(srcp, dstp, width, height, diameter);
+                    // }
                 }
+
+                // for (&threads) |thread| {
+                //     thread.join();
+                // }
+
+                d.threadpool.waitAndWork(&waitgroup);
 
                 return dst;
             }
@@ -340,6 +367,8 @@ fn TemporalMedian(comptime T: type) type {
 export fn temporalMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = core;
     const d: *TemporalMedianData = @ptrCast(@alignCast(instance_data));
+    d.threadpool.deinit();
+    allocator.destroy(d.threadpool);
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
@@ -391,6 +420,11 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
             d.process[plane] = true;
         }
     }
+
+    d.threadpool = allocator.create(std.Thread.Pool) catch return;
+    // TODO: Make n_jobs dynamic, since it's shared across all instances
+    // of this plugin.
+    d.threadpool.init(.{ .allocator = allocator, .n_jobs = 12 }) catch return;
 
     const data: *TemporalMedianData = allocator.create(TemporalMedianData) catch unreachable;
     data.* = d;

@@ -150,17 +150,32 @@ fn TemporalMedian(comptime T: type) type {
             // the interleaved array. We can use the same index for all
             // frames in the temporal diameter since they're all stored the same
             // distance appart (distance = diameter).
-            const index: @Vector(vec_size, usize) = index: {
-                var init_index: [vec_size]usize = undefined;
-                for (&init_index, 0..vec_size) |*i, n| {
-                    i.* = (n * @as(usize, udiameter));
-                }
-                break :index init_index;
-            };
+            // const index: @Vector(vec_size, usize) = index: {
+            //     var init_index: [vec_size]usize = undefined;
+            //     for (&init_index, 0..vec_size) |*i, n| {
+            //         i.* = (n * @as(usize, udiameter));
+            //     }
+            //     break :index init_index;
+            // };
+            //
+            // for (0..udiameter) |r| {
+            //     // src[r] = cmn.loadVec(VecType, srcp[r], offset);
+            //     src[r] = gather(srcp[(offset * udiameter + r)..], index);
+            // }
 
-            for (0..udiameter) |r| {
-                // src[r] = cmn.loadVec(VecType, srcp[r], offset);
-                src[r] = gather(srcp[(offset * udiameter + r)..], index);
+            // Vector interleaved
+            for (0..udiameter) |frame| {
+                // Since the srcp array is stored in groups of N pixels,
+                // we take the pixel offset (with values like 0, 32, 64, ...)
+                // multiply it by the diameter since groups of pixels are stored
+                // diameter frames apart.
+                //
+                // Next we multiply the frame number (0, 1, 2) by the vec size
+                // to index into the pixels that correspond to the partcular frame
+                // in this group.
+                const vector_offset = (offset * udiameter) + (frame * vec_size);
+                // src[frame] = cmn.loadVec(VecType, srcp, vector_offset);
+                src[frame] = srcp[vector_offset..][0..vec_size].*;
             }
 
             var result: VecType = undefined;
@@ -369,9 +384,87 @@ fn TemporalMedian(comptime T: type) type {
                     defer allocator.free(src);
 
                     // Scalar interleaving.
-                    for (0..size) |i| {
-                        src[i] = srcp[i % udiameter][i / udiameter];
+                    // for (0..size) |i| {
+                    //     src[i] = srcp[i % udiameter][i / udiameter];
+                    // }
+
+                    // Vector interleaving.
+                    const vec_size = cmn.getVecSize(T);
+                    var step: usize = 0;
+                    while (step < (width * height * udiameter)) : (step += vec_size) {
+                        // Interleave the src array in chunks of vector size,
+                        // with pixels from each temporal frame placed one chunk after the other.
+                        // So if A is a chunk of 32 pixels (vector size) from the first frame, and B is from the second frame,
+                        // and so on, then src will look like the following with 3 frames:
+                        //
+                        // For a diameter of 3 frames, with a vector size of N:
+                        //
+                        // A0 = First N pixels from the first frame,
+                        // B0 = First N pixels from the second frame,
+                        // C0 = First N pixels from the third frame,
+                        // A1 = Second N pixels from the first frame,
+                        // B1 = ...etc
+                        //
+                        // Then `src` looks like the following in memory:
+                        // A0 | B0 | C0 | A1 | B1 | C1 | A2 | B2 | C2 | ....
+
+                        // Given a diameter of 3 frames,
+                        // frame number should be:
+                        //
+                        // 0 for step 0
+                        // 1 for step 32
+                        // 2 for step 64
+                        // 0 for step 96
+                        // 1 for step 128
+                        // 2 for step 160
+                        // ...etc
+                        //
+                        // So we divide the step by the vec size,
+                        // which gives us numbers like 0, 1, 2, 3, 4, etc.
+                        //
+                        // And then modulo those numbers by the diameter to get
+                        // a repeating sequence of 0, 1, 2, 0, 1, 2.
+                        //
+                        const frame_number = ((step / vec_size) % udiameter);
+
+                        // The frame offset for 3 frames with a vec size of 32
+                        // should look like:
+                        //
+                        // 0 for step 0
+                        // 0 for step 32
+                        // 0 for step 64
+                        // 32 for step 96
+                        // 32 for step 128
+                        // 32 for step 160
+                        // 64 for step 192
+                        // 64 for step 224
+                        // 64 for step 256
+                        // ...etc
+                        //
+                        // So we multiply the vec size by the diameter (so 32 * 3 = 96)
+                        // and then divide the step by this number to get numbers like:
+                        //
+                        // 0 for step 0
+                        // 0 for step 32
+                        // 0 for step 64
+                        // 1 for step 96
+                        // 1 for step 128
+                        // ... etc
+                        //
+                        // We then multiply this by the vec size to get the offset
+                        // in elements, so:
+                        //
+                        // 0 for step 0 (0 / 96 * 32)
+                        // ...
+                        // 32 for step 96 (96 / 96 * 32)
+                        // ...
+                        // 64 for step 192 (192 / 96 * 32)
+                        // ...etc
+                        //
+                        const frame_offset = (step / (vec_size * udiameter)) * vec_size;
+                        @memcpy(src[step..][0..vec_size], srcp[frame_number][frame_offset..][0..vec_size]);
                     }
+                    // TODO: Support non-mod vec_size sizes.
 
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
 

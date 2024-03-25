@@ -4,6 +4,7 @@ const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
 const cmn = @import("common.zig");
+const vscmn = @import("common/vapoursynth.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -217,7 +218,6 @@ fn FluxSmooth(comptime T: type) type {
                 @abs(next - curr);
 
             var sum: @Vector(vec_size, UAT) = curr;
-            //TODO: Try making this u8 for both u16 and u8;
             var count = ones;
 
             // TODO: Try threshold > prevdiff to see if comparison makes a difference.
@@ -236,11 +236,11 @@ fn FluxSmooth(comptime T: type) type {
                 if (cmn.isFloat(T)) {
                     break :result sum / count;
                 }
-                const sumF: @Vector(vec_size, f32) = @floatFromInt(sum);
-                const countF: @Vector(vec_size, f32) = @floatFromInt(count);
-                const roundF: @Vector(vec_size, f32) = @splat(0.5);
+                const sum_f: @Vector(vec_size, f32) = @floatFromInt(sum);
+                const count_f: @Vector(vec_size, f32) = @floatFromInt(count);
+                const round_f: @Vector(vec_size, f32) = @splat(0.5);
 
-                break :result @intFromFloat((sumF / countF) + roundF);
+                break :result @intFromFloat((sum_f / count_f) + round_f);
             };
 
             const selected_result = @select(T, mask_either, result, curr);
@@ -364,33 +364,15 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         return;
     }
 
-    // TODO: Pull this into a reusable function somewhere, since it's used in a few different functions now.
-    //
-    //mapNumElements returns -1 if the element doesn't exist (aka, the user doesn't specify the option.)
-    const requestedPlanesSize = vsapi.?.mapNumElements.?(in, "planes");
-    const requestedPlanesIsEmpty = requestedPlanesSize <= 0;
-    const numPlanes = d.vi.format.numPlanes;
-    d.process = [_]bool{ requestedPlanesIsEmpty, requestedPlanesIsEmpty, requestedPlanesIsEmpty };
+    d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
+        vsapi.?.freeNode.?(d.node);
 
-    if (!requestedPlanesIsEmpty) {
-        for (0..@intCast(requestedPlanesSize)) |i| {
-            const plane: u8 = vsh.mapGetN(u8, in, "planes", @intCast(i), vsapi) orelse unreachable;
-
-            if (plane < 0 or plane > numPlanes) {
-                vsapi.?.freeNode.?(d.node);
-                // TODO: Add string formatting.
-                vsapi.?.mapSetError.?(out, "FluxSmooth: plane index out of range.");
-            }
-
-            if (d.process[plane]) {
-                vsapi.?.freeNode.?(d.node);
-                // TODO: Add string formatting.
-                vsapi.?.mapSetError.?(out, "FluxSmooth: plane specified twice.");
-            }
-
-            d.process[plane] = true;
+        switch (e) {
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "SmoothT: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "SmoothT: Plane specified twice."),
         }
-    }
+        return;
+    };
 
     const data: *FluxSmoothData = allocator.create(FluxSmoothData) catch unreachable;
     data.* = d;

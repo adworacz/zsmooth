@@ -4,6 +4,7 @@ const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
 const cmn = @import("common.zig");
+const vscmn = @import("common/vapoursynth.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -366,31 +367,15 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         return;
     }
 
-    //mapNumElements returns -1 if the element doesn't exist (aka, the user doesn't specify the option.)
-    const requestedPlanesSize = vsapi.?.mapNumElements.?(in, "planes");
-    const requestedPlanesIsEmpty = requestedPlanesSize <= 0;
-    const numPlanes = d.vi.format.numPlanes;
-    d.process = [_]bool{ requestedPlanesIsEmpty, requestedPlanesIsEmpty, requestedPlanesIsEmpty };
+    d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
+        vsapi.?.freeNode.?(d.node);
 
-    if (!requestedPlanesIsEmpty) {
-        for (0..@intCast(requestedPlanesSize)) |i| {
-            const plane: u8 = vsh.mapGetN(u8, in, "planes", @intCast(i), vsapi) orelse unreachable;
-
-            if (plane < 0 or plane > numPlanes) {
-                vsapi.?.freeNode.?(d.node);
-                // TODO: Add string formatting.
-                vsapi.?.mapSetError.?(out, "TemporalMedian: plane index out of range.");
-            }
-
-            if (d.process[plane]) {
-                vsapi.?.freeNode.?(d.node);
-                // TODO: Add string formatting.
-                vsapi.?.mapSetError.?(out, "TemporalMedian: plane specified twice.");
-            }
-
-            d.process[plane] = true;
+        switch (e) {
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "SmoothT: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "SmoothT: Plane specified twice."),
         }
-    }
+        return;
+    };
 
     const data: *TemporalMedianData = allocator.create(TemporalMedianData) catch unreachable;
     data.* = d;

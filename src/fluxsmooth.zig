@@ -58,16 +58,6 @@ fn FluxSmooth(comptime T: type) type {
         };
 
         fn process_plane_scalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
-
-            // Used for rounding of integer formats.
-            // TODO: Support higher bit depths, can do this in comptime.
-            const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
-            // Calculated thusly:
-            // magic_numbers[1] = 32767;
-            // for (int i = 2; i < 4; i++) {
-            //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
-            // }
-
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * width + column;
@@ -105,17 +95,31 @@ fn FluxSmooth(comptime T: type) type {
                             // Good ol' fashion division for floating point.
                             dstp[current_pixel] = sum / count;
                         } else {
-                            // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
-                            //
-                            // The sum is multiplied by 2 so that the division is always by an even number,
-                            // thus rounding can always be done by adding half the divisor
-                            dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
-                            //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+                            if (T == u8) {
+                                // Used for rounding of integer formats.
+                                const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
 
-                            // Performance note:
-                            // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
-                            // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
-                            // to another leap in performance.
+                                // Calculated thusly:
+                                // magic_numbers[1] = 32767;
+                                // for (int i = 2; i < 4; i++) {
+                                //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
+                                // }
+
+                                // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
+                                //
+                                // The sum is multiplied by 2 so that the division is always by an even number,
+                                // thus rounding can always be done by adding half the divisor
+                                dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
+                                //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+
+                                // Performance note:
+                                // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
+                                // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
+                                // to another leap in performance.
+                            } else {
+                                const magic_numbers = [_]UAT{ 0, 262144, 131072, 87381 };
+                                dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u64, magic_numbers[count]) >> 19));
+                            }
                         }
                     } else {
                         dstp[current_pixel] = curr;
@@ -271,6 +275,7 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
         1 => &FluxSmooth(u8).getFrame,
+        2 => &FluxSmooth(u16).getFrame,
         // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16).getFrame else &FluxSmooth(f16).getFrame,
         // 4 => &FluxSmooth(f32).getFrame,
         else => unreachable,

@@ -69,32 +69,29 @@ fn FluxSmooth(comptime T: type) type {
                     // If both pixels from the corresponding previous and next frames
                     // are *brighter* or both are *darker*, then filter.
                     if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
-                        const prevdiff = @max(prev, curr) - @min(prev, curr);
-                        const nextdiff = @max(next, curr) - @min(next, curr);
+                        if (cmn.isInt(T)) {
+                            const prevdiff = @max(prev, curr) - @min(prev, curr);
+                            const nextdiff = @max(next, curr) - @min(next, curr);
 
-                        // Turns out picking the types on
-                        // these can have a major impact on performance.
-                        // Using u8, u16, u32, etc has better performance
-                        // than u10, u2, etc.
-                        // *and* picking the smallest possible byte-sized type
-                        // leads to the best performance.
-                        var sum: UAT = curr;
-                        var count: u8 = 1;
+                            // Turns out picking the types on
+                            // these can have a major impact on performance.
+                            // Using u8, u16, u32, etc has better performance
+                            // than u10, u2, etc.
+                            // *and* picking the smallest possible byte-sized type
+                            // leads to the best performance.
+                            var sum: UAT = curr;
+                            var count: u8 = 1;
 
-                        if (prevdiff <= threshold) {
-                            sum += prev;
-                            count += 1;
-                        }
+                            if (prevdiff <= threshold) {
+                                sum += prev;
+                                count += 1;
+                            }
 
-                        if (nextdiff <= threshold) {
-                            sum += next;
-                            count += 1;
-                        }
+                            if (nextdiff <= threshold) {
+                                sum += next;
+                                count += 1;
+                            }
 
-                        if (cmn.isFloat(T)) {
-                            // Good ol' fashion division for floating point.
-                            dstp[current_pixel] = sum / count;
-                        } else {
                             if (T == u8) {
                                 // Used for rounding of integer formats.
                                 const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
@@ -120,6 +117,26 @@ fn FluxSmooth(comptime T: type) type {
                                 const magic_numbers = [_]UAT{ 0, 262144, 131072, 87381 };
                                 dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u64, magic_numbers[count]) >> 19));
                             }
+                        } else {
+                            // Floating point
+                            const prevdiff = prev - curr;
+                            const nextdiff = next - curr;
+                            const thresh: f32 = @bitCast(threshold);
+
+                            var sum: UAT = curr;
+                            var count: T = 1;
+
+                            if (@abs(prevdiff) <= thresh) {
+                                sum += prev;
+                                count += 1;
+                            }
+
+                            if (@abs(nextdiff) <= thresh) {
+                                sum += next;
+                                count += 1;
+                            }
+
+                            dstp[current_pixel] = sum / count;
                         }
                     } else {
                         dstp[current_pixel] = curr;
@@ -227,7 +244,15 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     }
 
     // TODO: Scale threshold based on bit depth.
-    d.threshold = vsh.mapGetN(u32, in, "temporal_threshold", 0, vsapi) orelse 7;
+    if (d.vi.format.sampleType == st.Float) {
+        if (vsh.mapGetN(f32, in, "temporal_threshold", 0, vsapi)) |threshold| {
+            d.threshold = @bitCast(threshold);
+        } else {
+            d.threshold = @bitCast(cmn.scaleToSample(d.vi.format, 7));
+        }
+    } else {
+        d.threshold = vsh.mapGetN(u32, in, "temporal_threshold", 0, vsapi) orelse 7;
+    }
 
     if (d.threshold < 0) {
         vsapi.?.mapSetError.?(out, "SmoothT: temporal_threshold must be 0 or greater.");
@@ -275,9 +300,8 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
         1 => &FluxSmooth(u8).getFrame,
-        2 => &FluxSmooth(u16).getFrame,
-        // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16).getFrame else &FluxSmooth(f16).getFrame,
-        // 4 => &FluxSmooth(f32).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16).getFrame else &FluxSmooth(f16).getFrame,
+        4 => &FluxSmooth(f32).getFrame,
         else => unreachable,
     };
 

@@ -76,10 +76,12 @@ fn FluxSmooth(comptime T: type) type {
                     const curr = srcp[1][current_pixel];
                     const next = srcp[2][current_pixel];
 
-                    const prevdiff: SAT = @as(SAT, prev) - curr;
-                    const nextdiff: SAT = @as(SAT, next) - curr;
+                    // If both pixels from the corresponding previous and next frames
+                    // are *brighter* or both are *darker*, then filter.
+                    if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
+                        const prevdiff = @max(prev, curr) - @min(prev, curr);
+                        const nextdiff = @max(next, curr) - @min(next, curr);
 
-                    if ((prevdiff < 0 and nextdiff < 0) or (prevdiff > 0 and nextdiff > 0)) {
                         // Turns out picking the types on
                         // these can have a major impact on performance.
                         // Using u8, u16, u32, etc has better performance
@@ -89,12 +91,12 @@ fn FluxSmooth(comptime T: type) type {
                         var sum: UAT = curr;
                         var count: u8 = 1;
 
-                        if (@abs(prevdiff) <= threshold) {
+                        if (prevdiff <= threshold) {
                             sum += prev;
                             count += 1;
                         }
 
-                        if (@abs(nextdiff) <= threshold) {
+                        if (nextdiff <= threshold) {
                             sum += next;
                             count += 1;
                         }

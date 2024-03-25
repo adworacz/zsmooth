@@ -3,11 +3,10 @@ from vstools import depth
 
 core = vs.core
 
-# clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+# radius = 1
+# output = 'all'
 
 # format = 'u8'
-# radius = 1
-# output = zsmooth
 
 length = 1000
 match format:
@@ -20,8 +19,7 @@ match format:
     case 'f32':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, length=length)
     case _:
-        print("Unrecognized format")
-        exit(1)
+        clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
 
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
@@ -41,3 +39,8 @@ match output:
         tmedian.set_output()
     case 'neo':
         neo.set_output()
+    case 'all':
+        clip.set_output(0)
+        tmedian.set_output(1)
+        zsmooth.set_output(2)
+        neo.set_output(3)

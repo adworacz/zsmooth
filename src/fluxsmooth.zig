@@ -80,8 +80,14 @@ fn FluxSmooth(comptime T: type) type {
                     const nextdiff: SAT = @as(SAT, next) - curr;
 
                     if ((prevdiff < 0 and nextdiff < 0) or (prevdiff > 0 and nextdiff > 0)) {
-                        var sum: u32 = curr;
-                        var count: u2 = 1;
+                        // Turns out picking the types on
+                        // these can have a major impact on performance.
+                        // Using u8, u16, u32, etc has better performance
+                        // than u10, u2, etc.
+                        // *and* picking the smallest possible byte-sized type
+                        // leads to the best performance.
+                        var sum: UAT = curr;
+                        var count: u8 = 1;
 
                         if (@abs(prevdiff) <= threshold) {
                             sum += prev;
@@ -101,9 +107,13 @@ fn FluxSmooth(comptime T: type) type {
                             //
                             // The sum is multiplied by 2 so that the division is always by an even number,
                             // thus rounding can always be done by adding half the divisor
-                            // dstp[current_pixel] = @intCast(((sum * 2 + count) * magic_numbers[count]) >> 16);
-                            dstp[current_pixel] = @intCast(std.math.shr(u32, ((sum * 2 + count) * magic_numbers[count]), 16));
+                            dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
                             //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+
+                            // Performance note:
+                            // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
+                            // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
+                            // to another leap in performance.
                         }
                     } else {
                         dstp[current_pixel] = curr;

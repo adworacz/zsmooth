@@ -1,9 +1,11 @@
 import vapoursynth as vs
-from vstools import depth
+from vstools import depth, get_depth
 
 core = vs.core
 
-threshold = 20
+threshold = 20 
+# threshold = 20 << 8
+# threshold = 20 / 255.0
 # format = 'u8'
 # output = 'all'
 
@@ -26,7 +28,7 @@ match format:
 clip.set_output(0)
 
 
-if format not in ['f16', 'f32']:
+if format not in ['f16', 'f32'] and get_depth(clip) != 32:
     flux = clip.flux.SmoothT(temporal_threshold=threshold)
 
 zsmooth = clip.zsmooth.SmoothT(temporal_threshold=threshold);
@@ -38,7 +40,8 @@ match output:
         zsmooth.set_output()
     case _:
         clip.set_output(0)
-        flux.set_output(1)
+        if get_depth(clip) != 32:
+            flux.set_output(1)
         zsmooth.set_output(2)
 
 

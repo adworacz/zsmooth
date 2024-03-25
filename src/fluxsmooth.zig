@@ -57,7 +57,7 @@ fn FluxSmooth(comptime T: type) type {
             else => unreachable,
         };
 
-        fn process_plane_scalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
+        fn processPlaneScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * width + column;
@@ -145,6 +145,109 @@ fn FluxSmooth(comptime T: type) type {
             }
         }
 
+        fn processPlaneVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
+            const vec_size = cmn.getVecSize(T);
+            const width_simd = width / vec_size * vec_size;
+
+            for (0..height) |row| {
+                var x: usize = 0;
+                while (x < width_simd) : (x += vec_size) {
+                    const offset = row * width + x;
+                    smoothTVector(srcp, dstp, offset, threshold);
+                }
+
+                if (width_simd < width_simd) {
+                    smoothTVector(srcp, dstp, width - vec_size, threshold);
+                }
+            }
+        }
+
+        // TODO: F16 is still slow (of course)
+        // so try processing as f32.
+        fn smoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: u32) void {
+            const vec_size = cmn.getVecSize(T);
+            const VecType = @Vector(vec_size, T);
+
+            const zeroes: VecType = @splat(0);
+            const ones: VecType = @splat(1);
+            const threshold: VecType = switch (T) {
+                u8, u16 => @splat(@intCast(_threshold)),
+                f16 => @splat(@floatCast(@as(f32, @bitCast(_threshold)))),
+                f32 => @splat(@bitCast(_threshold)),
+                else => unreachable,
+            };
+
+            const prev = cmn.loadVec(VecType, srcp[0], offset);
+            const curr = cmn.loadVec(VecType, srcp[1], offset);
+            const next = cmn.loadVec(VecType, srcp[2], offset);
+
+            //if ((prev < curr and next < curr) or (prev > curr and next > curr))
+            //
+            // const prevnextless = (prev < curr) & (next < curr);
+            // const prevnextmore = (prev > curr) & (next > curr);
+            // const mask_either = prevnextless | prevnextmore;
+            // The above should work (or using `and` instead of `&`)
+            // but Zig has a known bug preventing its use:
+            // https://github.com/ziglang/zig/issues/14306
+            //
+            // Workaround
+            const prevltcurr = prev < curr;
+            const prevgtcurr = prev > curr;
+            const nextltcurr = next < curr;
+            const nextgtcurr = next > curr;
+
+            // (prev < curr and next < curr)
+            // (prev > curr and next > curr)
+            const prevnextless = @select(bool, prevltcurr, nextltcurr, prevltcurr);
+            const prevnextmore = @select(bool, prevgtcurr, nextgtcurr, prevgtcurr);
+
+            // or
+            const mask_either = @select(bool, prevnextless, prevnextless, prevnextmore);
+
+            // max-min is about same perf as saturating subtraction on laptop
+            // TODO: Try on desktop.
+            const prevdiff = if (cmn.isInt(T))
+                @max(prev, curr) - @min(prev, curr)
+            else
+                @abs(prev - curr);
+
+            const nextdiff = if (cmn.isInt(T))
+                @max(next, curr) - @min(next, curr)
+            else
+                @abs(next - curr);
+
+            var sum: @Vector(vec_size, UAT) = curr;
+            //TODO: Try making this u8 for both u16 and u8;
+            var count = ones;
+
+            // TODO: Try threshold > prevdiff to see if comparison makes a difference.
+            // Seems about the same speed on laptop.
+            sum += @select(T, prevdiff <= threshold, prev, zeroes);
+            count += @select(T, prevdiff <= threshold, ones, zeroes);
+            // sum += @select(T, threshold > prevdiff, prev, zeroes);
+            // count += @select(T, threshold > prevdiff, ones, zeroes);
+
+            sum += @select(T, nextdiff <= threshold, next, zeroes);
+            count += @select(T, nextdiff <= threshold, ones, zeroes);
+            // sum += @select(T, threshold > nextdiff, next, zeroes);
+            // count += @select(T, threshold > nextdiff, ones, zeroes);
+
+            const result: VecType = result: {
+                if (cmn.isFloat(T)) {
+                    break :result sum / count;
+                }
+                const sumF: @Vector(vec_size, f32) = @floatFromInt(sum);
+                const countF: @Vector(vec_size, f32) = @floatFromInt(count);
+                const roundF: @Vector(vec_size, f32) = @splat(0.5);
+
+                break :result @intFromFloat((sumF / countF) + roundF);
+            };
+
+            const selected_result = @select(T, mask_either, result, curr);
+
+            cmn.storeVec(VecType, dstp, offset, selected_result);
+        }
+
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -211,7 +314,8 @@ fn FluxSmooth(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    process_plane_scalar(srcp, dstp, width, height, d.threshold);
+                    // processPlaneScalar(srcp, dstp, width, height, d.threshold);
+                    processPlaneVector(srcp, dstp, width, height, d.threshold);
                 }
 
                 return dst;

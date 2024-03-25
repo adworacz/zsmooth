@@ -115,7 +115,6 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
-            @setFloatMode(.Optimized);
             const half_frames: u8 = @divTrunc(frames, 2);
             const vec_size = cmn.getVecSize(T);
             const VecType = @Vector(vec_size, T);

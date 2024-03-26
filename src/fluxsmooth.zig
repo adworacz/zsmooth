@@ -276,13 +276,7 @@ fn FluxSmooth(comptime T: type) type {
                     vsapi.?.getFrameFilter.?(n, d.node, frame_ctx),
                     vsapi.?.getFrameFilter.?(n + 1, d.node, frame_ctx),
                 };
-
-                // Free all source frames within the filter radius when this function exits.
-                defer {
-                    for (0..3) |i| {
-                        vsapi.?.freeFrame.?(src_frames[i]);
-                    }
-                }
+                defer for (&src_frames) |frame| vsapi.?.freeFrame.?(frame);
 
                 const dst = vscmn.newVideoFrame(&d.process, src_frames[1], d.vi, core, vsapi);
 

@@ -258,12 +258,7 @@ fn TemporalSoften(comptime T: type) type {
 
                     frames += 1;
                 }
-
-                defer {
-                    for (0..frames) |i| {
-                        vsapi.?.freeFrame.?(src_frames[i]);
-                    }
-                }
+                defer for (&src_frames) |frame| vsapi.?.freeFrame.?(frame);
 
                 const process = [_]bool{
                     d.threshold[0] > 0,

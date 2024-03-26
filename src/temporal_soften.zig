@@ -2,7 +2,9 @@ const std = @import("std");
 const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
+
 const cmn = @import("common.zig");
+const vscmn = @import("common/vapoursynth.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -263,16 +265,12 @@ fn TemporalSoften(comptime T: type) type {
                     }
                 }
 
-                // Prepare array of frame pointers, with null for planes we will process,
-                // and pointers to the source frame for planes we won't process.
-                var plane_src = [_]?*const vs.Frame{
-                    if (d.threshold[0] > 0) null else src_frames[0],
-                    if (d.threshold[1] > 0) null else src_frames[0],
-                    if (d.threshold[2] > 0) null else src_frames[0],
+                const process = [_]bool{
+                    d.threshold[0] > 0,
+                    d.threshold[1] > 0,
+                    d.threshold[2] > 0,
                 };
-                const planes = [_]c_int{ 0, 1, 2 };
-
-                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[radius], core);
+                const dst = vscmn.newVideoFrame(&process, src_frames[0], d.vi, core, vsapi);
 
                 for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
                     const plane: c_int = @intCast(_plane);

@@ -284,18 +284,7 @@ fn FluxSmooth(comptime T: type) type {
                     }
                 }
 
-                //TODO: Pull this code into a shared function somewhere, as several
-                //plugins use it.
-                // Prepare array of frame pointers, with null for planes we will process,
-                // and pointers to the source frame for planes we won't process.
-                var plane_src = [_]?*const vs.Frame{
-                    if (d.process[0]) null else src_frames[1],
-                    if (d.process[1]) null else src_frames[1],
-                    if (d.process[2]) null else src_frames[1],
-                };
-                const planes = [_]c_int{ 0, 1, 2 };
-
-                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frames[1], core);
+                const dst = vscmn.newVideoFrame(&d.process, src_frames[1], d.vi, core, vsapi);
 
                 var plane: c_int = 0;
                 while (plane < d.vi.format.numPlanes) : (plane += 1) {

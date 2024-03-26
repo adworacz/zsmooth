@@ -2,7 +2,9 @@ const std = @import("std");
 const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
+
 const cmn = @import("common.zig");
+const vscmn = @import("common/vapoursynth.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -892,16 +894,12 @@ fn RemoveGrain(comptime T: type) type {
                 const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
                 defer vsapi.?.freeFrame.?(src_frame);
 
-                // Prepare array of frame pointers, with null for planes we will process,
-                // and pointers to the source frame for planes we won't process.
-                var plane_src = [_]?*const vs.Frame{
-                    if (d.modes[0] > 0) null else src_frame,
-                    if (d.modes[1] > 0) null else src_frame,
-                    if (d.modes[2] > 0) null else src_frame,
+                const process = [_]bool{
+                    d.modes[0] > 0,
+                    d.modes[1] > 0,
+                    d.modes[2] > 0,
                 };
-                const planes = [_]c_int{ 0, 1, 2 };
-
-                const dst = vsapi.?.newVideoFrame2.?(&d.vi.format, d.vi.width, d.vi.height, @ptrCast(&plane_src), @ptrCast(&planes), src_frame, core);
+                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
 
                 for (0..@intCast(d.vi.format.numPlanes)) |plane| {
                     // Skip planes we aren't supposed to process

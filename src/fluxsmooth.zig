@@ -269,8 +269,6 @@ fn FluxSmooth(comptime T: type) type {
                     return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
                 }
 
-                // const src_frames: [3]?*const vs.Frame = {
-                // const src_frames = [3]?*const vs.Frame{
                 const src_frames = [3]?*const vs.Frame{
                     vsapi.?.getFrameFilter.?(n - 1, d.node, frame_ctx),
                     vsapi.?.getFrameFilter.?(n, d.node, frame_ctx),

@@ -339,7 +339,7 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     d.vi = vsapi.?.getVideoInfo.?(d.node);
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "TemporalMedian: only constant format  input supported");
+        vsapi.?.mapSetError.?(out, "TemporalMedian: only constant format input supported");
         vsapi.?.freeNode.?(d.node);
         return;
     }
@@ -356,8 +356,8 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
         vsapi.?.freeNode.?(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "SmoothT: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "SmoothT: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "TemporalMedian: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "TemporalMedian: Plane specified twice."),
         }
         return;
     };

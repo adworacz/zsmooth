@@ -67,82 +67,114 @@ fn FluxSmooth(comptime T: type) type {
                     const curr = srcp[1][current_pixel];
                     const next = srcp[2][current_pixel];
 
-                    // If both pixels from the corresponding previous and next frames
-                    // are *brighter* or both are *darker*, then filter.
-                    if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
-                        if (cmn.isInt(T)) {
-                            const prevdiff = @max(prev, curr) - @min(prev, curr);
-                            const nextdiff = @max(next, curr) - @min(next, curr);
-
-                            // Turns out picking the types on
-                            // these can have a major impact on performance.
-                            // Using u8, u16, u32, etc has better performance
-                            // than u10, u2, etc.
-                            // *and* picking the smallest possible byte-sized type
-                            // leads to the best performance.
-                            var sum: UAT = curr;
-                            var count: u8 = 1;
-
-                            if (prevdiff <= threshold) {
-                                sum += prev;
-                                count += 1;
-                            }
-
-                            if (nextdiff <= threshold) {
-                                sum += next;
-                                count += 1;
-                            }
-
-                            if (T == u8) {
-                                // Used for rounding of integer formats.
-                                const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
-
-                                // Calculated thusly:
-                                // magic_numbers[1] = 32767;
-                                // for (int i = 2; i < 4; i++) {
-                                //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
-                                // }
-
-                                // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
-                                //
-                                // The sum is multiplied by 2 so that the division is always by an even number,
-                                // thus rounding can always be done by adding half the divisor
-                                dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
-                                //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
-
-                                // Performance note:
-                                // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
-                                // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
-                                // to another leap in performance.
-                            } else {
-                                const magic_numbers = [_]UAT{ 0, 262144, 131072, 87381 };
-                                dstp[current_pixel] = @intCast(((sum * 2 + count) * @as(u64, magic_numbers[count]) >> 19));
-                            }
-                        } else {
-                            // Floating point
-                            const prevdiff = prev - curr;
-                            const nextdiff = next - curr;
-                            const thresh: f32 = @bitCast(threshold);
-
-                            var sum: UAT = curr;
-                            var count: T = 1;
-
-                            if (@abs(prevdiff) <= thresh) {
-                                sum += prev;
-                                count += 1;
-                            }
-
-                            if (@abs(nextdiff) <= thresh) {
-                                sum += next;
-                                count += 1;
-                            }
-
-                            dstp[current_pixel] = sum / count;
-                        }
-                    } else {
-                        dstp[current_pixel] = curr;
-                    }
+                    dstp[current_pixel] = smoothTScalar(prev, curr, next, threshold);
                 }
+            }
+        }
+
+        fn smoothTScalar(prev: T, curr: T, next: T, threshold: u32) T {
+            // If both pixels from the corresponding previous and next frames
+            // are *brighter* or both are *darker*, then filter.
+            if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
+                if (cmn.isInt(T)) {
+                    const prevdiff = @max(prev, curr) - @min(prev, curr);
+                    const nextdiff = @max(next, curr) - @min(next, curr);
+
+                    // Turns out picking the types on
+                    // these can have a major impact on performance.
+                    // Using u8, u16, u32, etc has better performance
+                    // than u10, u2, etc.
+                    // *and* picking the smallest possible byte-sized type
+                    // leads to the best performance.
+                    var sum: UAT = curr;
+                    var count: u8 = 1;
+
+                    if (prevdiff <= threshold) {
+                        sum += prev;
+                        count += 1;
+                    }
+
+                    if (nextdiff <= threshold) {
+                        sum += next;
+                        count += 1;
+                    }
+
+                    if (T == u8) {
+                        // Used for rounding of integer formats.
+                        const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
+
+                        // Calculated thusly:
+                        // magic_numbers[1] = 32767;
+                        // for (int i = 2; i < 4; i++) {
+                        //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
+                        // }
+
+                        // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
+                        //
+                        // The sum is multiplied by 2 so that the division is always by an even number,
+                        // thus rounding can always be done by adding half the divisor
+                        return @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
+                        //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+
+                        // Performance note:
+                        // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
+                        // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
+                        // to another leap in performance.
+                    } else {
+                        const magic_numbers = [_]UAT{ 0, 262144, 131072, 87381 };
+                        return @intCast(((sum * 2 + count) * @as(u64, magic_numbers[count]) >> 19));
+                    }
+                } else {
+                    // Floating point
+                    const prevdiff = prev - curr;
+                    const nextdiff = next - curr;
+                    const thresh: f32 = @bitCast(threshold);
+
+                    var sum: UAT = curr;
+                    var count: T = 1;
+
+                    if (@abs(prevdiff) <= thresh) {
+                        sum += prev;
+                        count += 1;
+                    }
+
+                    if (@abs(nextdiff) <= thresh) {
+                        sum += next;
+                        count += 1;
+                    }
+
+                    return sum / count;
+                }
+            } else {
+                return curr;
+            }
+        }
+
+        test smoothTScalar {
+            const threshold: u32 = 99;
+            const t: u32 = if (cmn.isInt(T)) threshold else @bitCast(@as(f32, @floatFromInt(threshold)));
+
+            // Pixels are not both darker or ligher, so pixel stays the same.
+            try std.testing.expectEqual(1, smoothTScalar(0, 1, 2, t));
+
+            if (cmn.isInt(T)) {
+                // Both pixels darker.
+                try std.testing.expectEqual(4, smoothTScalar(1, 11, 1, t));
+                // Test rounding
+                try std.testing.expectEqual(5, smoothTScalar(1, 11, 2, t));
+
+                // Both pixels brighter
+                try std.testing.expectEqual(4, smoothTScalar(10, 1, 2, t));
+                // Test rounding
+                try std.testing.expectEqual(5, smoothTScalar(10, 1, 3, t));
+            } else {
+                // Both pixels darker.
+                try std.testing.expectApproxEqAbs(4.33, smoothTScalar(1, 11, 1, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, smoothTScalar(1, 11, 2, t), 0.01);
+
+                // Both pixels brigher.
+                try std.testing.expectApproxEqAbs(4.33, smoothTScalar(10, 1, 2, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, smoothTScalar(10, 1, 3, t), 0.01);
             }
         }
 
@@ -163,6 +195,7 @@ fn FluxSmooth(comptime T: type) type {
             }
         }
 
+        // TODO: Add tests for this function.
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
         fn smoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: u32) void {

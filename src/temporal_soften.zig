@@ -5,6 +5,7 @@ const testingAllocator = @import("std").testing.allocator;
 
 const cmn = @import("common.zig");
 const vscmn = @import("common/vapoursynth.zig");
+const vec = @import("common/vector.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -100,7 +101,7 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |h| {
@@ -118,7 +119,7 @@ fn TemporalSoften(comptime T: type) type {
 
         fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
             const half_frames: u8 = @divTrunc(frames, 2);
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
             const threshold_vec: VecType = switch (T) {
@@ -127,19 +128,19 @@ fn TemporalSoften(comptime T: type) type {
                 f32 => @splat(@bitCast(threshold)),
                 else => unreachable,
             };
-            const current_value_vec = cmn.loadVec(VecType, srcp[0], offset);
+            const current_value_vec = vec.load(VecType, srcp[0], offset);
 
             var sum_vec: @Vector(vec_size, UAT) = current_value_vec;
 
             for (1..@intCast(frames)) |i| {
-                const frame_value_vec = cmn.loadVec(VecType, srcp[i], offset);
+                const frame_value_vec = vec.load(VecType, srcp[i], offset);
 
                 const abs_vec = abs: {
                     if (cmn.isFloat(T)) {
                         break :abs @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec);
                     }
 
-                    break :abs cmn.maxFastVec(current_value_vec, frame_value_vec) - cmn.minFastVec(current_value_vec, frame_value_vec);
+                    break :abs vec.maxFast(current_value_vec, frame_value_vec) - vec.minFast(current_value_vec, frame_value_vec);
                 };
 
                 const lte_threshold_vec = abs_vec <= threshold_vec;
@@ -156,7 +157,7 @@ fn TemporalSoften(comptime T: type) type {
                 break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
             };
 
-            cmn.storeVec(VecType, dstp, offset, result);
+            vec.store(VecType, dstp, offset, result);
         }
 
         test "process_plane should find the average value" {

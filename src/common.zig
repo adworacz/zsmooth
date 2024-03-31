@@ -2,22 +2,6 @@ const std = @import("std");
 const vapoursynth = @import("vapoursynth");
 const vs = vapoursynth.vapoursynth4;
 
-/// Gets a pertinent vector size for the given type based on the compilation target.
-pub inline fn getVecSize(comptime T: type) comptime_int {
-    if (std.simd.suggestVectorLength(T)) |suggested| {
-        return suggested;
-    }
-
-    @compileError("The compilation target does not support vector sizing");
-}
-
-test "getVecSize returns reasonable vector sizes" {
-    try std.testing.expectEqual(32, getVecSize(u8));
-    try std.testing.expectEqual(16, getVecSize(u16));
-    try std.testing.expectEqual(16, getVecSize(f16));
-    try std.testing.expectEqual(8, getVecSize(f32));
-}
-
 pub inline fn isFloat(comptime T: type) bool {
     return @typeInfo(T) == .Float;
 }
@@ -219,37 +203,6 @@ test compareSwap {
     compareSwap(@Vector(1, u8), &d, &e);
     try std.testing.expectEqual(@Vector(1, u8){1}, d);
     try std.testing.expectEqual(@Vector(1, u8){5}, e);
-}
-
-/////////////////////////////////////////////////
-// Vector handling
-/////////////////////////////////////////////////
-
-pub fn loadVec(comptime T: type, src: [*]const @typeInfo(T).Vector.child, offset: usize) T {
-    return src[offset..][0..@typeInfo(T).Vector.len].*;
-}
-
-pub fn storeVec(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize, result: T) void {
-    var dst: [*]@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
-    inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
-        d.* = result[i];
-    }
-}
-
-// Really seems to be faster for floats, with no real difference for 8/16 bit integer.
-// TODO needs more testing. Maybe *slightly* faster than @min/@max, but it's not a major difference.
-// Good testing is provided in TemporalMedian, Radius 4, with 8, 16, and 32 bit depth.
-// Inspired by https://github.com/zig-gamedev/zig-gamedev/blob/main/libs/zmath/src/zmath.zig#L744
-pub fn minFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
-}
-
-pub fn maxFastVec(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
-}
-
-pub fn clampFastVec(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax) {
-    return minFastVec(vmax, maxFastVec(vmin, v));
 }
 
 //////////////////////////////////////////////////

@@ -5,6 +5,7 @@ const testingAllocator = @import("std").testing.allocator;
 
 const cmn = @import("common.zig");
 const vscmn = @import("common/vapoursynth.zig");
+const vec = @import("common/vector.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -179,7 +180,7 @@ fn FluxSmooth(comptime T: type) type {
         }
 
         fn processPlaneVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -199,7 +200,7 @@ fn FluxSmooth(comptime T: type) type {
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
         fn fluxsmoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: u32) void {
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
             const zeroes: VecType = @splat(0);
@@ -211,9 +212,9 @@ fn FluxSmooth(comptime T: type) type {
                 else => unreachable,
             };
 
-            const prev = cmn.loadVec(VecType, srcp[0], offset);
-            const curr = cmn.loadVec(VecType, srcp[1], offset);
-            const next = cmn.loadVec(VecType, srcp[2], offset);
+            const prev = vec.load(VecType, srcp[0], offset);
+            const curr = vec.load(VecType, srcp[1], offset);
+            const next = vec.load(VecType, srcp[2], offset);
 
             //if ((prev < curr and next < curr) or (prev > curr and next > curr))
             //
@@ -278,7 +279,7 @@ fn FluxSmooth(comptime T: type) type {
 
             const selected_result = @select(T, mask_either, result, curr);
 
-            cmn.storeVec(VecType, dstp, offset, selected_result);
+            vec.store(VecType, dstp, offset, selected_result);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

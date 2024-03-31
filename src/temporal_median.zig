@@ -5,6 +5,7 @@ const testingAllocator = @import("std").testing.allocator;
 
 const cmn = @import("common.zig");
 const vscmn = @import("common/vapoursynth.zig");
+const vec = @import("common/vector.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -59,7 +60,7 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |h| {
@@ -78,13 +79,13 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn median_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, diameter: i8) void {
-            const vec_size = cmn.getVecSize(T);
+            const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
             var src: [MAX_DIAMETER]VecType = undefined;
 
             for (0..@intCast(diameter)) |r| {
-                src[r] = cmn.loadVec(VecType, srcp[r], offset);
+                src[r] = vec.load(VecType, srcp[r], offset);
             }
 
             var result: VecType = undefined;
@@ -203,19 +204,19 @@ fn TemporalMedian(comptime T: type) type {
             }
 
             // Store
-            cmn.storeVec(VecType, dstp, offset, result);
+            vec.store(VecType, dstp, offset, result);
         }
 
         /// Computes the median of 3 arguments.
         fn median3(comptime R: type, a: R, b: R, c: R) R {
-            return cmn.maxFastVec(cmn.minFastVec(a, b), cmn.minFastVec(c, cmn.maxFastVec(a, b)));
+            return vec.maxFast(vec.minFast(a, b), vec.minFast(c, vec.maxFast(a, b)));
         }
 
         /// Computes the min and max of the two arguments, and writes the min to the first
         /// argument and the max to the second argument, effectively sorting the two arguments.
         fn swap2(comptime R: type, a: *R, b: *R) void {
-            const min = cmn.minFastVec(a.*, b.*);
-            const max = cmn.maxFastVec(a.*, b.*);
+            const min = vec.minFast(a.*, b.*);
+            const max = vec.maxFast(a.*, b.*);
             a.* = min;
             b.* = max;
         }

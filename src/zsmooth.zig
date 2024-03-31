@@ -13,5 +13,5 @@ export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vspapi: *const vs.PLUGINAPI
     _ = vspapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;", "clip:vnode;", temporalMedian.temporalMedianCreate, null, plugin);
     _ = vspapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:int[]:opt;scenechange:int:opt;", "clip:vnode;", temporalSoften.temporalSoftenCreate, null, plugin);
     _ = vspapi.registerFunction.?("RemoveGrain", "clip:vnode;mode:int[]", "clip:vnode;", removeGrain.removeGrainCreate, null, plugin);
-    _ = vspapi.registerFunction.?("SmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmooth.fluxSmoothCreate, null, plugin);
+    _ = vspapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmooth.fluxSmoothCreate, null, plugin);
 }

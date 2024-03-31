@@ -67,12 +67,12 @@ fn FluxSmooth(comptime T: type) type {
                     const curr = srcp[1][current_pixel];
                     const next = srcp[2][current_pixel];
 
-                    dstp[current_pixel] = smoothTScalar(prev, curr, next, threshold);
+                    dstp[current_pixel] = fluxsmoothTScalar(prev, curr, next, threshold);
                 }
             }
         }
 
-        fn smoothTScalar(prev: T, curr: T, next: T, threshold: u32) T {
+        fn fluxsmoothTScalar(prev: T, curr: T, next: T, threshold: u32) T {
             // If both pixels from the corresponding previous and next frames
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
@@ -150,31 +150,31 @@ fn FluxSmooth(comptime T: type) type {
             }
         }
 
-        test smoothTScalar {
+        test fluxsmoothTScalar {
             const threshold: u32 = 99;
             const t: u32 = if (cmn.isInt(T)) threshold else @bitCast(@as(f32, @floatFromInt(threshold)));
 
             // Pixels are not both darker or ligher, so pixel stays the same.
-            try std.testing.expectEqual(1, smoothTScalar(0, 1, 2, t));
+            try std.testing.expectEqual(1, fluxsmoothTScalar(0, 1, 2, t));
 
             if (cmn.isInt(T)) {
                 // Both pixels darker.
-                try std.testing.expectEqual(4, smoothTScalar(1, 11, 1, t));
+                try std.testing.expectEqual(4, fluxsmoothTScalar(1, 11, 1, t));
                 // Test rounding
-                try std.testing.expectEqual(5, smoothTScalar(1, 11, 2, t));
+                try std.testing.expectEqual(5, fluxsmoothTScalar(1, 11, 2, t));
 
                 // Both pixels brighter
-                try std.testing.expectEqual(4, smoothTScalar(10, 1, 2, t));
+                try std.testing.expectEqual(4, fluxsmoothTScalar(10, 1, 2, t));
                 // Test rounding
-                try std.testing.expectEqual(5, smoothTScalar(10, 1, 3, t));
+                try std.testing.expectEqual(5, fluxsmoothTScalar(10, 1, 3, t));
             } else {
                 // Both pixels darker.
-                try std.testing.expectApproxEqAbs(4.33, smoothTScalar(1, 11, 1, t), 0.01);
-                try std.testing.expectApproxEqAbs(4.66, smoothTScalar(1, 11, 2, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTScalar(1, 11, 1, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTScalar(1, 11, 2, t), 0.01);
 
                 // Both pixels brigher.
-                try std.testing.expectApproxEqAbs(4.33, smoothTScalar(10, 1, 2, t), 0.01);
-                try std.testing.expectApproxEqAbs(4.66, smoothTScalar(10, 1, 3, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTScalar(10, 1, 2, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTScalar(10, 1, 3, t), 0.01);
             }
         }
 
@@ -186,11 +186,11 @@ fn FluxSmooth(comptime T: type) type {
                 var x: usize = 0;
                 while (x < width_simd) : (x += vec_size) {
                     const offset = row * width + x;
-                    smoothTVector(srcp, dstp, offset, threshold);
+                    fluxsmoothTVector(srcp, dstp, offset, threshold);
                 }
 
                 if (width_simd < width_simd) {
-                    smoothTVector(srcp, dstp, width - vec_size, threshold);
+                    fluxsmoothTVector(srcp, dstp, width - vec_size, threshold);
                 }
             }
         }
@@ -198,7 +198,7 @@ fn FluxSmooth(comptime T: type) type {
         // TODO: Add tests for this function.
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
-        fn smoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: u32) void {
+        fn fluxsmoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: u32) void {
             const vec_size = cmn.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -373,7 +373,7 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     }
 
     if (d.threshold < 0) {
-        vsapi.?.mapSetError.?(out, "SmoothT: temporal_threshold must be 0 or greater.");
+        vsapi.?.mapSetError.?(out, "FluxSmoothT: temporal_threshold must be 0 or greater.");
         vsapi.?.freeNode.?(d.node);
         return;
     }
@@ -382,8 +382,8 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         vsapi.?.freeNode.?(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "SmoothT: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "SmoothT: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "FluxSmoothT: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "FluxSmoothT: Plane specified twice."),
         }
         return;
     };

@@ -31,7 +31,7 @@ clip.set_output(0)
 if format not in ['f16', 'f32'] and get_depth(clip) != 32:
     flux = clip.flux.SmoothT(temporal_threshold=threshold)
 
-zsmooth = clip.zsmooth.SmoothT(temporal_threshold=threshold);
+zsmooth = clip.zsmooth.FluxSmoothT(temporal_threshold=threshold);
 
 match output:
     case 'flux':

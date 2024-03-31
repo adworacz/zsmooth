@@ -254,7 +254,7 @@ fn TemporalMedian(comptime T: type) type {
                         src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
                     }
                 }
-                defer for (&src_frames) |frame| vsapi.?.freeFrame.?(frame);
+                defer for (0..@intCast(diameter)) |i| vsapi.?.freeFrame.?(src_frames[i]);
 
                 const dst = vscmn.newVideoFrame(&d.process, src_frames[@intCast(d.radius)], d.vi, core, vsapi);
 

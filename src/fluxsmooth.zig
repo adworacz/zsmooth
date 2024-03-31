@@ -348,7 +348,7 @@ export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*c
     allocator.destroy(d);
 }
 
-pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
     var d: FluxSmoothData = undefined;
     var err: vs.MapPropertyError = undefined;
@@ -407,4 +407,8 @@ pub export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     };
 
     vsapi.?.createVideoFilter.?(out, "FluxSmooth", d.vi, getFrame, fluxSmoothFree, fm.Parallel, &deps, deps.len, data, core);
+}
+
+pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
+    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, null, plugin);
 }

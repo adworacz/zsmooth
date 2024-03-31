@@ -1107,7 +1107,7 @@ export fn removeGrainFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     allocator.destroy(d);
 }
 
-pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
     var d: RemoveGrainData = undefined;
 
@@ -1157,4 +1157,8 @@ pub export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
     };
 
     vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, getFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
+}
+
+pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
+    _ = vsapi.registerFunction.?("RemoveGrain", "clip:vnode;mode:int[]", "clip:vnode;", removeGrainCreate, null, plugin);
 }

@@ -331,7 +331,7 @@ export fn temporalMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
     allocator.destroy(d);
 }
 
-pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
     var d: TemporalMedianData = undefined;
     var err: vs.MapPropertyError = undefined;
@@ -381,4 +381,8 @@ pub export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     };
 
     vsapi.?.createVideoFilter.?(out, "TemporalMedian", d.vi, getFrame, temporalMedianFree, fm.Parallel, &deps, deps.len, data, core);
+}
+
+pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
+    _ = vsapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);
 }

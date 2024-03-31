@@ -181,11 +181,7 @@ fn TemporalSoften(comptime T: type) type {
                 }
                 src[i] = frame.ptr;
             }
-            defer {
-                for (0..diameter) |i| {
-                    testingAllocator.free(src[i][0..size]);
-                }
-            }
+            defer for (0..diameter) |i| testingAllocator.free(src[i][0..size]);
 
             const dstp_scalar = try testingAllocator.alloc(T, size);
             const dstp_vec = try testingAllocator.alloc(T, size);
@@ -303,7 +299,7 @@ export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
     allocator.destroy(d);
 }
 
-pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
     var d: TemporalSoftenData = undefined;
 
@@ -466,4 +462,8 @@ pub export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data:
     };
 
     vsapi.?.createVideoFilter.?(out, "TemporalSoften", d.vi, getFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
+}
+
+pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
+    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:int[]:opt;scenechange:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
 }

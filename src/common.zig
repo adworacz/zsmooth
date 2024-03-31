@@ -226,10 +226,3 @@ pub fn printf(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anyt
 //
 //     try std.testing.expectEqualStrings("Hello world", msg);
 // }
-
-/// Reports an error to the VS API and frees the input node;
-pub fn reportError(msg: []u8, vsapi: vs.API, out: vs.Map, node: vs.Node) void {
-    vsapi.?.mapSetError.?(out, msg);
-    vsapi.?.freeNode.?(node);
-    return;
-}

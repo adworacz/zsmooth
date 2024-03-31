@@ -233,11 +233,11 @@ fn FluxSmooth(comptime T: type) type {
 
             // (prev < curr and next < curr)
             // (prev > curr and next > curr)
-            const prevnextless = @select(bool, prevltcurr, nextltcurr, prevltcurr);
-            const prevnextmore = @select(bool, prevgtcurr, nextgtcurr, prevgtcurr);
+            const prevnextless = vec.andB(prevltcurr, nextltcurr);
+            const prevnextmore = vec.andB(prevgtcurr, nextgtcurr);
 
             // or
-            const mask_either = @select(bool, prevnextless, prevnextless, prevnextmore);
+            const mask_either = vec.orB(prevnextless, prevnextmore);
 
             // max-min is about same perf as saturating subtraction on laptop
             // TODO: Try on desktop.

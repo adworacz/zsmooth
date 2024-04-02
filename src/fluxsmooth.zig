@@ -22,6 +22,11 @@ const st = vs.SampleType;
 // specifically the filter data between the Create and GetFrame functions.
 const allocator = std.heap.c_allocator;
 
+const FluxSmoothMode = enum {
+    Temporal,
+    SpatialTemporal,
+};
+
 const FluxSmoothData = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
@@ -29,13 +34,14 @@ const FluxSmoothData = struct {
 
     // The temporal radius from which we'll build a median.
     // threshold: [3]u32,
-    threshold: u32,
+    temporal_threshold: u32,
+    spatial_threshold: u32,
 
     // Which planes we will process.
     process: [3]bool,
 };
 
-fn FluxSmooth(comptime T: type) type {
+fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
     return struct {
         /// Signed Arithmetic Type - used in signed arithmetic to safely hold
         /// the values (particularly integers) without overflowing when doing
@@ -59,7 +65,7 @@ fn FluxSmooth(comptime T: type) type {
             else => unreachable,
         };
 
-        fn processPlaneScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
+        fn processPlaneTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * width + column;
@@ -68,16 +74,24 @@ fn FluxSmooth(comptime T: type) type {
                     const curr = srcp[1][current_pixel];
                     const next = srcp[2][current_pixel];
 
-                    dstp[current_pixel] = fluxsmoothTScalar(prev, curr, next, threshold);
+                    dstp[current_pixel] = fluxsmoothTemporalScalar(prev, curr, next, threshold);
                 }
             }
         }
 
-        fn fluxsmoothTScalar(prev: T, curr: T, next: T, threshold: u32) T {
+        fn fluxsmoothTemporalScalar(prev: T, curr: T, next: T, threshold: u32) T {
             // If both pixels from the corresponding previous and next frames
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (cmn.isInt(T)) {
+                    // Used for rounding of integer formats.
+                    // Calculated thusly:
+                    // magic_numbers[1] = 32767;
+                    // for (int i = 2; i < 4; i++) {
+                    //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
+                    // }
+                    const magic_numbers = [_]u16{ 0, 32767, 16384, 10923 };
+
                     const prevdiff = @max(prev, curr) - @min(prev, curr);
                     const nextdiff = @max(next, curr) - @min(next, curr);
 
@@ -100,31 +114,18 @@ fn FluxSmooth(comptime T: type) type {
                         count += 1;
                     }
 
-                    if (T == u8) {
-                        // Used for rounding of integer formats.
-                        const magic_numbers = [_]UAT{ 0, 32767, 16384, 10923 };
+                    // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
+                    //
+                    // The sum is multiplied by 2 so that the division is always by an even number,
+                    // thus rounding can always be done by adding half the divisor
+                    const safeT = if (T == u8) u32 else u64;
+                    return @intCast(((sum * 2 + count) * @as(safeT, magic_numbers[count]) >> 16));
+                    //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
 
-                        // Calculated thusly:
-                        // magic_numbers[1] = 32767;
-                        // for (int i = 2; i < 4; i++) {
-                        //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
-                        // }
-
-                        // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
-                        //
-                        // The sum is multiplied by 2 so that the division is always by an even number,
-                        // thus rounding can always be done by adding half the divisor
-                        return @intCast(((sum * 2 + count) * @as(u32, magic_numbers[count]) >> 16));
-                        //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
-
-                        // Performance note:
-                        // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
-                        // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
-                        // to another leap in performance.
-                    } else {
-                        const magic_numbers = [_]UAT{ 0, 262144, 131072, 87381 };
-                        return @intCast(((sum * 2 + count) * @as(u64, magic_numbers[count]) >> 19));
-                    }
+                    // Performance note:
+                    // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
+                    // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
+                    // to another leap in performance.
                 } else {
                     // Floating point
                     const prevdiff = prev - curr;
@@ -151,35 +152,35 @@ fn FluxSmooth(comptime T: type) type {
             }
         }
 
-        test fluxsmoothTScalar {
+        test fluxsmoothTemporalScalar {
             const threshold: u32 = 99;
             const t: u32 = if (cmn.isInt(T)) threshold else @bitCast(@as(f32, @floatFromInt(threshold)));
 
             // Pixels are not both darker or ligher, so pixel stays the same.
-            try std.testing.expectEqual(1, fluxsmoothTScalar(0, 1, 2, t));
+            try std.testing.expectEqual(1, fluxsmoothTemporalScalar(0, 1, 2, t));
 
             if (cmn.isInt(T)) {
                 // Both pixels darker.
-                try std.testing.expectEqual(4, fluxsmoothTScalar(1, 11, 1, t));
+                try std.testing.expectEqual(4, fluxsmoothTemporalScalar(1, 11, 1, t));
                 // Test rounding
-                try std.testing.expectEqual(5, fluxsmoothTScalar(1, 11, 2, t));
+                try std.testing.expectEqual(5, fluxsmoothTemporalScalar(1, 11, 2, t));
 
                 // Both pixels brighter
-                try std.testing.expectEqual(4, fluxsmoothTScalar(10, 1, 2, t));
+                try std.testing.expectEqual(4, fluxsmoothTemporalScalar(10, 1, 2, t));
                 // Test rounding
-                try std.testing.expectEqual(5, fluxsmoothTScalar(10, 1, 3, t));
+                try std.testing.expectEqual(5, fluxsmoothTemporalScalar(10, 1, 3, t));
             } else {
                 // Both pixels darker.
-                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTScalar(1, 11, 1, t), 0.01);
-                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTScalar(1, 11, 2, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTemporalScalar(1, 11, 1, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTemporalScalar(1, 11, 2, t), 0.01);
 
                 // Both pixels brigher.
-                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTScalar(10, 1, 2, t), 0.01);
-                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTScalar(10, 1, 3, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.33, fluxsmoothTemporalScalar(10, 1, 2, t), 0.01);
+                try std.testing.expectApproxEqAbs(4.66, fluxsmoothTemporalScalar(10, 1, 3, t), 0.01);
             }
         }
 
-        fn processPlaneVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
+        fn processPlaneTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: u32) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -282,6 +283,137 @@ fn FluxSmooth(comptime T: type) type {
             vec.store(VecType, dstp, offset, selected_result);
         }
 
+        fn processPlaneSpatialTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, temporal_threshold: u32, spatial_threshold: u32) void {
+            // Copy the first line
+            @memcpy(dstp, srcp[1][0..width]);
+
+            for (1..height - 1) |row| {
+                // Copy the pixel at the beginning of the line.
+                dstp[(row * width)] = srcp[1][(row * width)];
+
+                for (1..width - 1) |column| {
+                    const current_pixel = row * width + column;
+
+                    const prev = srcp[0][current_pixel];
+                    const curr = srcp[1][current_pixel];
+                    const next = srcp[2][current_pixel];
+
+                    const rowPrev = ((row - 1) * width);
+                    const rowCurr = ((row) * width);
+                    const rowNext = ((row + 1) * width);
+
+                    //TODO: Trying using parameters instead of an array.
+                    const neighbors = [_]T{
+                        // Top 3 neighbors
+                        srcp[1][rowPrev + column - 1],
+                        srcp[1][rowPrev + column],
+                        srcp[1][rowPrev + column + 1],
+
+                        // Side neighbors
+                        srcp[1][rowCurr + column - 1],
+                        srcp[1][rowCurr + column + 1],
+
+                        // Bottom 3 neighbors
+                        srcp[1][rowNext + column - 1],
+                        srcp[1][rowNext + column],
+                        srcp[1][rowNext + column + 1],
+                    };
+
+                    dstp[current_pixel] = fluxsmoothSpatialTemporalScalar(prev, curr, next, neighbors, temporal_threshold, spatial_threshold);
+                }
+
+                // Copy the pixel at the end of the line.
+                dstp[(row * width) + (width - 1)] = srcp[1][(row * width) + (width - 1)];
+            }
+
+            // Copy the last line.
+            const lastLine = ((height - 1) * width);
+            @memcpy(dstp[lastLine..], srcp[1][lastLine..(lastLine + width)]);
+        }
+
+        // TODO: Add tests.
+        fn fluxsmoothSpatialTemporalScalar(prev: T, curr: T, next: T, neighbors: [8]T, temporal_threshold: u32, spatial_threshold: u32) T {
+            if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
+                if (cmn.isInt(T)) {
+                    // Used for rounding of integer formats.
+                    // Calculated thusly:
+                    // magic_numbers[1] = 32767;
+                    // for (int i = 2; i < 12; i++) {
+                    //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
+                    // }
+                    const magic_numbers = [_]u16{ 0, 32767, 16384, 10923, 8192, 6554, 5461, 4681, 4096, 3641, 3277, 2979 };
+
+                    const prevdiff = @max(prev, curr) - @min(prev, curr);
+                    const nextdiff = @max(next, curr) - @min(next, curr);
+
+                    var sum: UAT = curr;
+                    var count: u8 = 1;
+
+                    if (prevdiff <= temporal_threshold) {
+                        sum += prev;
+                        count += 1;
+                    }
+
+                    if (nextdiff <= temporal_threshold) {
+                        sum += next;
+                        count += 1;
+                    }
+
+                    inline for (neighbors) |n| {
+                        const diff = @max(n, curr) - @min(n, curr);
+
+                        if (diff <= spatial_threshold) {
+                            sum += n;
+                            count += 1;
+                        }
+                    }
+
+                    // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
+                    //
+                    // The sum is multiplied by 2 so that the division is always by an even number,
+                    // thus rounding can always be done by adding half the divisor
+                    const safeT = if (T == u8) u32 else u64;
+                    return @intCast(((sum * 2 + count) * @as(safeT, magic_numbers[count]) >> 16));
+                    //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+
+                    // Performance note:
+                    // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
+                    // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
+                    // to another leap in performance.
+                } else {
+                    // Floating point
+                    const prevdiff = prev - curr;
+                    const nextdiff = next - curr;
+                    const temporal_threshold_f: f32 = @bitCast(temporal_threshold);
+                    const spatial_threshold_f: f32 = @bitCast(spatial_threshold);
+
+                    var sum: UAT = curr;
+                    var count: T = 1;
+
+                    if (@abs(prevdiff) <= temporal_threshold_f) {
+                        sum += prev;
+                        count += 1;
+                    }
+
+                    if (@abs(nextdiff) <= temporal_threshold_f) {
+                        sum += next;
+                        count += 1;
+                    }
+
+                    inline for (neighbors) |n| {
+                        if (@abs(n - curr) <= spatial_threshold_f) {
+                            sum += n;
+                            count += 1;
+                        }
+                    }
+
+                    return sum / count;
+                }
+            } else {
+                return curr;
+            }
+        }
+
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -330,7 +462,10 @@ fn FluxSmooth(comptime T: type) type {
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
                     // processPlaneScalar(srcp, dstp, width, height, d.threshold);
-                    processPlaneVector(srcp, dstp, width, height, d.threshold);
+                    switch (mode) {
+                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, d.temporal_threshold),
+                        .SpatialTemporal => processPlaneSpatialTemporalScalar(srcp, dstp, width, height, d.temporal_threshold, d.spatial_threshold),
+                    }
                 }
 
                 return dst;
@@ -349,42 +484,84 @@ export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*c
 }
 
 export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
-    _ = user_data;
+    const mode: FluxSmoothMode = @as(*FluxSmoothMode, @ptrCast(user_data)).*;
+
     var d: FluxSmoothData = undefined;
     var err: vs.MapPropertyError = undefined;
+    const func_name = if (mode == .Temporal) "FluxSmoothT" else "FluxSmoothST";
 
     d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
     d.vi = vsapi.?.getVideoInfo.?(d.node);
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "FluxSmooth: only constant format  input supported");
+        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: only constant format input supported", .{func_name}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }
 
     // TODO: Scale threshold based on bit depth.
+    var temporal_threshold: i32 = 0;
+    var spatial_threshold: i32 = 0;
+
     if (d.vi.format.sampleType == st.Float) {
         if (vsh.mapGetN(f32, in, "temporal_threshold", 0, vsapi)) |threshold| {
-            d.threshold = @bitCast(threshold);
+            temporal_threshold = @bitCast(threshold);
         } else {
-            d.threshold = @bitCast(cmn.scaleToSample(d.vi.format, 7));
+            temporal_threshold = @bitCast(cmn.scaleToSample(d.vi.format, 7));
         }
     } else {
-        d.threshold = vsh.mapGetN(u32, in, "temporal_threshold", 0, vsapi) orelse 7;
+        temporal_threshold = vsh.mapGetN(i32, in, "temporal_threshold", 0, vsapi) orelse 7;
     }
 
-    if (d.threshold < 0) {
-        vsapi.?.mapSetError.?(out, "FluxSmoothT: temporal_threshold must be 0 or greater.");
-        vsapi.?.freeNode.?(d.node);
-        return;
+    if (d.vi.format.sampleType == st.Float) {
+        if (vsh.mapGetN(f32, in, "spatial_threshold", 0, vsapi)) |threshold| {
+            spatial_threshold = @bitCast(threshold);
+        } else {
+            spatial_threshold = @bitCast(cmn.scaleToSample(d.vi.format, 7));
+        }
+    } else {
+        spatial_threshold = vsh.mapGetN(i32, in, "spatial_threshold", 0, vsapi) orelse 7;
     }
+
+    if (mode == .Temporal) {
+        if (temporal_threshold < 0) {
+            vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: temporal_threshold must be 0 or greater.", .{func_name}).ptr);
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+    } else {
+        // Spatial Temporal mode allows thresholds to be -1 to indicate no smoothing should occur.
+        // TODO: Handle -1 tresholds properly - right now my use of u32 for the d.*_threshold type doesn't work.
+        //
+        if (temporal_threshold < -1) {
+            vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: temporal_threshold must be -1 or greater.", .{func_name}).ptr);
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+
+        if (spatial_threshold < -1) {
+            vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: spatial_threshold must be -1 or greater.", .{func_name}).ptr);
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+
+        if (temporal_threshold == -1 and spatial_threshold == -1) {
+            vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: At least one threshold must be greater than -1", .{func_name}).ptr);
+            vsapi.?.freeNode.?(d.node);
+            return;
+        }
+    }
+
+    //TODO: This int casting might break float handling.
+    d.temporal_threshold = @intCast(temporal_threshold);
+    d.spatial_threshold = @intCast(spatial_threshold);
 
     d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
         vsapi.?.freeNode.?(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "FluxSmoothT: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "FluxSmoothT: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Plane index out of range.", .{func_name}).ptr),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Plane specified twice.", .{func_name}).ptr),
         }
         return;
     };
@@ -399,10 +576,16 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &FluxSmooth(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16).getFrame else &FluxSmooth(f16).getFrame,
-        4 => &FluxSmooth(f32).getFrame,
+    // Runtime/comptime jiggery pokery to select an optimized function at runtime.
+    const getFrame = if (mode == .Temporal) switch (d.vi.format.bytesPerSample) {
+        1 => &FluxSmooth(u8, .Temporal).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16, .Temporal).getFrame else &FluxSmooth(f16, .Temporal).getFrame,
+        4 => &FluxSmooth(f32, .Temporal).getFrame,
+        else => unreachable,
+    } else switch (d.vi.format.bytesPerSample) {
+        1 => &FluxSmooth(u8, .SpatialTemporal).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &FluxSmooth(u16, .SpatialTemporal).getFrame else &FluxSmooth(f16, .SpatialTemporal).getFrame,
+        4 => &FluxSmooth(f32, .SpatialTemporal).getFrame,
         else => unreachable,
     };
 
@@ -410,5 +593,6 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, null, plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:int:opt;spatial_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
 }

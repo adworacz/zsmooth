@@ -227,27 +227,22 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // https://github.com/ziglang/zig/issues/14306
             //
             // Workaround
-            const prevltcurr = prev < curr;
-            const prevgtcurr = prev > curr;
-            const nextltcurr = next < curr;
-            const nextgtcurr = next > curr;
-
             // (prev < curr and next < curr)
             // (prev > curr and next > curr)
-            const prevnextless = vec.andB(prevltcurr, nextltcurr);
-            const prevnextmore = vec.andB(prevgtcurr, nextgtcurr);
+            const prevnextless = vec.andB(prev < curr, next < curr);
+            const prevnextmore = vec.andB(prev > curr, next > curr);
 
             // or
             const mask_either = vec.orB(prevnextless, prevnextmore);
 
             // max-min is about same perf as saturating subtraction on laptop
             // TODO: Try on desktop.
-            const prevdiff = if (cmn.isInt(T))
+            const prevabsdiff = if (cmn.isInt(T))
                 @max(prev, curr) - @min(prev, curr)
             else
                 @abs(prev - curr);
 
-            const nextdiff = if (cmn.isInt(T))
+            const nextabsdiff = if (cmn.isInt(T))
                 @max(next, curr) - @min(next, curr)
             else
                 @abs(next - curr);
@@ -255,17 +250,17 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             var sum: @Vector(vec_size, UAT) = curr;
             var count = ones;
 
-            // TODO: Try threshold > prevdiff to see if comparison makes a difference.
+            // TODO: Try threshold > prevabsdiff to see if comparison makes a difference.
             // Seems about the same speed on laptop.
-            sum += @select(T, prevdiff <= threshold, prev, zeroes);
-            count += @select(T, prevdiff <= threshold, ones, zeroes);
-            // sum += @select(T, threshold > prevdiff, prev, zeroes);
-            // count += @select(T, threshold > prevdiff, ones, zeroes);
+            sum += @select(T, prevabsdiff <= threshold, prev, zeroes);
+            count += @select(T, prevabsdiff <= threshold, ones, zeroes);
+            // sum += @select(T, threshold > prevabsdiff, prev, zeroes);
+            // count += @select(T, threshold > prevabsdiff, ones, zeroes);
 
-            sum += @select(T, nextdiff <= threshold, next, zeroes);
-            count += @select(T, nextdiff <= threshold, ones, zeroes);
-            // sum += @select(T, threshold > nextdiff, next, zeroes);
-            // count += @select(T, threshold > nextdiff, ones, zeroes);
+            sum += @select(T, nextabsdiff <= threshold, next, zeroes);
+            count += @select(T, nextabsdiff <= threshold, ones, zeroes);
+            // sum += @select(T, threshold > nextabsdiff, next, zeroes);
+            // count += @select(T, threshold > nextabsdiff, ones, zeroes);
 
             const result: VecType = result: {
                 if (cmn.isFloat(T)) {
@@ -414,6 +409,145 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
+        fn processPlaneSpatialTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, temporal_threshold: u32, spatial_threshold: u32) void {
+            const vec_size = vec.getVecSize(T);
+            const width_simd = width / vec_size * vec_size;
+
+            // Copy the first line
+            @memcpy(dstp, srcp[1][0..width]);
+
+            for (1..height - 1) |row| {
+
+                // TODO: Experiment with aligning this - starting
+                // off by one pixel may hurt performance.
+                var column: usize = 0;
+                // for (1..width - 1) |column| {
+                while (column < width_simd) : (column += vec_size) {
+                    const offset = row * width + column;
+                    fluxsmoothSTVector(srcp, dstp, offset, width, temporal_threshold, spatial_threshold);
+                }
+
+                if (width_simd < width) {
+                    fluxsmoothSTVector(srcp, dstp, width - vec_size, width, temporal_threshold, spatial_threshold);
+                }
+
+                // Copy the first and last pixels.
+                // We do this at the end in order to keep the vector
+                // operations aligned. We just throw away 2 of the values.
+
+                // Copy the pixel at the beginning of the line.
+                dstp[(row * width)] = srcp[1][(row * width)];
+
+                // Copy the pixel at the end of the line.
+                dstp[(row * width) + (width - 1)] = srcp[1][(row * width) + (width - 1)];
+            }
+
+            // Copy the last line.
+            const lastLine = ((height - 1) * width);
+            @memcpy(dstp[lastLine..], srcp[1][lastLine..(lastLine + width)]);
+        }
+
+        // TODO: Add tests for this function.
+        fn fluxsmoothSTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, width: usize, _temporal_threshold: u32, _spatial_threshold: u32) void {
+            const vec_size = vec.getVecSize(T);
+            const VecType = @Vector(vec_size, T);
+
+            const zeroes: VecType = @splat(0);
+            const ones: VecType = @splat(1);
+            const temporal_threshold: VecType = switch (T) {
+                u8, u16 => @splat(@intCast(_temporal_threshold)),
+                f16 => @splat(@floatCast(@as(f32, @bitCast(_temporal_threshold)))),
+                f32 => @splat(@bitCast(_temporal_threshold)),
+                else => unreachable,
+            };
+
+            const spatial_threshold: VecType = switch (T) {
+                u8, u16 => @splat(@intCast(_spatial_threshold)),
+                f16 => @splat(@floatCast(@as(f32, @bitCast(_spatial_threshold)))),
+                f32 => @splat(@bitCast(_spatial_threshold)),
+                else => unreachable,
+            };
+
+            const prev = vec.load(VecType, srcp[0], offset);
+            const curr = vec.load(VecType, srcp[1], offset);
+            const next = vec.load(VecType, srcp[2], offset);
+
+            const rowPrev = offset - width;
+            const rowCurr = offset;
+            const rowNext = offset + width;
+
+            const neighbors = [_]VecType{
+                vec.load(VecType, srcp[1], rowPrev - 1),
+                vec.load(VecType, srcp[1], rowPrev),
+                vec.load(VecType, srcp[1], rowPrev + 1),
+
+                vec.load(VecType, srcp[1], rowCurr - 1),
+                vec.load(VecType, srcp[1], rowCurr + 1),
+
+                vec.load(VecType, srcp[1], rowNext - 1),
+                vec.load(VecType, srcp[1], rowNext),
+                vec.load(VecType, srcp[1], rowNext + 1),
+            };
+
+            //if ((prev < curr and next < curr) or (prev > curr and next > curr))
+            // (prev < curr and next < curr)
+            // (prev > curr and next > curr)
+            const prevnextless = vec.andB(prev < curr, next < curr);
+            const prevnextmore = vec.andB(prev > curr, next > curr);
+
+            // or
+            const mask_either = vec.orB(prevnextless, prevnextmore);
+
+            // TODO: commonize this absdiff logic, and support
+            // scalars and vectors.
+            const prevabsdiff = if (cmn.isInt(T))
+                @max(prev, curr) - @min(prev, curr)
+            else
+                @abs(prev - curr);
+
+            const nextabsdiff = if (cmn.isInt(T))
+                @max(next, curr) - @min(next, curr)
+            else
+                @abs(next - curr);
+
+            var sum: @Vector(vec_size, UAT) = curr;
+            var count = ones;
+
+            // if prevabsdiff <= temporal_threshold; sum += prev; count += 1;
+            sum += @select(T, prevabsdiff <= temporal_threshold, prev, zeroes);
+            count += @select(T, prevabsdiff <= temporal_threshold, ones, zeroes);
+
+            // if nextabsdiff <= temporal_threshold; sum += next; count += 1;
+            sum += @select(T, nextabsdiff <= temporal_threshold, next, zeroes);
+            count += @select(T, nextabsdiff <= temporal_threshold, ones, zeroes);
+
+            // if neighbor <= neighbor_threshold; sum += neighbor; count += 1;
+            inline for (neighbors) |n| {
+                const nabsdiff = if (cmn.isInt(T))
+                    @max(n, curr) - @min(n, curr)
+                else
+                    @abs(n - curr);
+
+                sum += @select(T, nabsdiff <= spatial_threshold, n, zeroes);
+                count += @select(T, nabsdiff <= spatial_threshold, ones, zeroes);
+            }
+
+            const result: VecType = result: {
+                if (cmn.isFloat(T)) {
+                    break :result sum / count;
+                }
+                const sum_f: @Vector(vec_size, f32) = @floatFromInt(sum);
+                const count_f: @Vector(vec_size, f32) = @floatFromInt(count);
+                const round_f: @Vector(vec_size, f32) = @splat(0.5);
+
+                break :result @intFromFloat((sum_f / count_f) + round_f);
+            };
+
+            const selected_result = @select(T, mask_either, result, curr);
+
+            vec.store(VecType, dstp, offset, selected_result);
+        }
+
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
@@ -461,10 +595,9 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    // processPlaneScalar(srcp, dstp, width, height, d.threshold);
                     switch (mode) {
                         .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, d.temporal_threshold),
-                        .SpatialTemporal => processPlaneSpatialTemporalScalar(srcp, dstp, width, height, d.temporal_threshold, d.spatial_threshold),
+                        .SpatialTemporal => processPlaneSpatialTemporalVector(srcp, dstp, width, height, d.temporal_threshold, d.spatial_threshold),
                     }
                 }
 
@@ -529,6 +662,9 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
             vsapi.?.freeNode.?(d.node);
             return;
         }
+
+        // TODO: validate that thresholds are not greater than 1.0 if the sample type
+        // is float.
     } else {
         // Spatial Temporal mode allows thresholds to be -1 to indicate no smoothing should occur.
         // TODO: Handle -1 tresholds properly - right now my use of u32 for the d.*_threshold type doesn't work.
@@ -589,7 +725,7 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "FluxSmooth", d.vi, getFrame, fluxSmoothFree, fm.Parallel, &deps, deps.len, data, core);
+    vsapi.?.createVideoFilter.?(out, func_name.ptr, d.vi, getFrame, fluxSmoothFree, fm.Parallel, &deps, deps.len, data, core);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

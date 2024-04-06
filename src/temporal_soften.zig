@@ -320,45 +320,46 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.vi.format.colorFamily != vs.ColorFamily.RGB and
         d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
-        vsapi.?.mapSetError.?(out, "TemporalSoften: only constant format YUV, RGB or Grey input is supported");
-        vsapi.?.freeNode.?(d.node);
-        return;
+        return vscmn.reportError("TemporalSoften: only constant format YUV, RGB or Grey input is supported", vsapi, out, d.node);
     }
 
     // Check radius param
     if (vsh.mapGetN(i32, in, "radius", 0, vsapi)) |radius| {
         if ((radius < 1) or (radius > MAX_RADIUS)) {
-            vsapi.?.mapSetError.?(out, "TemporalSoften: Radius must be between 1 and 7 (inclusive)");
-            vsapi.?.freeNode.?(d.node);
-            return;
+            return vscmn.reportError("TemporalSoften: Radius must be between 1 and 7 (inclusive)", vsapi, out, d.node);
         }
         d.radius = @intCast(radius);
     } else {
         d.radius = 4;
     }
 
+    const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+
     // Check threshold param
     d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
-        [_]u32{ cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 4) }
+        [_]u32{ cmn.scaleToFormat(d.vi.format, 4, 0), cmn.scaleToFormat(d.vi.format, 4, 1), cmn.scaleToFormat(d.vi.format, 4, 2) }
     else
-        [_]u32{ cmn.scaleToSample(d.vi.format, 4), cmn.scaleToSample(d.vi.format, 8), cmn.scaleToSample(d.vi.format, 8) };
+        [_]u32{ cmn.scaleToFormat(d.vi.format, 4, 0), cmn.scaleToFormat(d.vi.format, 8, 1), cmn.scaleToFormat(d.vi.format, 8, 2) };
 
     for (0..3) |i| {
         // Supporting int and float here at runtime is surprisingly complex. (comptime would be a breeze)
         // Any ideas for how to clean up this code are quite welcome.
         if (d.vi.format.sampleType == st.Float) {
             // Float support
-            if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |t| {
+            if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
+                if (scalep and (_threshold < 0 or _threshold > 255)) {
+                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
+                }
+
+                const threshold = if (scalep) @as(f32, @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(_threshold), i))) else _threshold;
+
                 const formatMaximum: f32 = @bitCast(cmn.getFormatMaximum(d.vi.format, i > 0));
                 const formatMinimum: f32 = @bitCast(cmn.getFormatMinimum(d.vi.format, i > 0));
 
-                if ((t < formatMinimum or t > formatMaximum)) {
-                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, t, formatMinimum, formatMaximum }).ptr);
-                    vsapi.?.freeNode.?(d.node);
-                    return;
+                if ((threshold < formatMinimum or threshold > formatMaximum)) {
+                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
                 }
-                // TODO: Add scalep support.
-                d.threshold[i] = @bitCast(t);
+                d.threshold[i] = @bitCast(threshold);
             } else {
                 // No threshold value specified for this index.
                 if (i > 0) {
@@ -367,17 +368,21 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
             }
         } else {
             // Integer support.
-            if (vsh.mapGetN(i64, in, "threshold", @intCast(i), vsapi)) |t| {
+            if (vsh.mapGetN(i32, in, "threshold", @intCast(i), vsapi)) |threshold| {
                 const formatMaximum = cmn.getFormatMaximum(d.vi.format, false); // Integer formats don't care about chroma.
                 const formatMinimum = cmn.getFormatMinimum(d.vi.format, false); // Integer formats don't care about chroma.
 
-                if ((t < formatMinimum or t > formatMaximum)) {
-                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, t, formatMinimum, formatMaximum }).ptr);
-                    vsapi.?.freeNode.?(d.node);
-                    return;
+                if ((threshold < formatMinimum or threshold > formatMaximum)) {
+                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
                 }
+
+                if (scalep and (threshold < 0 or threshold > 255)) {
+                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{threshold}), vsapi, out, d.node);
+                }
+
                 // TODO: Add scalep support.
-                d.threshold[i] = @intCast(t);
+                // d.threshold[i] = @intCast(threshold);
+                d.threshold[i] = if (scalep) cmn.scaleToFormat(d.vi.format, @intCast(threshold), i) else @intCast(threshold);
             } else {
                 // No threshold value specified for this index.
                 if (i > 0) {
@@ -388,22 +393,16 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     }
 
     if (d.threshold[0] == 0 and (d.vi.format.colorFamily == vs.ColorFamily.RGB or d.vi.format.colorFamily == vs.ColorFamily.Gray)) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften: threshold at index 0 must not be 0 when input is RGB or Gray");
-        vsapi.?.freeNode.?(d.node);
-        return;
+        return vscmn.reportError("TemporalSoften: threshold at index 0 must not be 0 when input is RGB or Gray", vsapi, out, d.node);
     }
 
     if (d.threshold[0] == 0 and d.threshold[1] == 0 and d.threshold[2] == 0) {
-        vsapi.?.mapSetError.?(out, "TemporalSoften: All thresholds cannot be 0.");
-        vsapi.?.freeNode.?(d.node);
-        return;
+        return vscmn.reportError("TemporalSoften: All thresholds cannot be 0.", vsapi, out, d.node);
     }
 
     if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {
         if (scenechange < 0 or scenechange > 254) {
-            vsapi.?.mapSetError.?(out, "TemporalSoften: scenechange must be between 0 and 254 (inclusive)");
-            vsapi.?.freeNode.?(d.node);
-            return;
+            return vscmn.reportError("TemporalSoften: scenechange must be between 0 and 254 (inclusive)", vsapi, out, d.node);
         }
         d.scenechange = @intCast(scenechange);
     } else {
@@ -412,9 +411,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     if (d.scenechange > 0) {
         if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
-            vsapi.?.mapSetError.?(out, "TemporalSoften: Scene change support does not work with RGB.");
-            vsapi.?.freeNode.?(d.node);
-            return;
+            return vscmn.reportError("TemporalSoften: Scene change support does not work with RGB.", vsapi, out, d.node);
         }
 
         // TODO: Support more scene change plugins via custom scene change property specification.
@@ -438,9 +435,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
                 return;
             }
         } else {
-            vsapi.?.mapSetError.?(out, "TemporalSoften: Miscellaneous filters plugin is required in order to use scene change detection.");
-            vsapi.?.freeNode.?(d.node);
-            return;
+            return vscmn.reportError("TemporalSoften: Miscellaneous filters plugin is required in order to use scene change detection.", vsapi, out, d.node);
         }
     }
 
@@ -465,5 +460,5 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:int[]:opt;scenechange:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:int[]:opt;scenechange:int:opt;scalep:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
 }

@@ -63,8 +63,8 @@ pub fn normalizePlanes(format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*cons
 }
 
 /// Reports an error to the VS API and frees the input node;
-pub fn reportError(msg: []u8, vsapi: vs.API, out: vs.Map, node: vs.Node) void {
-    vsapi.?.mapSetError.?(out, msg);
+pub fn reportError(msg: []const u8, vsapi: ?*const vs.API, out: ?*vs.Map, node: ?*vs.Node) void {
+    vsapi.?.mapSetError.?(out, msg.ptr);
     vsapi.?.freeNode.?(node);
     return;
 }

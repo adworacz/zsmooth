@@ -116,12 +116,7 @@ fn TemporalSoften(comptime T: type) type {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
-            const threshold_vec: VecType = switch (T) {
-                u8, u16 => @splat(threshold),
-                f16 => @splat(@floatCast(threshold)),
-                f32 => @splat(threshold),
-                else => unreachable,
-            };
+            const threshold_vec: VecType = @splat(threshold);
             const current_value_vec = vec.load(VecType, srcp[0], offset);
 
             var sum_vec: @Vector(vec_size, UAT) = current_value_vec;

@@ -64,14 +64,8 @@ fn TemporalSoften(comptime T: type) type {
             else => unreachable,
         };
 
-        fn process_plane_scalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, _threshold: u32) void {
+        fn processPlaneScalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: T) void {
             const half_frames: u8 = @divTrunc(frames, 2);
-
-            const threshold = switch (T) {
-                u8, u16 => @as(T, @intCast(_threshold)),
-                f16, f32 => @as(f32, @bitCast(_threshold)),
-                else => unreachable,
-            };
 
             for (0..height) |row| {
                 for (0..width) |column| {
@@ -100,7 +94,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: u32) void {
+        fn processPlaneVector(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -117,15 +111,15 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: u32) void {
+        fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: T) void {
             const half_frames: u8 = @divTrunc(frames, 2);
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
             const threshold_vec: VecType = switch (T) {
-                u8, u16 => @splat(@intCast(threshold)),
-                f16 => @splat(@floatCast(@as(f32, @bitCast(threshold)))),
-                f32 => @splat(@bitCast(threshold)),
+                u8, u16 => @splat(threshold),
+                f16 => @splat(@floatCast(threshold)),
+                f32 => @splat(threshold),
                 else => unreachable,
             };
             const current_value_vec = vec.load(VecType, srcp[0], offset);
@@ -188,8 +182,8 @@ fn TemporalSoften(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            process_plane_scalar(src, dstp_scalar.ptr, width, height, diameter, threshold);
-            process_plane_vec(src, dstp_vec.ptr, width, height, diameter, threshold);
+            processPlaneScalar(src, dstp_scalar.ptr, width, height, diameter, threshold);
+            processPlaneVector(src, dstp_vec.ptr, width, height, diameter, threshold);
 
             try testing.expectEqualDeep(expectedAverage, dstp_scalar);
             try testing.expectEqualDeep(expectedAverage, dstp_vec);
@@ -280,8 +274,15 @@ fn TemporalSoften(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    // process_plane_scalar(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[@intCast(plane)]);
-                    process_plane_vec(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, d.threshold[_plane]);
+                    const threshold: T = switch (T) {
+                        u8, u16 => @intCast(d.threshold[@intCast(plane)]),
+                        f16 => @floatCast(@as(f32, @bitCast(d.threshold[@intCast(plane)]))),
+                        f32 => @bitCast(d.threshold[@intCast(plane)]),
+                        else => unreachable,
+                    };
+
+                    // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
+                    processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
                 }
 
                 return dst;
@@ -380,8 +381,6 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
                     return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{threshold}), vsapi, out, d.node);
                 }
 
-                // TODO: Add scalep support.
-                // d.threshold[i] = @intCast(threshold);
                 d.threshold[i] = if (scalep) cmn.scaleToFormat(d.vi.format, @intCast(threshold), i) else @intCast(threshold);
             } else {
                 // No threshold value specified for this index.

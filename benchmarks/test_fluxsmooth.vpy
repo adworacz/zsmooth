@@ -3,7 +3,7 @@ from vstools import depth, get_depth
 
 core = vs.core
 
-threshold = 20 
+threshold = 20
 # threshold = 20 << 8
 # threshold = 20 / 255.0
 # format = 'u8'
@@ -32,8 +32,8 @@ if format not in ['f16', 'f32'] and get_depth(clip) != 32:
     # flux = clip.flux.SmoothT(temporal_threshold=threshold)
     flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
 
-# zsmooth = clip.zsmooth.FluxSmoothT(temporal_threshold=threshold);
-zsmooth = clip.zsmooth.FluxSmoothST(temporal_threshold=threshold, spatial_threshold=threshold);
+# zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);
+zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=threshold, spatial_threshold=threshold);
 
 match output:
     case 'flux':

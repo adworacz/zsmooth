@@ -623,28 +623,65 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         return;
     }
 
-    // TODO: Scale threshold based on bit depth.
+    // Optional parameter scaling.
+    const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+
     var temporal_threshold: i32 = 0;
     var spatial_threshold: i32 = 0;
 
+    // This is a bloody rats nest, but I haven't come up with a better way yet
+    // for handling default values, autoscaling, and normal paramter extraction.
     if (d.vi.format.sampleType == st.Float) {
         if (vsh.mapGetN(f32, in, "temporal_threshold", 0, vsapi)) |threshold| {
-            temporal_threshold = @bitCast(threshold);
+            if (scalep) {
+                if (threshold < 0 or threshold > 255) {
+                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                }
+                temporal_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(threshold), 0));
+            } else {
+                temporal_threshold = @bitCast(threshold);
+            }
         } else {
-            temporal_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0)); // TODO: This is broken with float YUV formats.
+            temporal_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0));
         }
-    } else {
-        temporal_threshold = vsh.mapGetN(i32, in, "temporal_threshold", 0, vsapi) orelse 7;
-    }
 
-    if (d.vi.format.sampleType == st.Float) {
         if (vsh.mapGetN(f32, in, "spatial_threshold", 0, vsapi)) |threshold| {
+            if (scalep) {
+                if (threshold < 0 or threshold > 255) {
+                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                } else {
+                    spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(threshold), 0));
+                }
+            }
             spatial_threshold = @bitCast(threshold);
         } else {
-            spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0)); // TODO: This is broken with float YUV formats.
+            spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0));
         }
     } else {
-        spatial_threshold = vsh.mapGetN(i32, in, "spatial_threshold", 0, vsapi) orelse 7;
+        temporal_threshold = vsh.mapGetN(i32, in, "temporal_threshold", 0, vsapi) orelse @intCast(cmn.scaleToFormat(d.vi.format, 7, 0));
+        spatial_threshold = vsh.mapGetN(i32, in, "spatial_threshold", 0, vsapi) orelse @intCast(cmn.scaleToFormat(d.vi.format, 7, 0));
+
+        if (scalep) {
+            if (temporal_threshold < 0 or temporal_threshold > 255) {
+                vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, temporal_threshold }).ptr);
+                vsapi.?.freeNode.?(d.node);
+                return;
+            } else {
+                temporal_threshold = @intCast(cmn.scaleToFormat(d.vi.format, @intCast(temporal_threshold), 0));
+            }
+
+            if (spatial_threshold < 0 or spatial_threshold > 255) {
+                vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, spatial_threshold }).ptr);
+                vsapi.?.freeNode.?(d.node);
+                return;
+            } else {
+                spatial_threshold = @intCast(cmn.scaleToFormat(d.vi.format, @intCast(spatial_threshold), 0));
+            }
+        }
     }
 
     if (mode == .Temporal) {
@@ -720,6 +757,6 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
-    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:int:opt;spatial_threshold:int:opt;planes:int[]:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:int:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:int:opt;spatial_threshold:int:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
 }

@@ -270,6 +270,59 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             vec.store(VecType, dstp, offset, selected_result);
         }
 
+        test fluxsmoothTVector {
+            const threshold: T = 99;
+
+            const size = vec.getVecSize(T);
+
+            const prev = try testingAllocator.alloc(T, size);
+            const curr = try testingAllocator.alloc(T, size);
+            const next = try testingAllocator.alloc(T, size);
+            const dstp = try testingAllocator.alloc(T, size);
+            const expected = try testingAllocator.alloc(T, size);
+
+            defer {
+                testingAllocator.free(prev);
+                testingAllocator.free(curr);
+                testingAllocator.free(next);
+                testingAllocator.free(dstp);
+                testingAllocator.free(expected);
+            }
+
+            const srcp = [3][*]const T{
+                prev.ptr,
+                curr.ptr,
+                next.ptr,
+            };
+
+            // Pixels are not both darker or ligher, so pixel stays the same.
+            @memset(prev, 0);
+            @memset(curr, 1);
+            @memset(next, 2);
+            @memset(dstp, 0);
+            @memset(expected, 1);
+            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            try std.testing.expectEqualDeep(expected, dstp);
+
+            // Both pixels darker.
+            @memset(prev, 1);
+            @memset(curr, 11);
+            @memset(next, 1);
+            @memset(dstp, 0);
+            @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
+            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            try std.testing.expectEqualDeep(expected, dstp);
+
+            // Both pixels lighter.
+            @memset(prev, 10);
+            @memset(curr, 1);
+            @memset(next, 2);
+            @memset(dstp, 0);
+            @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
+            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            try std.testing.expectEqualDeep(expected, dstp);
+        }
+
         fn processPlaneSpatialTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, temporal_threshold: T, spatial_threshold: T) void {
             // Copy the first line
             @memcpy(dstp, srcp[1][0..width]);

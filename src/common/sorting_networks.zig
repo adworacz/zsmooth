@@ -185,4 +185,28 @@ test "Sorting Networks - Median" {
     var input9 = [_]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     median(u8, input9.len, &input9);
     try std.testing.expectEqual(5, input9[4]);
+
+    var input11 = [_]u8{ 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input11.len, &input11);
+    try std.testing.expectEqual(6, input11[5]);
+
+    var input13 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input13.len, &input13);
+    try std.testing.expectEqual(7, input13[6]);
+
+    var input15 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input15.len, &input15);
+    try std.testing.expectEqual(8, input15[7]);
+
+    var input17 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input17.len, &input17);
+    try std.testing.expectEqual(9, input17[8]);
+
+    var input19 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input19.len, &input19);
+    try std.testing.expectEqual(10, input19[9]);
+
+    var input21 = [_]u8{ 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    median(u8, input21.len, &input21);
+    try std.testing.expectEqual(11, input21[10]);
 }

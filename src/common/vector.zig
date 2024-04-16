@@ -15,16 +15,23 @@ pub fn store(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize
     }
 }
 
-// Really seems to be faster for floats, with no real difference for 8/16 bit integer.
-// TODO needs more testing. Maybe *slightly* faster than @min/@max, but it's not a major difference.
-// Good testing is provided in TemporalMedian, Radius 4, with 8, 16, and 32 bit depth.
 // Inspired by https://github.com/zig-gamedev/zig-gamedev/blob/main/libs/zmath/src/zmath.zig#L744
 pub fn minFast(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
+    // Use a fast vector trick for floating point vectors,
+    // otherwise use the builtin @min
+    if (@typeInfo(@TypeOf(v0)) == .Vector and (@typeInfo(@TypeOf(v0)).Vector.child == f32 or @typeInfo(@TypeOf(v0)).Vector.child == f16)) {
+        return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
+    }
+    return @min(v0, v1);
 }
 
 pub fn maxFast(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
-    return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
+    // Use a fast vector trick for floating point vectors,
+    // otherwise use the builtin @max
+    if (@typeInfo(@TypeOf(v0)) == .Vector and (@typeInfo(@TypeOf(v0)).Vector.child == f32 or @typeInfo(@TypeOf(v0)).Vector.child == f16)) {
+        return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
+    }
+    return @max(v0, v1);
 }
 
 pub fn clampFast(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax) {

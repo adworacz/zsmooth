@@ -6,6 +6,7 @@ const testingAllocator = @import("std").testing.allocator;
 const cmn = @import("common.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
+const sort = @import("common/sorting_networks.zig");
 
 const math = std.math;
 const vs = vapoursynth.vapoursynth4;
@@ -88,137 +89,22 @@ fn TemporalMedian(comptime T: type) type {
                 src[r] = vec.load(VecType, srcp[r], offset);
             }
 
-            var result: VecType = undefined;
-            switch (diameter) {
-                3 => { // Radius 1
-                    result = median3(VecType, src[0], src[1], src[2]);
-                },
-                5 => { // Radius 2
-                    // https://github.com/HomeOfAviSynthPlusEvolution/neo_TMedian/blob/9b6a8931badeaa1ce7c1b692ddbf1f06620c0e93/src/tmedian_SIMD.hpp#L54
-                    // zig fmt: off
-                    swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
-                    swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]); // Throw src0 and src3
-                    // zig fmt: on
-
-                    result = median3(VecType, src[1], src[2], src[4]);
-                },
-                7 => { // Radius 3
-                    // zig fmt: off
-                    swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]);
-                    swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[3], &src[5]);
-
-                    swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[4], &src[5]);
-
-                    swap2(VecType, &src[0], &src[4]); swap2(VecType, &src[1], &src[5]); // Throw src0 src5
-                    swap2(VecType, &src[1], &src[3]); swap2(VecType, &src[2], &src[4]); // Throw src1 src4
-                    // zig fmt: on
-
-                    result = median3(VecType, src[2], src[3], src[6]);
-                },
-                9 => { // Radius 4
-                    // zig fmt: off
-                    swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
-                    swap2(VecType, &src[4], &src[5]); swap2(VecType, &src[6], &src[7]);
-
-                    swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]);
-                    swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[5], &src[7]);
-
-                    swap2(VecType, &src[0], &src[4]); swap2(VecType, &src[1], &src[2]); // Throw src0
-                    swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[3], &src[7]); // Throw src7
-
-                    swap2(VecType, &src[1], &src[5]); swap2(VecType, &src[2], &src[6]); // Throw src1 src6
-                    swap2(VecType, &src[2], &src[4]); swap2(VecType, &src[3], &src[5]); // Throw src2 src5
-                    // zig fmt: on
-
-                    result = median3(VecType, src[3], src[4], src[8]);
-                },
-                // Radius 5 and 6 are bugged for now.
-                // 11 => { // Radius 5
-                //     // There's a bug in this code - it's producing different output with radius 5 than the
-                //     // scalar version.
-                //     // The bug might be in neo_Tmedian's implementation as well.
-                //
-                //     // zig fmt: off
-                //     swap2(VecType, &src[0], &src[9]);
-                //     swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]);
-                //     swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[7], &src[8]);
-                //
-                //     swap2(VecType, &src[1], &src[8]);
-                //     swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[3], &src[5]);
-                //     swap2(VecType, &src[0], &src[3]); // Throw src0
-                //     swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[7], &src[9]);
-                //     swap2(VecType, &src[6], &src[9]); // Throw src9
-                //     swap2(VecType, &src[2], &src[7]);
-                //
-                //     swap2(VecType, &src[4], &src[5]);
-                //     swap2(VecType, &src[4], &src[8]);
-                //     swap2(VecType, &src[1], &src[5]);
-                //
-                //     swap2(VecType, &src[1], &src[2]); swap2(VecType, &src[3], &src[4]); // Throw src1 src3
-                //     swap2(VecType, &src[5], &src[6]); swap2(VecType, &src[7], &src[8]); // Throw src6 src8
-                //     swap2(VecType, &src[2], &src[4]); swap2(VecType, &src[5], &src[7]); // Throw src2 src7
-                //     // zig fmt: on
-                //
-                //     result = median3(VecType, src[4], src[5], src[10]);
-                // },
-                // 13 => { // Radius 6
-                //     // Seems to be a bug in this radius as well. So Radius 5 and 6 are buggy.
-                //
-                //     // zig fmt: off
-                //     swap2(VecType, &src[0], &src[1]); swap2(VecType, &src[2], &src[3]);
-                //     swap2(VecType, &src[4], &src[5]); swap2(VecType, &src[6], &src[7]);
-                //     swap2(VecType, &src[8], &src[9]); swap2(VecType, &src[10], &src[11]);
-                //
-                //     swap2(VecType, &src[0], &src[2]); swap2(VecType, &src[1], &src[3]);
-                //     swap2(VecType, &src[4], &src[6]); swap2(VecType, &src[5], &src[7]);
-                //     swap2(VecType, &src[8], &src[10]); swap2(VecType, &src[9], &src[11]);
-                //     swap2(VecType, &src[7], &src[11]); // Throw src11
-                //
-                //     swap2(VecType, &src[2], &src[6]);
-                //     swap2(VecType, &src[1], &src[5]);
-                //     swap2(VecType, &src[1], &src[2]);
-                //     swap2(VecType, &src[9], &src[10]);
-                //     swap2(VecType, &src[6], &src[10]);
-                //     swap2(VecType, &src[5], &src[9]);
-                //     swap2(VecType, &src[0], &src[4]); // Throw src0
-                //     swap2(VecType, &src[9], &src[10]); // Throw src10
-                //     swap2(VecType, &src[4], &src[8]); // Throw src4
-                //     swap2(VecType, &src[3], &src[7]); // Throw src7
-                //     swap2(VecType, &src[2], &src[6]);
-                //     swap2(VecType, &src[1], &src[5]); // Throw src1
-                //     swap2(VecType, &src[0], &src[4]); // This unnecessary?
-                //
-                //     swap2(VecType, &src[3], &src[8]);
-                //
-                //     swap2(VecType, &src[2], &src[3]); // Throw src2
-                //     swap2(VecType, &src[5], &src[6]);
-                //     swap2(VecType, &src[8], &src[9]); // Throw src9
-                //
-                //     swap2(VecType, &src[3], &src[5]); // Throw src3
-                //     swap2(VecType, &src[6], &src[8]); // Throw src8
-                //     // zig fmt: on
-                //
-                //     result = median3(VecType, src[4], src[5], src[12]);
-                // },
+            const result: VecType = switch (diameter) {
+                3 => sort.median(VecType, 3, src[0..3]),
+                5 => sort.median(VecType, 5, src[0..5]),
+                7 => sort.median(VecType, 7, src[0..7]),
+                9 => sort.median(VecType, 9, src[0..9]),
+                11 => sort.median(VecType, 11, src[0..11]),
+                13 => sort.median(VecType, 13, src[0..13]),
+                15 => sort.median(VecType, 15, src[0..15]),
+                17 => sort.median(VecType, 17, src[0..17]),
+                19 => sort.median(VecType, 19, src[0..19]),
+                21 => sort.median(VecType, 21, src[0..21]),
                 else => unreachable,
-            }
+            };
 
             // Store
             vec.store(VecType, dstp, offset, result);
-        }
-
-        /// Computes the median of 3 arguments.
-        fn median3(comptime R: type, a: R, b: R, c: R) R {
-            return vec.maxFast(vec.minFast(a, b), vec.minFast(c, vec.maxFast(a, b)));
-        }
-
-        /// Computes the min and max of the two arguments, and writes the min to the first
-        /// argument and the max to the second argument, effectively sorting the two arguments.
-        fn swap2(comptime R: type, a: *R, b: *R) void {
-            const min = vec.minFast(a.*, b.*);
-            const max = vec.maxFast(a.*, b.*);
-            a.* = min;
-            b.* = max;
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
@@ -273,11 +159,8 @@ fn TemporalMedian(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    if (d.radius <= 4) {
-                        process_plane_vec(srcp, dstp, width, height, diameter);
-                    } else {
-                        process_plane_scalar(srcp, dstp, width, height, diameter);
-                    }
+                    // process_plane_scalar(srcp, dstp, width, height, diameter);
+                    process_plane_vec(srcp, dstp, width, height, diameter);
                 }
 
                 return dst;

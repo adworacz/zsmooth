@@ -1,8 +1,9 @@
 const std = @import("std");
+const vec = @import("vector.zig");
 
 fn compareSwap(comptime T: type, a: *T, b: *T) void {
-    const min = @min(a.*, b.*);
-    b.* = @max(a.*, b.*);
+    const min = vec.minFast(a.*, b.*);
+    b.* = vec.maxFast(a.*, b.*);
     a.* = min;
 }
 
@@ -38,7 +39,7 @@ pub fn SortingNetwork(comptime layers: anytype) type {
 ///
 /// Quickly generated using this rough script (my sed and awk foo is weak, but it works):
 /// echo '<array values from sorter hunter>' | sed 's/[()]//g' | sed 's/\[/{/g' | sed 's/\]/}/g' | awk '{ print "&[_]usize"$1"," }'
-pub fn median(comptime T: type, comptime N: usize, input: *[N]T) void {
+pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
     // Only odd number networks are currently supported.
     std.debug.assert(N % 2 == 1);
     const Layer = []const usize;
@@ -167,46 +168,38 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) void {
         }).sort(T, N, input),
         else => unreachable,
     }
+
+    return input[@divTrunc(N, 2)];
 }
 
 test "Sorting Networks - Median" {
     var input3 = [_]u8{ 3, 1, 2 };
-    median(u8, input3.len, &input3);
-    try std.testing.expectEqual(2, input3[1]);
+    try std.testing.expectEqual(2, median(u8, input3.len, &input3));
 
     var input5 = [_]u8{ 3, 1, 5, 2, 4 };
-    median(u8, input5.len, &input5);
-    try std.testing.expectEqual(3, input5[2]);
+    try std.testing.expectEqual(3, median(u8, input5.len, &input5));
 
     var input7 = [_]u8{ 6, 3, 1, 5, 2, 4, 7 };
-    median(u8, input7.len, &input7);
-    try std.testing.expectEqual(4, input7[3]);
+    try std.testing.expectEqual(4, median(u8, input7.len, &input7));
 
     var input9 = [_]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input9.len, &input9);
-    try std.testing.expectEqual(5, input9[4]);
+    try std.testing.expectEqual(5, median(u8, input9.len, &input9));
 
     var input11 = [_]u8{ 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input11.len, &input11);
-    try std.testing.expectEqual(6, input11[5]);
+    try std.testing.expectEqual(6, median(u8, input11.len, &input11));
 
     var input13 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input13.len, &input13);
-    try std.testing.expectEqual(7, input13[6]);
+    try std.testing.expectEqual(7, median(u8, input13.len, &input13));
 
     var input15 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input15.len, &input15);
-    try std.testing.expectEqual(8, input15[7]);
+    try std.testing.expectEqual(8, median(u8, input15.len, &input15));
 
     var input17 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input17.len, &input17);
-    try std.testing.expectEqual(9, input17[8]);
+    try std.testing.expectEqual(9, median(u8, input17.len, &input17));
 
     var input19 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input19.len, &input19);
-    try std.testing.expectEqual(10, input19[9]);
+    try std.testing.expectEqual(10, median(u8, input19.len, &input19));
 
     var input21 = [_]u8{ 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    median(u8, input21.len, &input21);
-    try std.testing.expectEqual(11, input21[10]);
+    try std.testing.expectEqual(11, median(u8, input21.len, &input21));
 }

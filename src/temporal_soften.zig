@@ -74,7 +74,7 @@ fn TemporalSoften(comptime T: type) type {
 
                     var sum: UAT = current_value;
 
-                    for (1..@intCast(frames)) |i| {
+                    for (1..frames) |i| {
                         var value = current_value;
                         const frame_value = srcp[i][current_pixel];
                         if (@abs(@as(SAT, value) - frame_value) <= threshold) {
@@ -121,7 +121,7 @@ fn TemporalSoften(comptime T: type) type {
 
             var sum_vec: @Vector(vec_size, UAT) = current_value_vec;
 
-            for (1..@intCast(frames)) |i| {
+            for (1..frames) |i| {
                 const frame_value_vec = vec.load(VecType, srcp[i], offset);
 
                 const abs_vec = abs: {
@@ -141,9 +141,18 @@ fn TemporalSoften(comptime T: type) type {
                 if (cmn.isFloat(T)) {
                     break :result @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
                 }
-                const half_frames_vec: VecType = @splat(@intCast(half_frames));
-                const frames_vec: VecType = @splat(frames);
-                break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
+                // const half_frames_vec: VecType = @splat(@intCast(half_frames));
+                // const frames_vec: VecType = @splat(frames);
+                // break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
+                const half_frames_vec: @Vector(vec_size, UAT) = @splat(half_frames);
+                //const frames_vec: VecType = @splat(frames);
+                //const frames_vec: @Vector(vec_size, UAT) = @splat(frames);
+                const frames2: u16 = @intFromFloat(@ceil((1.0 / @as(f32, @floatFromInt(frames))) * 65536));
+                const frames2_vec: @Vector(vec_size, u16) = @splat(frames2);
+                //break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
+                sum_vec += half_frames_vec;
+                //THIS NEEDS WORK TO WORK WITH u16!!!
+                break :result @as(VecType, @intCast((@as(@Vector(vec_size, u32), (sum_vec)) * frames2_vec) >> @splat(16)));
             };
 
             vec.store(VecType, dstp, offset, result);
@@ -244,7 +253,7 @@ fn TemporalSoften(comptime T: type) type {
 
                     frames += 1;
                 }
-                defer for (0..@intCast(frames)) |i| vsapi.?.freeFrame.?(src_frames[i]);
+                defer for (0..frames) |i| vsapi.?.freeFrame.?(src_frames[i]);
 
                 const process = [_]bool{
                     d.threshold[0] > 0,

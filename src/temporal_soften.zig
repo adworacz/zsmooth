@@ -83,13 +83,12 @@ fn TemporalSoften(comptime T: type) type {
                         sum += value;
                     }
 
-                    if (cmn.isFloat(T)) {
-                        dstp[current_pixel] = @floatCast(sum / @as(f32, @floatFromInt(frames)));
-                    } else {
+                    dstp[current_pixel] = if (cmn.isFloat(T))
+                        @floatCast(sum / @as(f32, @floatFromInt(frames)))
+                    else
                         // Add half_frames to round the integer value up to the nearest integer value.
                         // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
-                        dstp[current_pixel] = @intCast((sum + half_frames) / frames);
-                    }
+                        @intCast((sum + half_frames) / frames);
                 }
             }
         }
@@ -112,7 +111,6 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn temporal_smooth_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, offset: usize, frames: u8, threshold: T) void {
-            const half_frames: u8 = @divTrunc(frames, 2);
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -124,35 +122,49 @@ fn TemporalSoften(comptime T: type) type {
             for (1..frames) |i| {
                 const frame_value_vec = vec.load(VecType, srcp[i], offset);
 
-                const abs_vec = abs: {
-                    if (cmn.isFloat(T)) {
-                        break :abs @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec);
-                    }
-
-                    break :abs vec.maxFast(current_value_vec, frame_value_vec) - vec.minFast(current_value_vec, frame_value_vec);
-                };
+                const abs_vec = if (cmn.isFloat(T))
+                    @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec)
+                else
+                    @max(current_value_vec, frame_value_vec) - @min(current_value_vec, frame_value_vec);
 
                 const lte_threshold_vec = abs_vec <= threshold_vec;
 
                 sum_vec += @select(T, lte_threshold_vec, frame_value_vec, current_value_vec);
             }
 
-            const result = result: {
-                if (cmn.isFloat(T)) {
-                    break :result @as(VecType, @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))));
-                }
-                // const half_frames_vec: VecType = @splat(@intCast(half_frames));
-                // const frames_vec: VecType = @splat(frames);
-                // break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
-                const half_frames_vec: @Vector(vec_size, UAT) = @splat(half_frames);
-                //const frames_vec: VecType = @splat(frames);
-                //const frames_vec: @Vector(vec_size, UAT) = @splat(frames);
-                const frames2: u16 = @intFromFloat(@ceil((1.0 / @as(f32, @floatFromInt(frames))) * 65536));
-                const frames2_vec: @Vector(vec_size, u16) = @splat(frames2);
-                //break :result @as(VecType, @intCast((sum_vec + half_frames_vec) / frames_vec));
-                sum_vec += half_frames_vec;
-                //THIS NEEDS WORK TO WORK WITH u16!!!
-                break :result @as(VecType, @intCast((@as(@Vector(vec_size, u32), (sum_vec)) * frames2_vec) >> @splat(16)));
+            const result: VecType = if (cmn.isFloat(T))
+                @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames))))
+            else result: {
+                // As it turns out, integer division can be dog slow.
+                //
+                // This code uses a form of fast division
+                // called division by multiplication of reciprocal.
+                //
+                // Effectively, it is based on the principal
+                // that N/D is the same as N * (1/D), which is
+                // the same as (N * (1 << Z / D)) >> Z
+                //
+                // We use Z to scale up the multiplier to account for integer
+                // arithmetic (since normally N * (1/D) == 0 in integer land).
+                //
+                // So if we use a large enough Z when scaling up, then any
+                // rounding error gets truncated when we shift back down by Z.
+                // The trick is to use a large enough value of Z.
+                //
+                // In this case, I'm using half of my mutiplier type, which is
+                // technically overkill for the values of N (sum of pixel
+                // values) and D (frames) that we are using, but it ensures we
+                // get accurate results and it's simple code to write.
+
+                // BT = extra large (big) arithmetic type since we're going to
+                // be doing multiplication that would otherwise overflow
+                // smaller types for large radii or bit depths.
+                const BT = if (T == u8) u32 else u64;
+
+                const shift_size = @bitSizeOf(BT) / 2;
+                const mul: @Vector(vec_size, BT) = @splat(@as(BT, 1 << shift_size) / frames);
+                sum_vec += @splat(frames / 2); // Add half frames to properly round
+                break :result @intCast((sum_vec * mul) >> @splat(shift_size));
             };
 
             vec.store(VecType, dstp, offset, result);

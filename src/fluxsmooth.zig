@@ -371,14 +371,6 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         fn fluxsmoothSpatialTemporalScalar(prev: T, curr: T, next: T, neighbors: [8]T, temporal_threshold: T, spatial_threshold: T) T {
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (cmn.isInt(T)) {
-                    // Used for rounding of integer formats.
-                    // Calculated thusly:
-                    // magic_numbers[1] = 32767;
-                    // for (int i = 2; i < 12; i++) {
-                    //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
-                    // }
-                    const magic_numbers = [_]u16{ 0, 32767, 16384, 10923, 8192, 6554, 5461, 4681, 4096, 3641, 3277, 2979 };
-
                     const prevdiff = @max(prev, curr) - @min(prev, curr);
                     const nextdiff = @max(next, curr) - @min(next, curr);
 
@@ -404,18 +396,12 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                         }
                     }
 
-                    // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
-                    //
-                    // The sum is multiplied by 2 so that the division is always by an even number,
-                    // thus rounding can always be done by adding half the divisor
-                    const safeT = if (T == u8) u32 else u64;
-                    return @intCast(((sum * 2 + count) * @as(safeT, magic_numbers[count]) >> 16));
+                    // This is fast (faster than magic number rounding).
+                    // return @intCast((sum * 2 + count) / (count * 2));
                     //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
 
-                    // Performance note:
-                    // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
-                    // Additionally, doing the right shift operation myself instead of calling std.math.shr leads
-                    // to another leap in performance.
+                    // But this is faster.
+                    return @intFromFloat((@as(f32, @floatFromInt(sum)) / @as(f32, @floatFromInt(count))) + 0.5);
                 } else {
                     // Floating point
                     const prevdiff = prev - curr;
@@ -638,6 +624,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     switch (mode) {
                         // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, temporal_threshold),
                         .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, temporal_threshold),
+                        // .SpatialTemporal => processPlaneSpatialTemporalScalar(srcp, dstp, width, height, temporal_threshold, spatial_threshold),
                         .SpatialTemporal => processPlaneSpatialTemporalVector(srcp, dstp, width, height, temporal_threshold, spatial_threshold),
                     }
                 }

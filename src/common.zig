@@ -84,6 +84,28 @@ pub fn scaleToFormat(vf: vs.VideoFormat, value: u8, plane: anytype) u32 {
     return value;
 }
 
+pub fn scaleToFormat2(comptime T: type, vf: vs.VideoFormat, value: u8, plane: anytype) T {
+    // Float support, 16-32 bit.
+    if (vf.sampleType == vs.SampleType.Float) {
+        var out: f32 = @as(f32, @floatFromInt(value)) / 255.0;
+
+        if (vf.colorFamily == vs.ColorFamily.YUV and plane > 0) {
+            // YUV floating point chroma planes range from -0.5 to 0.5
+            out -= 0.5;
+        }
+
+        return lossyCast(T, out);
+    }
+
+    // Integer support, 9-16 bit.
+    if (vf.bitsPerSample > 8) {
+        return lossyCast(T, std.math.shl(u32, value, vf.bitsPerSample - 8));
+    }
+
+    // Integer support, 8 bit.
+    return lossyCast(T, value);
+}
+
 test scaleToFormat {
     // Zig, please let me partially initialize a struct.
 

@@ -84,14 +84,6 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (cmn.isInt(T)) {
-                    // Used for rounding of integer formats.
-                    // Calculated thusly:
-                    // magic_numbers[1] = 32767;
-                    // for (int i = 2; i < 4; i++) {
-                    //     magic_numbers[i] = (int16_t)(32768.0 / i + 0.5);
-                    // }
-                    const magic_numbers = [_]u16{ 0, 32767, 16384, 10923 };
-
                     const prevdiff = @max(prev, curr) - @min(prev, curr);
                     const nextdiff = @max(next, curr) - @min(next, curr);
 
@@ -114,13 +106,18 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                         count += 1;
                     }
 
-                    // This code is taken verbatim from the Vaopursynth FluxSmooth plugin.
-                    //
                     // The sum is multiplied by 2 so that the division is always by an even number,
                     // thus rounding can always be done by adding half the divisor
-                    const safeT = if (T == u8) u32 else u64;
-                    return @intCast(((sum * 2 + count) * @as(safeT, magic_numbers[count]) >> 16));
-                    //dstp[x] = (uint8_t)(sum / (float)count + 0.5f);
+
+                    // This is fast
+                    // return @intCast((sum * 2 + count) / (count * 2));
+                    // (uint8_t)(sum / (float)count + 0.5f);
+
+                    // But this is even faster.
+                    // TODO: Test on desktop as well.
+                    // The performance is basically identical, maybe even faster
+                    // than my own vectorized version.
+                    return @intFromFloat((@as(f32, @floatFromInt(sum)) / @as(f32, @floatFromInt(count)) + 0.5));
 
                     // Performance note:
                     // Turns out doing the @as(u32, magic_numbers[count]) cast leads to a significant gain in performance.
@@ -195,7 +192,6 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        // TODO: Add tests for this function.
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
         fn fluxsmoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: T) void {
@@ -640,6 +636,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     };
 
                     switch (mode) {
+                        // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, temporal_threshold),
                         .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, temporal_threshold),
                         .SpatialTemporal => processPlaneSpatialTemporalVector(srcp, dstp, width, height, temporal_threshold, spatial_threshold),
                     }
@@ -700,19 +697,21 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
             temporal_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0));
         }
 
-        if (vsh.mapGetN(f32, in, "spatial_threshold", 0, vsapi)) |threshold| {
-            if (scalep) {
-                if (threshold < 0 or threshold > 255) {
-                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
-                    vsapi.?.freeNode.?(d.node);
-                    return;
-                } else {
-                    spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(threshold), 0));
+        if (mode == .SpatialTemporal) {
+            if (vsh.mapGetN(f32, in, "spatial_threshold", 0, vsapi)) |threshold| {
+                if (scalep) {
+                    if (threshold < 0 or threshold > 255) {
+                        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
+                        vsapi.?.freeNode.?(d.node);
+                        return;
+                    } else {
+                        spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(threshold), 0));
+                    }
                 }
+                spatial_threshold = @bitCast(threshold);
+            } else {
+                spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0));
             }
-            spatial_threshold = @bitCast(threshold);
-        } else {
-            spatial_threshold = @bitCast(cmn.scaleToFormat(d.vi.format, 7, 0));
         }
     } else {
         temporal_threshold = vsh.mapGetN(i32, in, "temporal_threshold", 0, vsapi) orelse @intCast(cmn.scaleToFormat(d.vi.format, 7, 0));
@@ -727,12 +726,14 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
                 temporal_threshold = @intCast(cmn.scaleToFormat(d.vi.format, @intCast(temporal_threshold), 0));
             }
 
-            if (spatial_threshold < 0 or spatial_threshold > 255) {
-                vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, spatial_threshold }).ptr);
-                vsapi.?.freeNode.?(d.node);
-                return;
-            } else {
-                spatial_threshold = @intCast(cmn.scaleToFormat(d.vi.format, @intCast(spatial_threshold), 0));
+            if (mode == .SpatialTemporal) {
+                if (spatial_threshold < 0 or spatial_threshold > 255) {
+                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, spatial_threshold }).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                } else {
+                    spatial_threshold = @intCast(cmn.scaleToFormat(d.vi.format, @intCast(spatial_threshold), 0));
+                }
             }
         }
     }

@@ -1,15 +1,13 @@
 # Zsmooth - cross-platform, cross-architecture video smoothing functions for Vapoursynth, written in Zig
 
 **Goals**
-1. Clean, easy to read code, with a standard scalar (non-SIMD) implementation for every algorithm.
-1. Support for 8-16 bit integer bit depths.
-1. Support for 16-32 bit float bit depths. (See FP16 note below)
-1. Tests for all filters, covering the scalar and vector implementations.
-1. Support for RGB, YUV, and GRAY colorspaces (assuming an algorithm isn't designed for a specific color space).
-1. Support Linux, Windows, and Mac.
-1. Support x86_64 and aarch64 CPU architectures, with all architectures supported by the Zig compiler being possible in
-   theory.
-1. (Eventually) Vapoursynth and Avisynth support. (Whenever I get the spare time and motivation.)
+* Clean, easy to read code, with a standard scalar (non-SIMD) implementation for every algorithm.
+* Support for 8-16 integer, and 16-32 float bit depths. (See FP16 note below)
+* Tests for all filters, covering the scalar and vector implementations.
+* Support for RGB, YUV, and GRAY colorspaces (assuming an algorithm isn't designed for a specific color space).
+* Support Linux, Windows, and Mac.
+* Support x86_64 and aarch64 CPU architectures, with all architectures supported by the Zig compiler being possible in theory.
+* (Eventually) Vapoursynth and Avisynth support. (Whenever I get the spare time and motivation.)
 
 Note: FP16 support is a work in progress. All functions support it but some are much slower than they need to be. I'm
 currently suspecting that this is a bug in Zig's compiler, as explicitly processing FP16 data with FP32 operations is much faster.
@@ -18,11 +16,11 @@ issue.
 
 ## Implemented Features/Functions
 - [x] TemporalMedian
-- [x] TemporalSoften (scene detection support not yet implemented)
+- [x] TemporalSoften
 - [x] RemoveGrain
+- [x] FluxSmooth
 - [ ] Repair
 - [ ] Clense
-- [ ] FluxSmooth
 - [ ] MiniDeen
 - [ ] CCD
 - [ ] Dogway's IQMST/IQMS functions
@@ -43,13 +41,12 @@ Parameters:
   A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
   colorspaces are supported.
 
-* radius
-  Range: 1 - 10, default: 1
-  Size of the temporal window. Only radius 1-4 are vectorized/SIMD ready.
+* radius = 1
+  Range: 1 - 10
+  Size of the temporal window. Full SIMD acceleration for *all* radii :D. 
   The first and last *radius* frames of a clip are not filtered.
 
-* planes
-  Default: [0, 1, 2] (all planes)
+* planes = [0, 1, 2] (all planes)
   Any unfiltered planes are simply copied from the input clip.
 
 ### Temporal Soften
@@ -62,7 +59,7 @@ If the scenechange parameter is greater than 0, TemporalSoften will not average
 frames from different scenes.
 
 ```py
-core.zsmooth.TemporalSoften(clip clip[, int radius = 4, int[] threshold = [], int scenechange = 0])
+core.zsmooth.TemporalSoften(clip clip[, int radius = 4, float[] threshold = [], int scenechange = 0, bool scalep=False])
 ```
 
 Parameters:
@@ -71,18 +68,23 @@ Parameters:
   A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
   colorspaces are supported.
 
-* radius
-  Range: 1 - 7, default: 4
+* radius = 4
+  Range: 1 - 7
   Size of the temporal window. This is an upper bound. At the beginning and end of the clip,
   only legally accessible frames are incorporated into the radius. So if radius if 4, then on
   the first frame, only frames 0, 1, 2, and 3 are incorporated into the result.
 
-* threshold 
-  Default: [4, 4, 4] for RGB, [4, 8, 8] for YUV, [4] for GRAY.
-  Specifies the 
+* threshold = [4, 4, 4] for RGB, [4, 8, 8] for YUV, [4] for GRAY.
+  If the difference between the pixel in the current frame and any of its temporal neighbors is less than this
+  threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  
+  If set to 0, the plane is copied from the source.
 
-* scenechange
-  Range: 0-255, default: 0
+* scalep = False
+  Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255)
+  to the corresponding range of the input clip's bit depth.
+
+* scenechange = 0
+  Range: 0-255
   Calculated as a percent internally (scenechange/255) to qualify if a frame is a scenechange or not.
   Currently requires the SCDetect filter from the Miscellaneous filters plugin, but
   future plans include specifying custom scene change properties to accomidate other
@@ -120,6 +122,41 @@ Parameters:
   Required, no default.
   For a description of each mode, see the docs from the original Vapoursynth documentation here:
   https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst
+
+### FluxSmooth(S|ST)
+```py
+core.zsmooth.FluxSmoothT(clip clip, float[] temporal_threshold = 7, bool scalep=False)
+core.zsmooth.FluxSmoothST(clip clip, float[] temporal_threshold = 7, float[] spatial_threshold = 7, bool scalep = False)
+```
+
+FluxSmoothT (**T**\ emporal) examines each pixel and compares it to the corresponding pixel
+in the previous and next frames. Smoothing occurs if both the previous frame's value and the next frame's value are greater,
+or if both are less, than the value in the current frame. 
+
+Smoothing is done by averaging the pixel from the current frame with the pixels from the previous and/or next frames, if they are within *temporal_threshold*.
+
+FluxSmoothST (**S**\ patio\ **T**\ emporal) does the same as FluxSmoothT, except the pixel's eight neighbours from 
+the current frame are also included in the average, if they are within *spatial_threshold*.
+
+The first and last rows and the first and last columns are not processed by FluxSmoothST.
+
+Parameters:
+* clip
+  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
+  colorspaces are supported.
+
+* temporal_threshold = 7
+  Temporal neighbour pixels within this threshold from the current pixel are included in the average.
+  Can be specified as an array, with values corresonding to each plane of the input clip.
+  A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip.
+
+* spatial_threshold = 7 
+  Spatial neighbour pixels within this threshold from the current pixel are included in the average.
+  A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip.
+
+* scalep = False
+  Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255)
+  to the corresponding range of the input clip's bit depth.
 
 ## Building
 All build artifacts are placed under `zig-out/lib`.

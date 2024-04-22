@@ -434,11 +434,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memcpy(dstp, srcp[1][0..width]);
 
             for (1..height - 1) |row| {
-
-                // TODO: Experiment with aligning this - starting
-                // off by one pixel may hurt performance.
                 var column: usize = 1;
-                // for (1..width - 1) |column| {
                 while (column < width_simd) : (column += vec_size) {
                     const offset = row * width + column;
                     fluxsmoothSTVector(srcp, dstp, offset, width, temporal_threshold, spatial_threshold);
@@ -666,11 +662,11 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }
-                break :thresh cmn.scaleToFormat2(f32, d.vi.format, @intFromFloat(threshold), 0);
+                break :thresh cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
             } else threshold;
         } else {
             temporal_threshold[i] = if (i == 0)
-                cmn.scaleToFormat2(f32, d.vi.format, 7, 0)
+                cmn.scaleToFormat(f32, d.vi.format, 7, 0)
             else
                 temporal_threshold[i - 1];
         }
@@ -683,10 +679,10 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
                         vsapi.?.freeNode.?(d.node);
                         return;
                     }
-                    break :thresh cmn.scaleToFormat2(f32, d.vi.format, @intFromFloat(threshold), 0);
+                    break :thresh cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
                 } else threshold;
             } else {
-                spatial_threshold[i] = if (i == 0) cmn.scaleToFormat2(f32, d.vi.format, 7, 0) else spatial_threshold[i - 1];
+                spatial_threshold[i] = if (i == 0) cmn.scaleToFormat(f32, d.vi.format, 7, 0) else spatial_threshold[i - 1];
             }
         }
     }

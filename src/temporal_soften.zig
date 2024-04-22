@@ -34,10 +34,12 @@ const TemporalSoftenData = struct {
     radius: i8,
     // Figure out how to make this work with floating point.
     // maybe use @bitCast to cast back and forth between u32 and f32, etc.
-    threshold: [3]u32,
+    threshold: [3]f32,
     scenechange: u8,
     scenechange_prop_prev: []const u8,
     scenechange_prop_next: []const u8,
+
+    process: [3]bool,
 };
 
 fn TemporalSoften(comptime T: type) type {
@@ -267,12 +269,7 @@ fn TemporalSoften(comptime T: type) type {
                 }
                 defer for (0..frames) |i| vsapi.?.freeFrame.?(src_frames[i]);
 
-                const process = [_]bool{
-                    d.threshold[0] > 0,
-                    d.threshold[1] > 0,
-                    d.threshold[2] > 0,
-                };
-                const dst = vscmn.newVideoFrame(&process, src_frames[0], d.vi, core, vsapi);
+                const dst = vscmn.newVideoFrame(&d.process, src_frames[0], d.vi, core, vsapi);
 
                 for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
                     const plane: c_int = @intCast(_plane);
@@ -290,12 +287,7 @@ fn TemporalSoften(comptime T: type) type {
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
 
-                    const threshold: T = switch (T) {
-                        u8, u16 => @intCast(d.threshold[@intCast(plane)]),
-                        f16 => @floatCast(@as(f32, @bitCast(d.threshold[@intCast(plane)]))),
-                        f32 => @bitCast(d.threshold[@intCast(plane)]),
-                        else => unreachable,
-                    };
+                    const threshold = cmn.lossyCast(T, d.threshold[_plane]);
 
                     // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
                     processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
@@ -354,55 +346,33 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     // Check threshold param
     d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
-        [_]u32{ cmn.scaleToFormat(d.vi.format, 4, 0), cmn.scaleToFormat(d.vi.format, 4, 1), cmn.scaleToFormat(d.vi.format, 4, 2) }
+        [_]f32{ cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 4, 0) }
     else
-        [_]u32{ cmn.scaleToFormat(d.vi.format, 4, 0), cmn.scaleToFormat(d.vi.format, 8, 1), cmn.scaleToFormat(d.vi.format, 8, 2) };
+        [_]f32{ cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0) };
 
     for (0..3) |i| {
-        // Supporting int and float here at runtime is surprisingly complex. (comptime would be a breeze)
-        // Any ideas for how to clean up this code are quite welcome.
-        if (d.vi.format.sampleType == st.Float) {
-            // Float support
-            if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
-                if (scalep and (_threshold < 0 or _threshold > 255)) {
-                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
-                }
-
-                const threshold = if (scalep) @as(f32, @bitCast(cmn.scaleToFormat(d.vi.format, @intFromFloat(_threshold), i))) else _threshold;
-
-                const formatMaximum: f32 = @bitCast(cmn.getFormatMaximum(d.vi.format, i > 0));
-                const formatMinimum: f32 = @bitCast(cmn.getFormatMinimum(d.vi.format, i > 0));
-
-                if ((threshold < formatMinimum or threshold > formatMaximum)) {
-                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
-                }
-                d.threshold[i] = @bitCast(threshold);
-            } else {
-                // No threshold value specified for this index.
-                if (i > 0) {
-                    d.threshold[i] = d.threshold[i - 1];
-                }
+        // Float support
+        if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
+            if (scalep and (_threshold < 0 or _threshold > 255)) {
+                return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
             }
+
+            const threshold = if (scalep)
+                cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_threshold), 0)
+            else
+                _threshold;
+
+            const formatMaximum = cmn.getFormatMaximum(f32, d.vi.format, i > 0);
+            const formatMinimum = cmn.getFormatMinimum(f32, d.vi.format, i > 0);
+
+            if ((threshold < formatMinimum or threshold > formatMaximum)) {
+                return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
+            }
+            d.threshold[i] = threshold;
         } else {
-            // Integer support.
-            if (vsh.mapGetN(i32, in, "threshold", @intCast(i), vsapi)) |threshold| {
-                const formatMaximum = cmn.getFormatMaximum(d.vi.format, false); // Integer formats don't care about chroma.
-                const formatMinimum = cmn.getFormatMinimum(d.vi.format, false); // Integer formats don't care about chroma.
-
-                if ((threshold < formatMinimum or threshold > formatMaximum)) {
-                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
-                }
-
-                if (scalep and (threshold < 0 or threshold > 255)) {
-                    return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{threshold}), vsapi, out, d.node);
-                }
-
-                d.threshold[i] = if (scalep) cmn.scaleToFormat(d.vi.format, @intCast(threshold), i) else @intCast(threshold);
-            } else {
-                // No threshold value specified for this index.
-                if (i > 0) {
-                    d.threshold[i] = d.threshold[i - 1];
-                }
+            // No threshold value specified for this index.
+            if (i > 0) {
+                d.threshold[i] = d.threshold[i - 1];
             }
         }
     }
@@ -414,6 +384,12 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     if (d.threshold[0] == 0 and d.threshold[1] == 0 and d.threshold[2] == 0) {
         return vscmn.reportError("TemporalSoften: All thresholds cannot be 0.", vsapi, out, d.node);
     }
+
+    d.process = [_]bool{
+        d.threshold[0] > 0,
+        d.threshold[1] > 0,
+        d.threshold[2] > 0,
+    };
 
     if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {
         if (scenechange < 0 or scenechange > 254) {
@@ -475,5 +451,5 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:int[]:opt;scenechange:int:opt;scalep:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:float[]:opt;scenechange:int:opt;scalep:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
 }

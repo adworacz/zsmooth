@@ -60,31 +60,7 @@ pub fn lossyCast(comptime T: type, value: anytype) T {
 
 /// Scales an 8 bit value match the pertinent bit depth, sample
 /// type, and plane (is/is not chroma).
-///
-///TODO: Maybe switch this to use a comptime T param for the result type instead of u32.
-pub fn scaleToFormat(vf: vs.VideoFormat, value: u8, plane: anytype) u32 {
-    // Float support, 16-32 bit.
-    if (vf.sampleType == vs.SampleType.Float) {
-        var out: f32 = @as(f32, @floatFromInt(value)) / 255.0;
-
-        if (vf.colorFamily == vs.ColorFamily.YUV and plane > 0) {
-            // YUV floating point chroma planes range from -0.5 to 0.5
-            out -= 0.5;
-        }
-
-        return @bitCast(out);
-    }
-
-    // Integer support, 9-16 bit.
-    if (vf.bitsPerSample > 8) {
-        return std.math.shl(u32, value, vf.bitsPerSample - 8);
-    }
-
-    // Integer support, 8 bit.
-    return value;
-}
-
-pub fn scaleToFormat2(comptime T: type, vf: vs.VideoFormat, value: u8, plane: anytype) T {
+pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: u8, plane: anytype) T {
     // Float support, 16-32 bit.
     if (vf.sampleType == vs.SampleType.Float) {
         var out: f32 = @as(f32, @floatFromInt(value)) / 255.0;
@@ -111,7 +87,19 @@ test scaleToFormat {
 
     for (0..3) |plane| {
         // 8 bit gray int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(.{
+        try std.testing.expectEqual(128, scaleToFormat(u8, .{
+            .sampleType = vs.SampleType.Integer,
+            .colorFamily = vs.ColorFamily.Gray,
+            .bitsPerSample = 8,
+            .bytesPerSample = 1,
+            .numPlanes = 3,
+            .subSamplingW = 0,
+            .subSamplingH = 0,
+        }, 128, plane));
+
+        // Check that a different output type still produces the same
+        // inherent value.
+        try std.testing.expectEqual(128, scaleToFormat(f32, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.Gray,
             .bitsPerSample = 8,
@@ -122,7 +110,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 8 bit RGB int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(.{
+        try std.testing.expectEqual(128, scaleToFormat(u8, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.RGB,
             .bitsPerSample = 8,
@@ -133,7 +121,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 8 bit YUV int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(.{
+        try std.testing.expectEqual(128, scaleToFormat(u8, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.YUV,
             .bitsPerSample = 8,
@@ -144,7 +132,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 10 bit gray int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(.{
+        try std.testing.expectEqual(512, scaleToFormat(u16, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.Gray,
             .bitsPerSample = 10,
@@ -155,7 +143,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 10 bit RGB int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(.{
+        try std.testing.expectEqual(512, scaleToFormat(u16, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.RGB,
             .bitsPerSample = 10,
@@ -166,7 +154,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 10 bit YUV int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(.{
+        try std.testing.expectEqual(512, scaleToFormat(u16, .{
             .sampleType = vs.SampleType.Integer,
             .colorFamily = vs.ColorFamily.YUV,
             .bitsPerSample = 10,
@@ -177,7 +165,7 @@ test scaleToFormat {
         }, 128, plane));
 
         // 32 bit gray float - should be divided
-        try std.testing.expectApproxEqAbs(0.5, @as(f32, @bitCast(scaleToFormat(.{
+        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, .{
             .sampleType = vs.SampleType.Float,
             .colorFamily = vs.ColorFamily.Gray,
             .bitsPerSample = 32,
@@ -185,10 +173,10 @@ test scaleToFormat {
             .numPlanes = 3,
             .subSamplingW = 0,
             .subSamplingH = 0,
-        }, 128, plane))), 0.01);
+        }, 128, plane), 0.01);
 
         // 32 bit RGB int - should be divided
-        try std.testing.expectApproxEqAbs(0.5, @as(f32, @bitCast(scaleToFormat(.{
+        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, .{
             .sampleType = vs.SampleType.Float,
             .colorFamily = vs.ColorFamily.RGB,
             .bitsPerSample = 32,
@@ -196,12 +184,12 @@ test scaleToFormat {
             .numPlanes = 3,
             .subSamplingW = 0,
             .subSamplingH = 0,
-        }, 128, plane))), 0.01);
+        }, 128, plane), 0.01);
 
         // 32 bit YUV int - should be divided.
         // Float should scale for YUV
         const expected: f32 = if (plane == 0) 0.5 else 0;
-        try std.testing.expectApproxEqAbs(expected, @as(f32, @bitCast(scaleToFormat(.{
+        try std.testing.expectApproxEqAbs(expected, scaleToFormat(f32, .{
             .sampleType = vs.SampleType.Float,
             .colorFamily = vs.ColorFamily.YUV,
             .bitsPerSample = 32,
@@ -209,25 +197,25 @@ test scaleToFormat {
             .numPlanes = 3,
             .subSamplingW = 0,
             .subSamplingH = 0,
-        }, 128, plane))), 0.01);
+        }, 128, plane), 0.01);
     }
 }
 
-pub fn getFormatMaximum(vf: vs.VideoFormat, chroma: bool) u32 {
+pub fn getFormatMaximum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     if (vf.sampleType == vs.SampleType.Float) {
-        return @bitCast(@as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) 0.5 else 1.0));
+        return lossyCast(T, @as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) 0.5 else 1.0));
     }
 
-    return switch (vf.bytesPerSample) {
+    return lossyCast(T, @as(u16, switch (vf.bytesPerSample) {
         1 => 255,
         2 => 65535,
         else => unreachable,
-    };
+    }));
 }
 
-pub fn getFormatMinimum(vf: vs.VideoFormat, chroma: bool) u32 {
+pub fn getFormatMinimum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     if (vf.sampleType == vs.SampleType.Float) {
-        return @bitCast(@as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) -0.5 else 0.0));
+        return lossyCast(T, @as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) -0.5 else 0.0));
     }
 
     return 0;
@@ -279,9 +267,9 @@ test getFormatMaximum {
         .subSamplingH = 2,
     };
 
-    try std.testing.expectEqual(1.0, @as(f32, @bitCast(getFormatMaximum(float_vf, false))));
-    try std.testing.expectEqual(255, getFormatMaximum(u8_vf, false));
-    try std.testing.expectEqual(65535, getFormatMaximum(u16_vf, false));
+    try std.testing.expectEqual(1.0, getFormatMaximum(f32, float_vf, false));
+    try std.testing.expectEqual(255, getFormatMaximum(f32, u8_vf, false));
+    try std.testing.expectEqual(65535, getFormatMaximum(f32, u16_vf, false));
 }
 
 /// Considers the color family and plane index to determine

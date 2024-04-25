@@ -22,8 +22,10 @@ issue.
 - [ ] Repair
 - [ ] Clense
 - [ ] MiniDeen
+- [ ] DegrainMedian
+- [ ] TTempSmooth
 - [ ] CCD
-- [ ] Dogway's IQMST/IQMS functions
+- [ ] Dogway's IQM/IQM5/IQMV/IQMST/IQMS functions
 - [ ] Avisynth support
 
 ## Function Documentation
@@ -36,18 +38,12 @@ This filter will introduce ghosting, so use with caution.
 core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]])
 ```
 
-Parameters:
-* clip
-  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
-  colorspaces are supported.
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| radius | int | 1 - 10 (1) | Size of the temporal window from which to calculate the median. First and last _radius_ frames of a clip are not filtered. |
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
-* radius = 1
-  Range: 1 - 10
-  Size of the temporal window. Full SIMD acceleration for *all* radii :D. 
-  The first and last *radius* frames of a clip are not filtered.
-
-* planes = [0, 1, 2] (all planes)
-  Any unfiltered planes are simply copied from the input clip.
 
 ### Temporal Soften
 
@@ -62,33 +58,14 @@ frames from different scenes.
 core.zsmooth.TemporalSoften(clip clip[, int radius = 4, float[] threshold = [], int scenechange = 0, bool scalep=False])
 ```
 
-Parameters:
 
-* clip
-  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
-  colorspaces are supported.
-
-* radius = 4
-  Range: 1 - 7
-  Size of the temporal window. This is an upper bound. At the beginning and end of the clip,
-  only legally accessible frames are incorporated into the radius. So if radius if 4, then on
-  the first frame, only frames 0, 1, 2, and 3 are incorporated into the result.
-
-* threshold = [4, 4, 4] for RGB, [4, 8, 8] for YUV, [4] for GRAY.
-  If the difference between the pixel in the current frame and any of its temporal neighbors is less than this
-  threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  
-  If set to 0, the plane is copied from the source.
-
-* scalep = False
-  Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255)
-  to the corresponding range of the input clip's bit depth.
-
-* scenechange = 0
-  Range: 0-255
-  Calculated as a percent internally (scenechange/255) to qualify if a frame is a scenechange or not.
-  Currently requires the SCDetect filter from the Miscellaneous filters plugin, but
-  future plans include specifying custom scene change properties to accomidate other
-  scene change detection mechanisms.
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| radius | int | 1 - 7 (4) | Size of the temporal window. This is an upper bound. At the beginning and end of the clip, only legally accessible frames are incorporated into the radius. So if radius if 4, then on the first frame, only frames 0, 1, 2, and 3 are incorporated into the result. |
+| threshold | float[] | 0 - 255 8-bit, 0 - 65535 16-bit, 0.0 - 1.0 float ([4,4,4] RGB, [4, 8, 8] YUV, [4] GRAY) | If the difference between the pixel in the current frame and any of its temporal neighbors is less than this threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  If set to -1, the plane is copied from the source.|
+| scenechange | int |  0 - 255 (0) | Calculated as a percent internally (scenechange/255) to qualify if a frame is a scenechange or not. Currently requires the SCDetect filter from the Miscellaneous filters plugin, but future plans include specifying custom scene change properties to accomidate other scene change detection mechanisms. |
+| scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### RemoveGrain 
 
@@ -114,24 +91,20 @@ core.zsmooth.RemoveGrain(clip clip, int[] mode)
 ```
 
 Parameters:
-* clip
-  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
-  colorspaces are supported.
-
-* mode
-  Required, no default.
-  For a description of each mode, see the docs from the original Vapoursynth documentation here:
-  https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| mode | int | 1-24 | For a description of each mode, see the docs from the original Vapoursynth documentation here: https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst |
 
 ### FluxSmooth(S|ST)
 ```py
-core.zsmooth.FluxSmoothT(clip clip, float[] temporal_threshold = 7, bool scalep=False)
-core.zsmooth.FluxSmoothST(clip clip, float[] temporal_threshold = 7, float[] spatial_threshold = 7, bool scalep = False)
+core.zsmooth.FluxSmoothT(clip clip[, float[] temporal_threshold = 7, bool scalep=False])
+core.zsmooth.FluxSmoothST(clip clip[, float[] temporal_threshold = 7, float[] spatial_threshold = 7, bool scalep = False])
 ```
 
 FluxSmoothT (**T**\ emporal) examines each pixel and compares it to the corresponding pixel
 in the previous and next frames. Smoothing occurs if both the previous frame's value and the next frame's value are greater,
-or if both are less, than the value in the current frame. 
+or if both are less than the value in the current frame. 
 
 Smoothing is done by averaging the pixel from the current frame with the pixels from the previous and/or next frames, if they are within *temporal_threshold*.
 
@@ -140,23 +113,12 @@ the current frame are also included in the average, if they are within *spatial_
 
 The first and last rows and the first and last columns are not processed by FluxSmoothST.
 
-Parameters:
-* clip
-  A clip to process. 8-16 bit integer, 16-32 float bit depths and RGB, YUV, and GRAY
-  colorspaces are supported.
-
-* temporal_threshold = 7
-  Temporal neighbour pixels within this threshold from the current pixel are included in the average.
-  Can be specified as an array, with values corresonding to each plane of the input clip.
-  A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip.
-
-* spatial_threshold = 7 
-  Spatial neighbour pixels within this threshold from the current pixel are included in the average.
-  A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip.
-
-* scalep = False
-  Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255)
-  to the corresponding range of the input clip's bit depth.
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| temporal_threshold | float[] | -1 - bit depth max ([7,7,7]) | Temporal neighbour pixels within this threshold from the current pixel are included in the average. Can be specified as an array, with values corresonding to each plane of the input clip. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
+| spatial_threshold | float[] | -1 - bit depth max ([7,7,7]) | Spatial neighbour pixels within this threshold from the current pixel are included in the average. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
+| scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ## Building
 All build artifacts are placed under `zig-out/lib`.
@@ -209,143 +171,6 @@ zig build -Doptimize=ReleaseFast -Dtarget=aarch64-macos -Dcpu=apple_m1
 
 Use `zig targets` to see an exhaustive list of all architectures, CPUs, and operating systems that Zig supports.
 
-## Benchmarks
-These are just some rough benchmarks for now. A more comprehensive set of benchmarks will come in the future.
-
-All benchmarks were taken on a AMD Ryzen Threadripper 3960x, with 128GB DDR4 3600Mhz RAM, on Archlinux, CPU Governor set
-to `performance`, running a library produced with `zig build -Doptimize=ReleaseFast`.
-
-Clip is generated from `BlankClip`, 1920x1080, in RGB, in the bit depth specified.
-
-FPS taken from the best of 3 runs.
-
-### TemporalMedian
-Plugin version: 0.1
-
-8 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 1 | 1647 | 
-| Tmedian | Radius 1 | 1645 | 
-| Neo_Tmedian | Radius 1 | 1742| 
-| Zsmooth | Radius 4 | 953 | 
-| Tmedian | Radius 4 | 180 | 
-| Neo_Tmedian | Radius 4 |907| 
-| Zsmooth | Radius 10 | 112 | 
-| Tmedian | Radius 10 | 69 | 
-| Neo_Tmedian | Radius 10 | 57 | 
-
-16 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 1 | 838 | 
-| Tmedian | Radius 1 | 843 | 
-| Neo_Tmedian | Radius 1 | 841 | 
-| Zsmooth | Radius 4 | 468 | 
-| Tmedian | Radius 4 | 135 | 
-| Neo_Tmedian | Radius 4 | 451 | 
-| Zsmooth | Radius 10 | 95 | 
-| Tmedian | Radius 10 | 49 | 
-| Neo_Tmedian | Radius 10 | 56  | 
-
-16 bit float, 16 threads
-(Tmedian and Neo_Tmedian don't support FP16)
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 1 | 478 | 
-| Zsmooth | Radius 4 | 77 | 
-| Zsmooth | Radius 10 | 67 | 
-
-32 bit float, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 1 | 421 | 
-| Tmedian | Radius 1 | 422 | 
-| Neo_Tmedian | Radius 1 | 424 | 
-| Zsmooth | Radius 4 | 228 | 
-| Tmedian | Radius 4 | 159 | 
-| Neo_Tmedian | Radius 4 | 223 | 
-| Zsmooth | Radius 10 | 79 | 
-| Tmedian | Radius 10 | 52 | 
-| Neo_Tmedian | Radius 10 | 52 | 
-
-### TemporalSoften
-Plugin Version: 0.1
-
-8 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 7 | 517 | 
-| TemporalSoften2 | Radius 7 | 581 | 
-
-16 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 7 | 311 | 
-| TemporalSoften2 | Radius 7 | 266 | 
-
-16 bit float, 16 threads
-TemporalSoften2 doesn't support FP16
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 7 | 315 | 
-
-32 bit float, 16 threads
-TemporalSoften2 doesn't support FP32
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Radius 7 | 155 | 
-
-### RemoveGrain
-Plugin Version: 0.1
-
-8 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Mode 1 | 2230 | 
-| RGVS/RGSF | Mode 1 | 2298 | 
-| Zsmooth | Mode 4 | 2236 | 
-| RGVS/RGSF | Mode 4 | 2224 | 
-| std.Median | Mode 4 | 2270 | 
-| Zsmooth | Mode 11 | 2340 | 
-| RGVS/RGSF | Mode 11 | 2259 | 
-| std.Convolution | Mode 11 | 2232 | 
-
-16 bit integer, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Mode 1 | 1153 | 
-| RGVS/RGSF | Mode 1 | 1152 | 
-| Zsmooth | Mode 4 | 1155 | 
-| RGVS/RGSF | Mode 4 | 1144 | 
-| std.Median | Mode 4 | 1145 | 
-| Zsmooth | Mode 11 | 1154 | 
-| RGVS/RGSF | Mode 11 | 1157 | 
-| std.Convolution | Mode 11 | 1156 | 
-
-32 bit float, 16 threads
-
-| Plugin | Parameters | FPS |
-| --- | --- |  --- |
-| Zsmooth | Mode 1 | 577 | 
-| RGVS/RGSF | Mode 1 | 578| 
-| Zsmooth | Mode 4 | 578 | 
-| RGVS/RGSF | Mode 4 | 206 | 
-| std.Median | Mode 4 | 580 | 
-| Zsmooth | Mode 11 | 578 | 
-| RGVS/RGSF | Mode 11 | 579 | 
-| std.Convolution | Mode 11 | 578 | 
-
 ## References
 The following open source software provided great inspiration and guidance, and this plugin wouldn't exist
 without the hard work of their authors.
@@ -355,3 +180,4 @@ without the hard work of their authors.
 * Vapoursynth TemporalSoften: https://github.com/dubhater/vapoursynth-temporalsoften2
 * Vapoursynth TemporalMedian: https://github.com/dubhater/vapoursynth-temporalmedian
 * Neo Temporal Median: https://github.com/HomeOfAviSynthPlusEvolution/neo_TMedian
+* Vapoursynth FluxSmooth: https://github.com/dubhater/vapoursynth-fluxsmooth/

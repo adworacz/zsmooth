@@ -66,12 +66,12 @@ fn TemporalSoften(comptime T: type) type {
             else => unreachable,
         };
 
-        fn processPlaneScalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: T) void {
+        fn processPlaneScalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const half_frames: u8 = @divTrunc(frames, 2);
 
             for (0..height) |row| {
                 for (0..width) |column| {
-                    const current_pixel = row * width + column;
+                    const current_pixel = row * stride + column;
                     const current_value = srcp[0][current_pixel];
 
                     var sum: UAT = current_value;
@@ -95,19 +95,19 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, frames: u8, threshold: T) void {
+        fn processPlaneVector(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
-            for (0..height) |h| {
-                var x: usize = 0;
-                while (x < width_simd) : (x += vec_size) {
-                    const offset = h * width + x;
+            for (0..height) |row| {
+                var column: usize = 0;
+                while (column < width_simd) : (column += vec_size) {
+                    const offset = row * stride + column;
                     temporal_smooth_vec(srcp, dstp, offset, frames, threshold);
                 }
 
                 if (width_simd < width) {
-                    temporal_smooth_vec(srcp, dstp, width - vec_size, frames, threshold);
+                    temporal_smooth_vec(srcp, dstp, (row * stride) + width_simd - (stride - width), frames, threshold);
                 }
             }
         }
@@ -200,8 +200,8 @@ fn TemporalSoften(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            processPlaneScalar(src, dstp_scalar.ptr, width, height, diameter, threshold);
-            processPlaneVector(src, dstp_vec.ptr, width, height, diameter, threshold);
+            processPlaneScalar(src, dstp_scalar.ptr, width, height, width, diameter, threshold);
+            processPlaneVector(src, dstp_vec.ptr, width, height, width, diameter, threshold);
 
             try testing.expectEqualDeep(expectedAverage, dstp_scalar);
             try testing.expectEqualDeep(expectedAverage, dstp_vec);
@@ -286,11 +286,12 @@ fn TemporalSoften(comptime T: type) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, plane));
 
                     const threshold = cmn.lossyCast(T, d.threshold[_plane]);
 
-                    // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
-                    processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, frames, threshold);
+                    // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
+                    processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
                 }
 
                 return dst;

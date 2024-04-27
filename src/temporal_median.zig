@@ -171,28 +171,27 @@ fn TemporalMedian(comptime T: type) type {
             return null;
         }
 
-        test "process_plane should find the median value" {
-            //TODO: Add tests using stride
+        test "processPlane should find the median value" {
             //Emulate a 2 x 64 (height x width) video.
             const height = 2;
             const width = 64;
-            const size = width * height;
+            const stride = width + 32;
+            const size = height * stride;
 
-            // Bug is found for radius 6
             const radius = 4;
             const diameter = radius * 2 + 1;
             const expectedMedian = ([_]T{radius + 1} ** size)[0..];
 
-            var src: [MAX_DIAMETER][*]const T = undefined;
+            var src: [MAX_DIAMETER][]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
                 @memset(frame, cmn.lossyCast(T, i + 1));
 
-                src[i] = frame.ptr;
+                src[i] = frame;
             }
             defer {
                 for (0..diameter) |i| {
-                    testingAllocator.free(src[i][0..size]);
+                    testingAllocator.free(src[i]);
                 }
             }
 
@@ -201,11 +200,15 @@ fn TemporalMedian(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            processPlaneScalar(src, dstp_scalar.ptr, width, height, width, diameter);
-            processPlaneVector(src, dstp_vec.ptr, width, height, width, diameter);
+            processPlaneScalar(src, dstp_scalar, width, height, stride, diameter);
+            processPlaneVector(src, dstp_vec, width, height, stride, diameter);
 
-            try testing.expectEqualDeep(expectedMedian, dstp_scalar);
-            try testing.expectEqualDeep(expectedMedian, dstp_vec);
+            for (0..height) |row| {
+                const start = row * stride;
+                const end = start + width;
+                try testing.expectEqualDeep(expectedMedian[start..end], dstp_scalar[start..end]);
+                try testing.expectEqualDeep(expectedMedian[start..end], dstp_vec[start..end]);
+            }
         }
     };
 }

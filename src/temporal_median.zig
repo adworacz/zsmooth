@@ -40,12 +40,12 @@ const TemporalMedianData = struct {
 
 fn TemporalMedian(comptime T: type) type {
     return struct {
-        fn process_plane_scalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+        fn process_plane_scalar(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, diameter: i8) void {
             var temp: [MAX_DIAMETER]T = undefined;
 
             for (0..height) |row| {
                 for (0..width) |column| {
-                    const current_pixel = row * width + column;
+                    const current_pixel = row * stride + column;
 
                     for (0..@intCast(diameter)) |i| {
                         temp[i] = srcp[i][current_pixel];
@@ -60,14 +60,14 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, diameter: i8) void {
+        fn process_plane_vec(srcp: [MAX_DIAMETER][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, diameter: i8) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |h| {
                 var x: usize = 0;
                 while (x < width_simd) : (x += vec_size) {
-                    const offset = h * width + x;
+                    const offset = h * stride + x;
                     median_vec(srcp, dstp, offset, diameter);
                 }
 
@@ -158,9 +158,10 @@ fn TemporalMedian(comptime T: type) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, plane));
 
-                    // process_plane_scalar(srcp, dstp, width, height, diameter);
-                    process_plane_vec(srcp, dstp, width, height, diameter);
+                    // process_plane_scalar(srcp, dstp, width, height, stride, diameter);
+                    process_plane_vec(srcp, dstp, width, height, stride, diameter);
                 }
 
                 return dst;
@@ -198,8 +199,8 @@ fn TemporalMedian(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            process_plane_scalar(src, dstp_scalar.ptr, width, height, diameter);
-            process_plane_vec(src, dstp_vec.ptr, width, height, diameter);
+            process_plane_scalar(src, dstp_scalar.ptr, width, height, width, diameter);
+            process_plane_vec(src, dstp_vec.ptr, width, height, width, diameter);
 
             try testing.expectEqualDeep(expectedMedian, dstp_scalar);
             try testing.expectEqualDeep(expectedMedian, dstp_vec);

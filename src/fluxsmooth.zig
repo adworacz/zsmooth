@@ -62,7 +62,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             else => unreachable,
         };
 
-        fn processPlaneTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, threshold: T) void {
+        fn processPlaneTemporalScalar(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * stride + column;
@@ -167,7 +167,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, threshold: T) void {
+        fn processPlaneTemporalVector(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -186,7 +186,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
-        fn fluxsmoothTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, _threshold: T) void {
+        fn fluxsmoothTVector(srcp: [3][]const T, dstp: []T, offset: usize, _threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -277,10 +277,10 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                 testingAllocator.free(expected);
             }
 
-            const srcp = [3][*]const T{
-                prev.ptr,
-                curr.ptr,
-                next.ptr,
+            const srcp = [3][]const T{
+                prev,
+                curr,
+                next,
             };
 
             // Pixels are not both darker or ligher, so pixel stays the same.
@@ -289,7 +289,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memset(next, 2);
             @memset(dstp, 0);
             @memset(expected, 1);
-            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            fluxsmoothTVector(srcp, dstp, 0, threshold);
             try std.testing.expectEqualDeep(expected, dstp);
 
             // Both pixels darker.
@@ -298,7 +298,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memset(next, 1);
             @memset(dstp, 0);
             @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
-            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            fluxsmoothTVector(srcp, dstp, 0, threshold);
             try std.testing.expectEqualDeep(expected, dstp);
 
             // Both pixels lighter.
@@ -307,11 +307,11 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memset(next, 2);
             @memset(dstp, 0);
             @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
-            fluxsmoothTVector(srcp, dstp.ptr, 0, threshold);
+            fluxsmoothTVector(srcp, dstp, 0, threshold);
             try std.testing.expectEqualDeep(expected, dstp);
         }
 
-        fn processPlaneSpatialTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
+        fn processPlaneSpatialTemporalScalar(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
             // Copy the first line
             @memcpy(dstp, srcp[1][0..width]);
 
@@ -330,7 +330,6 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     const rowCurr = ((row) * stride);
                     const rowNext = ((row + 1) * stride);
 
-                    //TODO: Trying using parameters instead of an array.
                     const neighbors = [_]T{
                         // Top 3 neighbors
                         srcp[1][rowPrev + column - 1],
@@ -426,7 +425,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneSpatialTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
+        fn processPlaneSpatialTemporalVector(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -461,7 +460,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         }
 
         // TODO: Add tests for this function.
-        fn fluxsmoothSTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
+        fn fluxsmoothSTVector(srcp: [3][]const T, dstp: []T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -589,16 +588,17 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                         continue;
                     }
 
-                    const srcp = [3][*]const T{
-                        @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[0], plane))),
-                        @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[1], plane))),
-                        @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[2], plane))),
-                    };
-
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
                     const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+
+                    const srcp = [3][]const T{
+                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[0], plane))))[0..(height * stride)],
+                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[1], plane))))[0..(height * stride)],
+                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[2], plane))))[0..(height * stride)],
+                    };
+
+                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (mode) {
                         // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, cmn.lossyCast(T, temporal_threshold)),

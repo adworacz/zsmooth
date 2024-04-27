@@ -86,7 +86,7 @@ fn TemporalMedian(comptime T: type) type {
             var src: [MAX_DIAMETER]VecType = undefined;
 
             for (0..@intCast(diameter)) |r| {
-                src[r] = vec.load2(VecType, srcp[r], offset);
+                src[r] = vec.load(VecType, srcp[r], offset);
             }
 
             const result: VecType = switch (diameter) {
@@ -104,7 +104,7 @@ fn TemporalMedian(comptime T: type) type {
             };
 
             // Store
-            vec.store2(VecType, dstp, offset, result);
+            vec.store(VecType, dstp, offset, result);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

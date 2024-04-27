@@ -845,7 +845,7 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, c - h + l);
         }
 
-        pub fn processPlaneScalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, chroma: bool) void {
+        pub fn processPlaneScalar(mode: comptime_int, srcp: []const T, dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
@@ -980,11 +980,11 @@ fn RemoveGrain(comptime T: type) type {
                         continue;
                     }
 
-                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane)));
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
                     const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
+                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
                     const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
                     // While these double switches may seem excessive at first glance, it's actually a substantial performance

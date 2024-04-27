@@ -911,6 +911,7 @@ fn RemoveGrain(comptime T: type) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
+                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, @intCast(plane)));
                     const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
                     // While these double switches may seem excessive at first glance, it's actually a substantial performance
@@ -929,29 +930,29 @@ fn RemoveGrain(comptime T: type) type {
                     // These double switches (see the other in process_plane_scalar, which operates at comptime)
                     // are a bit gratuitous but they are *FAST*.
                     switch (d.modes[plane]) {
-                        1 => process_plane_scalar(1, srcp, dstp, width, height, chroma),
-                        2 => process_plane_scalar(2, srcp, dstp, width, height, chroma),
-                        3 => process_plane_scalar(3, srcp, dstp, width, height, chroma),
-                        4 => process_plane_scalar(4, srcp, dstp, width, height, chroma),
-                        5 => process_plane_scalar(5, srcp, dstp, width, height, chroma),
-                        6 => process_plane_scalar(6, srcp, dstp, width, height, chroma),
-                        7 => process_plane_scalar(7, srcp, dstp, width, height, chroma),
-                        8 => process_plane_scalar(8, srcp, dstp, width, height, chroma),
-                        9 => process_plane_scalar(9, srcp, dstp, width, height, chroma),
-                        10 => process_plane_scalar(10, srcp, dstp, width, height, chroma),
-                        11, 12 => process_plane_scalar(11, srcp, dstp, width, height, chroma),
-                        13 => process_plane_scalar(13, srcp, dstp, width, height, chroma),
-                        14 => process_plane_scalar(14, srcp, dstp, width, height, chroma),
-                        15 => process_plane_scalar(15, srcp, dstp, width, height, chroma),
-                        16 => process_plane_scalar(16, srcp, dstp, width, height, chroma),
-                        17 => process_plane_scalar(17, srcp, dstp, width, height, chroma),
-                        18 => process_plane_scalar(18, srcp, dstp, width, height, chroma),
-                        19 => process_plane_scalar(19, srcp, dstp, width, height, chroma),
-                        20 => process_plane_scalar(20, srcp, dstp, width, height, chroma),
-                        21 => process_plane_scalar(21, srcp, dstp, width, height, chroma),
-                        22 => process_plane_scalar(22, srcp, dstp, width, height, chroma),
-                        23 => process_plane_scalar(23, srcp, dstp, width, height, chroma),
-                        24 => process_plane_scalar(24, srcp, dstp, width, height, chroma),
+                        1 => processPlaneScalar(1, srcp, dstp, width, height, stride, chroma),
+                        2 => processPlaneScalar(2, srcp, dstp, width, height, stride, chroma),
+                        3 => processPlaneScalar(3, srcp, dstp, width, height, stride, chroma),
+                        4 => processPlaneScalar(4, srcp, dstp, width, height, stride, chroma),
+                        5 => processPlaneScalar(5, srcp, dstp, width, height, stride, chroma),
+                        6 => processPlaneScalar(6, srcp, dstp, width, height, stride, chroma),
+                        7 => processPlaneScalar(7, srcp, dstp, width, height, stride, chroma),
+                        8 => processPlaneScalar(8, srcp, dstp, width, height, stride, chroma),
+                        9 => processPlaneScalar(9, srcp, dstp, width, height, stride, chroma),
+                        10 => processPlaneScalar(10, srcp, dstp, width, height, stride, chroma),
+                        11, 12 => processPlaneScalar(11, srcp, dstp, width, height, stride, chroma),
+                        13 => processPlaneScalar(13, srcp, dstp, width, height, stride, chroma),
+                        14 => processPlaneScalar(14, srcp, dstp, width, height, stride, chroma),
+                        15 => processPlaneScalar(15, srcp, dstp, width, height, stride, chroma),
+                        16 => processPlaneScalar(16, srcp, dstp, width, height, stride, chroma),
+                        17 => processPlaneScalar(17, srcp, dstp, width, height, stride, chroma),
+                        18 => processPlaneScalar(18, srcp, dstp, width, height, stride, chroma),
+                        19 => processPlaneScalar(19, srcp, dstp, width, height, stride, chroma),
+                        20 => processPlaneScalar(20, srcp, dstp, width, height, stride, chroma),
+                        21 => processPlaneScalar(21, srcp, dstp, width, height, stride, chroma),
+                        22 => processPlaneScalar(22, srcp, dstp, width, height, stride, chroma),
+                        23 => processPlaneScalar(23, srcp, dstp, width, height, stride, chroma),
+                        24 => processPlaneScalar(24, srcp, dstp, width, height, stride, chroma),
                         else => unreachable,
                     }
                 }
@@ -962,21 +963,20 @@ fn RemoveGrain(comptime T: type) type {
             return null;
         }
 
-        pub fn process_plane_scalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, chroma: bool) void {
-            // @setFloatMode(.Optimized);
+        pub fn processPlaneScalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
             for (1..height - 1) |h| {
                 // Handle interlacing (top field/bottom field) modes
                 if (shouldSkipLine(mode, h)) {
-                    const currentLine = (h * width);
+                    const currentLine = (h * stride);
                     @memcpy(dstp[currentLine..], srcp[currentLine..(currentLine + width)]);
                     continue;
                 }
 
                 // Copy the pixel at the beginning of the line.
-                dstp[(h * width)] = srcp[(h * width)];
+                dstp[(h * stride)] = srcp[(h * stride)];
                 for (1..width - 1) |w| {
                     // Retrieve pixels from the 3x3 grid surrounding the current pixel
                     //
@@ -985,9 +985,9 @@ fn RemoveGrain(comptime T: type) type {
                     // a6 a7 a8
 
                     // Build c and a1-a8 pixels.
-                    const rowPrev = ((h - 1) * width);
-                    const rowCurr = ((h) * width);
-                    const rowNext = ((h + 1) * width);
+                    const rowPrev = ((h - 1) * stride);
+                    const rowCurr = ((h) * stride);
+                    const rowNext = ((h + 1) * stride);
 
                     const a1 = srcp[rowPrev + w - 1];
                     const a2 = srcp[rowPrev + w];
@@ -1027,78 +1027,15 @@ fn RemoveGrain(comptime T: type) type {
                     };
                 }
                 // Copy the pixel at the end of the line.
-                dstp[(h * width) + (width - 1)] = srcp[(h * width) + (width - 1)];
+                dstp[(h * stride) + (width - 1)] = srcp[(h * stride) + (width - 1)];
             }
 
             // Copy the last line.
-            const lastLine = ((height - 1) * width);
+            const lastLine = ((height - 1) * stride);
             @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
         }
     };
 }
-
-// fn process_plane_vec(comptime T: type, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, mode: u5) void {
-//     const vec_size = cmn.getVecSize(T);
-//     const width_simd = width / vec_size * vec_size;
-//
-//     // Copy the first line.
-//     @memcpy(dstp, srcp[0..width]);
-//
-//     for (1..height - 1) |h| {
-//         //TODO: This will need to change for skipline/interlaced support.
-//
-//         // Copy the pixel at the beginning of the line.
-//         dstp[(h * width)] = srcp[(h * width)];
-//
-//         // TODO: Should this just be aligned, including the first pixel?
-//         // Might lead to better performance, and we're manually overwriting the first pixel anyway.
-//         var w: usize = 0;
-//         while (w < width_simd) : (w += vec_size) {
-//             // Retrieve pixels from the 3x3 grid surrounding the current pixel
-//             //
-//             // a1 a2 a3
-//             // a4  c a5
-//             // a6 a7 a8
-//
-//             // Build c and a1-a8 pixels.
-//             const rowPrev = ((h - 1) * width);
-//             const rowCurr = ((h) * width);
-//             const rowNext = ((h + 1) * width);
-//
-//             // const a1: T = srcp[rowPrev + w - 1];
-//             const VecType = @Vector(vec_size, T);
-//             const a1 = cmn.loadVec(VecType, srcp, rowPrev + w - 1);
-//             const a2 = cmn.loadVec(VecType, srcp, rowPrev + w);
-//             const a3 = cmn.loadVec(VecType, srcp, rowPrev + w + 1);
-//
-//             const a4 = cmn.loadVec(VecType, srcp, rowCurr + w - 1);
-//             const c = cmn.loadVec(VecType, srcp, rowCurr + w);
-//             const a5 = cmn.loadVec(VecType, srcp, rowCurr + w + 1);
-//
-//             const a6 = cmn.loadVec(VecType, srcp, rowNext + w - 1);
-//             const a7 = cmn.loadVec(VecType, srcp, rowNext + w);
-//             const a8 = cmn.loadVec(VecType, srcp, rowNext + w + 1);
-//
-//             const result = switch (mode) {
-//                 1 => rgMode1(VecType, c, a1, a2, a3, a4, a5, a6, a7, a8),
-//                 else => unreachable,
-//             };
-//
-//             cmn.storeVec(VecType, dstp, rowCurr + w, result);
-//         }
-//
-//         // TODO: Handle non SIMD size widths.
-//         // if (width_simd < width) {}
-//
-//         // Copy the last pixel
-//         dstp[(h * width) + (width - 1)] = srcp[(h * width) + (width - 1)];
-//     }
-//
-//     // Copy the last line.
-//     const lastLine = ((height - 1) * width);
-//     @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
-// }
-//
 
 export fn removeGrainFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = core;

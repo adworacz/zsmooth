@@ -25,15 +25,19 @@ match format:
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
+
+# Use 720 x 480 to check stride issues.
+# clip = clip.resize.Lanczos(720, 480)
+
 clip.set_output(0)
 
-
 if format not in ['f16', 'f32'] and get_depth(clip) != 32:
-    # flux = clip.flux.SmoothT(temporal_threshold=threshold)
-    flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
+    flux = clip.flux.SmoothT(temporal_threshold=threshold)
+    # flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
 
-# zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);
-zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=threshold, spatial_threshold=threshold);
+zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);
+# zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=threshold, spatial_threshold=threshold)
+# zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=1, spatial_threshold=-1);
 
 match output:
     case 'flux':

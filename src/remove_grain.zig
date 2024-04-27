@@ -845,124 +845,6 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, c - h + l);
         }
 
-        /// Based on the RG mode, we want to skip certain lines,
-        /// like when processing interlaced fields (even or odd fields).
-        fn shouldSkipLine(mode: comptime_int, line: usize) bool {
-            if (mode == 13 or mode == 15) {
-                // Even lines should be processed, so skip when line is an odd number.
-                return (line & 1) != 0;
-            } else if (mode == 14 or mode == 16) {
-                // Odd lines should be processed, so skip when line is an even number.
-                return (line & 1) == 0;
-            }
-            return false;
-        }
-
-        test shouldSkipLine {
-            // Skip odd lines (process even lines) for mode 13 and 15
-            try std.testing.expectEqual(false, shouldSkipLine(13, 2));
-            try std.testing.expectEqual(false, shouldSkipLine(15, 2));
-            try std.testing.expectEqual(true, shouldSkipLine(13, 3));
-            try std.testing.expectEqual(true, shouldSkipLine(15, 3));
-
-            // Skip even lines (process odd lines) for mode 14 and 16
-            try std.testing.expectEqual(true, shouldSkipLine(14, 2));
-            try std.testing.expectEqual(true, shouldSkipLine(16, 2));
-            try std.testing.expectEqual(false, shouldSkipLine(14, 3));
-            try std.testing.expectEqual(false, shouldSkipLine(16, 3));
-
-            // Other modes should process all lines
-            inline for (0..25) |mode| {
-                if (mode == 13 or mode == 14 or mode == 15 or mode == 16) {
-                    continue;
-                }
-
-                try std.testing.expectEqual(false, shouldSkipLine(mode, 2));
-                try std.testing.expectEqual(false, shouldSkipLine(mode, 3));
-            }
-        }
-
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
-
-            const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
-
-            if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-            } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                defer vsapi.?.freeFrame.?(src_frame);
-
-                const process = [_]bool{
-                    d.modes[0] > 0,
-                    d.modes[1] > 0,
-                    d.modes[2] > 0,
-                };
-                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-                    // Skip planes we aren't supposed to process
-                    if (d.modes[plane] == 0) {
-                        continue;
-                    }
-
-                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, @intCast(plane))));
-                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, @intCast(plane))));
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, @intCast(plane)));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, @intCast(plane)));
-                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, @intCast(plane)));
-                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
-
-                    // While these double switches may seem excessive at first glance, it's actually a substantial performance
-                    // optimization. By having this switch operate at run time, process_plane_scalar can be
-                    // optimized *at compile time* for *each* mode. This allows it to autovectorize each
-                    // remove grain function for maximum performance.
-                    //
-                    // If I change the code to use function pointers, passing in the remove grain function into
-                    // process_plane_scalar, FPS drops from 750+ to 48. Again, this is because the compiler can't
-                    // properly optimize each RG function and its use in process_plane_scalar.
-                    //
-                    // Function pointers would likely work if I implemented a full @Vector support, but
-                    // when the compiler can produce such performance code using my *scalar* implementation,
-                    // there's literally no point for such an explosion in code.
-                    //
-                    // These double switches (see the other in process_plane_scalar, which operates at comptime)
-                    // are a bit gratuitous but they are *FAST*.
-                    switch (d.modes[plane]) {
-                        1 => processPlaneScalar(1, srcp, dstp, width, height, stride, chroma),
-                        2 => processPlaneScalar(2, srcp, dstp, width, height, stride, chroma),
-                        3 => processPlaneScalar(3, srcp, dstp, width, height, stride, chroma),
-                        4 => processPlaneScalar(4, srcp, dstp, width, height, stride, chroma),
-                        5 => processPlaneScalar(5, srcp, dstp, width, height, stride, chroma),
-                        6 => processPlaneScalar(6, srcp, dstp, width, height, stride, chroma),
-                        7 => processPlaneScalar(7, srcp, dstp, width, height, stride, chroma),
-                        8 => processPlaneScalar(8, srcp, dstp, width, height, stride, chroma),
-                        9 => processPlaneScalar(9, srcp, dstp, width, height, stride, chroma),
-                        10 => processPlaneScalar(10, srcp, dstp, width, height, stride, chroma),
-                        11, 12 => processPlaneScalar(11, srcp, dstp, width, height, stride, chroma),
-                        13 => processPlaneScalar(13, srcp, dstp, width, height, stride, chroma),
-                        14 => processPlaneScalar(14, srcp, dstp, width, height, stride, chroma),
-                        15 => processPlaneScalar(15, srcp, dstp, width, height, stride, chroma),
-                        16 => processPlaneScalar(16, srcp, dstp, width, height, stride, chroma),
-                        17 => processPlaneScalar(17, srcp, dstp, width, height, stride, chroma),
-                        18 => processPlaneScalar(18, srcp, dstp, width, height, stride, chroma),
-                        19 => processPlaneScalar(19, srcp, dstp, width, height, stride, chroma),
-                        20 => processPlaneScalar(20, srcp, dstp, width, height, stride, chroma),
-                        21 => processPlaneScalar(21, srcp, dstp, width, height, stride, chroma),
-                        22 => processPlaneScalar(22, srcp, dstp, width, height, stride, chroma),
-                        23 => processPlaneScalar(23, srcp, dstp, width, height, stride, chroma),
-                        24 => processPlaneScalar(24, srcp, dstp, width, height, stride, chroma),
-                        else => unreachable,
-                    }
-                }
-
-                return dst;
-            }
-
-            return null;
-        }
-
         pub fn processPlaneScalar(mode: comptime_int, srcp: [*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
@@ -1033,6 +915,125 @@ fn RemoveGrain(comptime T: type) type {
             // Copy the last line.
             const lastLine = ((height - 1) * stride);
             @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
+        }
+
+        /// Based on the RG mode, we want to skip certain lines,
+        /// like when processing interlaced fields (even or odd fields).
+        fn shouldSkipLine(mode: comptime_int, line: usize) bool {
+            if (mode == 13 or mode == 15) {
+                // Even lines should be processed, so skip when line is an odd number.
+                return (line & 1) != 0;
+            } else if (mode == 14 or mode == 16) {
+                // Odd lines should be processed, so skip when line is an even number.
+                return (line & 1) == 0;
+            }
+            return false;
+        }
+
+        test shouldSkipLine {
+            // Skip odd lines (process even lines) for mode 13 and 15
+            try std.testing.expectEqual(false, shouldSkipLine(13, 2));
+            try std.testing.expectEqual(false, shouldSkipLine(15, 2));
+            try std.testing.expectEqual(true, shouldSkipLine(13, 3));
+            try std.testing.expectEqual(true, shouldSkipLine(15, 3));
+
+            // Skip even lines (process odd lines) for mode 14 and 16
+            try std.testing.expectEqual(true, shouldSkipLine(14, 2));
+            try std.testing.expectEqual(true, shouldSkipLine(16, 2));
+            try std.testing.expectEqual(false, shouldSkipLine(14, 3));
+            try std.testing.expectEqual(false, shouldSkipLine(16, 3));
+
+            // Other modes should process all lines
+            inline for (0..25) |mode| {
+                if (mode == 13 or mode == 14 or mode == 15 or mode == 16) {
+                    continue;
+                }
+
+                try std.testing.expectEqual(false, shouldSkipLine(mode, 2));
+                try std.testing.expectEqual(false, shouldSkipLine(mode, 3));
+            }
+        }
+
+        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+            // Assign frame_data to nothing to stop compiler complaints
+            _ = frame_data;
+
+            const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
+
+            if (activation_reason == ar.Initial) {
+                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+            } else if (activation_reason == ar.AllFramesReady) {
+                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                defer vsapi.?.freeFrame.?(src_frame);
+
+                const process = [_]bool{
+                    d.modes[0] > 0,
+                    d.modes[1] > 0,
+                    d.modes[2] > 0,
+                };
+                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
+
+                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
+                    const plane: c_int = @intCast(_plane);
+                    // Skip planes we aren't supposed to process
+                    if (d.modes[_plane] == 0) {
+                        continue;
+                    }
+
+                    const srcp: [*]const T = @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane)));
+                    const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+
+                    // While these double switches may seem excessive at first glance, it's actually a substantial performance
+                    // optimization. By having this switch operate at run time, process_plane_scalar can be
+                    // optimized *at compile time* for *each* mode. This allows it to autovectorize each
+                    // remove grain function for maximum performance.
+                    //
+                    // If I change the code to use function pointers, passing in the remove grain function into
+                    // process_plane_scalar, FPS drops from 750+ to 48. Again, this is because the compiler can't
+                    // properly optimize each RG function and its use in process_plane_scalar.
+                    //
+                    // Function pointers would likely work if I implemented a full @Vector support, but
+                    // when the compiler can produce such performance code using my *scalar* implementation,
+                    // there's literally no point for such an explosion in code.
+                    //
+                    // These double switches (see the other in process_plane_scalar, which operates at comptime)
+                    // are a bit gratuitous but they are *FAST*.
+                    switch (d.modes[_plane]) {
+                        1 => processPlaneScalar(1, srcp, dstp, width, height, stride, chroma),
+                        2 => processPlaneScalar(2, srcp, dstp, width, height, stride, chroma),
+                        3 => processPlaneScalar(3, srcp, dstp, width, height, stride, chroma),
+                        4 => processPlaneScalar(4, srcp, dstp, width, height, stride, chroma),
+                        5 => processPlaneScalar(5, srcp, dstp, width, height, stride, chroma),
+                        6 => processPlaneScalar(6, srcp, dstp, width, height, stride, chroma),
+                        7 => processPlaneScalar(7, srcp, dstp, width, height, stride, chroma),
+                        8 => processPlaneScalar(8, srcp, dstp, width, height, stride, chroma),
+                        9 => processPlaneScalar(9, srcp, dstp, width, height, stride, chroma),
+                        10 => processPlaneScalar(10, srcp, dstp, width, height, stride, chroma),
+                        11, 12 => processPlaneScalar(11, srcp, dstp, width, height, stride, chroma),
+                        13 => processPlaneScalar(13, srcp, dstp, width, height, stride, chroma),
+                        14 => processPlaneScalar(14, srcp, dstp, width, height, stride, chroma),
+                        15 => processPlaneScalar(15, srcp, dstp, width, height, stride, chroma),
+                        16 => processPlaneScalar(16, srcp, dstp, width, height, stride, chroma),
+                        17 => processPlaneScalar(17, srcp, dstp, width, height, stride, chroma),
+                        18 => processPlaneScalar(18, srcp, dstp, width, height, stride, chroma),
+                        19 => processPlaneScalar(19, srcp, dstp, width, height, stride, chroma),
+                        20 => processPlaneScalar(20, srcp, dstp, width, height, stride, chroma),
+                        21 => processPlaneScalar(21, srcp, dstp, width, height, stride, chroma),
+                        22 => processPlaneScalar(22, srcp, dstp, width, height, stride, chroma),
+                        23 => processPlaneScalar(23, srcp, dstp, width, height, stride, chroma),
+                        24 => processPlaneScalar(24, srcp, dstp, width, height, stride, chroma),
+                        else => unreachable,
+                    }
+                }
+
+                return dst;
+            }
+
+            return null;
         }
     };
 }

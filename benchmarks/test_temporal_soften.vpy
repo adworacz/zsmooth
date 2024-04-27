@@ -1,10 +1,12 @@
 import vapoursynth as vs
-from vstools import depth
+from vspreview.api import is_preview
 
 core = vs.core
 
-# radius = 7
-# output = 'all'
+if is_preview():
+    radius = 7
+    output = 'all'
+
 # format = 'u8'
 
 length = 3000

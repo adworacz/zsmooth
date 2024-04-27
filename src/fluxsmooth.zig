@@ -598,7 +598,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, plane));
+                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
 
                     switch (mode) {
                         // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, cmn.lossyCast(T, temporal_threshold)),

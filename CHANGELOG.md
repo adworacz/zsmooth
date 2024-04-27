@@ -1,7 +1,7 @@
 # Changelog
 
-## Next
-N/A
+## 0.4
+* More fixes for stride handling, this time for high bit depth content. I was missing a divide.
 
 ## 0.3
 Fixed:

@@ -1,16 +1,19 @@
 import vapoursynth as vs
 from vstools import depth
+from vspreview.api import is_preview
 
 core = vs.core
 
-# radius = 4
-# output = 'all'
-# format = 'u8'
+if is_preview():
+    radius = 4
+    output = 'all'
+#format = 'u8'
 
 length = 3000
 match format:
     case 'u8':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
+        # clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P8, color=[255, 128, 128], length=length)
     case 'u16':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48, length=length)
     case 'f16':
@@ -25,7 +28,7 @@ match format:
 # clip = depth(clip, 32)
 
 # Use 720 x 480 to check stride issues.
-#clip = clip.resize.Lanczos(720, 480)
+# clip = clip.resize.Lanczos(720, 480)
 
 clip.set_output(0)
 

@@ -286,7 +286,7 @@ fn TemporalSoften(comptime T: type) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, plane));
+                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
 
                     const threshold = cmn.lossyCast(T, d.threshold[_plane]);
 

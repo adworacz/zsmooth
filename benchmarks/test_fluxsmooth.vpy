@@ -1,5 +1,6 @@
 import vapoursynth as vs
 from vstools import depth, get_depth
+from vspreview.api import is_preview
 
 core = vs.core
 
@@ -8,6 +9,9 @@ threshold = 20
 # threshold = 20 / 255.0
 # format = 'u8'
 # output = 'all'
+
+if is_preview():
+    output = 'all'
 
 length = 3000
 match format:

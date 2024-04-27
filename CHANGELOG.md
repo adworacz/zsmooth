@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.5
+
 ## 0.4
 * More fixes for stride handling, this time for high bit depth content. I was missing a divide.
 * Change all filters to use slices instead of multi-pointers. Provides proper runtime safety checks in Debug mode.

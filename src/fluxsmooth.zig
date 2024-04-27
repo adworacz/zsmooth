@@ -62,10 +62,10 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             else => unreachable,
         };
 
-        fn processPlaneTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: T) void {
+        fn processPlaneTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, threshold: T) void {
             for (0..height) |row| {
                 for (0..width) |column| {
-                    const current_pixel = row * width + column;
+                    const current_pixel = row * stride + column;
 
                     const prev = srcp[0][current_pixel];
                     const curr = srcp[1][current_pixel];
@@ -167,19 +167,19 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, threshold: T) void {
+        fn processPlaneTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
                 var x: usize = 0;
                 while (x < width_simd) : (x += vec_size) {
-                    const offset = row * width + x;
+                    const offset = row * stride + x;
                     fluxsmoothTVector(srcp, dstp, offset, threshold);
                 }
 
-                if (width_simd < width_simd) {
-                    fluxsmoothTVector(srcp, dstp, width - vec_size, threshold);
+                if (width_simd < width) {
+                    fluxsmoothTVector(srcp, dstp, (row * stride) + width_simd - (stride - width), threshold);
                 }
             }
         }
@@ -311,24 +311,24 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             try std.testing.expectEqualDeep(expected, dstp);
         }
 
-        fn processPlaneSpatialTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
+        fn processPlaneSpatialTemporalScalar(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
             // Copy the first line
             @memcpy(dstp, srcp[1][0..width]);
 
             for (1..height - 1) |row| {
                 // Copy the pixel at the beginning of the line.
-                dstp[(row * width)] = srcp[1][(row * width)];
+                dstp[(row * stride)] = srcp[1][(row * stride)];
 
                 for (1..width - 1) |column| {
-                    const current_pixel = row * width + column;
+                    const current_pixel = row * stride + column;
 
                     const prev = srcp[0][current_pixel];
                     const curr = srcp[1][current_pixel];
                     const next = srcp[2][current_pixel];
 
-                    const rowPrev = ((row - 1) * width);
-                    const rowCurr = ((row) * width);
-                    const rowNext = ((row + 1) * width);
+                    const rowPrev = ((row - 1) * stride);
+                    const rowCurr = ((row) * stride);
+                    const rowNext = ((row + 1) * stride);
 
                     //TODO: Trying using parameters instead of an array.
                     const neighbors = [_]T{
@@ -351,11 +351,11 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                 }
 
                 // Copy the pixel at the end of the line.
-                dstp[(row * width) + (width - 1)] = srcp[1][(row * width) + (width - 1)];
+                dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
             // Copy the last line.
-            const lastLine = ((height - 1) * width);
+            const lastLine = ((height - 1) * stride);
             @memcpy(dstp[lastLine..], srcp[1][lastLine..(lastLine + width)]);
         }
 
@@ -426,7 +426,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneSpatialTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
+        fn processPlaneSpatialTemporalVector(srcp: [3][*]const T, dstp: [*]T, width: usize, height: usize, stride: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -436,12 +436,12 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             for (1..height - 1) |row| {
                 var column: usize = 1;
                 while (column < width_simd) : (column += vec_size) {
-                    const offset = row * width + column;
-                    fluxsmoothSTVector(srcp, dstp, offset, width, temporal_threshold, spatial_threshold);
+                    const offset = row * stride + column;
+                    fluxsmoothSTVector(srcp, dstp, offset, stride, temporal_threshold, spatial_threshold);
                 }
 
                 if (width_simd < width) {
-                    fluxsmoothSTVector(srcp, dstp, width - vec_size, width, temporal_threshold, spatial_threshold);
+                    fluxsmoothSTVector(srcp, dstp, (row * stride) + width_simd - (stride - width), stride, temporal_threshold, spatial_threshold);
                 }
 
                 // Copy the first and last pixels.
@@ -449,19 +449,19 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                 // operations aligned. We just throw away 2 of the values.
 
                 // Copy the pixel at the beginning of the line.
-                dstp[(row * width)] = srcp[1][(row * width)];
+                dstp[(row * stride)] = srcp[1][(row * stride)];
 
                 // Copy the pixel at the end of the line.
-                dstp[(row * width) + (width - 1)] = srcp[1][(row * width) + (width - 1)];
+                dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
             // Copy the last line.
-            const lastLine = ((height - 1) * width);
+            const lastLine = ((height - 1) * stride);
             @memcpy(dstp[lastLine..], srcp[1][lastLine..(lastLine + width)]);
         }
 
         // TODO: Add tests for this function.
-        fn fluxsmoothSTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, width: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
+        fn fluxsmoothSTVector(srcp: [3][*]const T, dstp: [*]T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -473,9 +473,9 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             const curr = vec.load(VecType, srcp[1], offset);
             const next = vec.load(VecType, srcp[2], offset);
 
-            const rowPrev = offset - width;
+            const rowPrev = offset - stride;
             const rowCurr = offset;
-            const rowNext = offset + width;
+            const rowNext = offset + stride;
 
             const neighbors = [_]VecType{
                 vec.load(VecType, srcp[1], rowPrev - 1),
@@ -598,20 +598,21 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     const dstp: [*]T = @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane)));
                     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
                     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const stride: usize = @intCast(vsapi.?.getStride.?(dst, plane));
 
                     switch (mode) {
                         // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, cmn.lossyCast(T, temporal_threshold)),
-                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, cmn.lossyCast(T, d.temporal_threshold[_plane])),
+                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(T, d.temporal_threshold[_plane])),
                         .SpatialTemporal => {
                             // We can produce faster code if we know that a given threshold is
                             // greater then -1, since we can use unsigned types.
                             // This picks the optimal function based on the threshold values.
                             if (d.temporal_threshold[_plane] >= 0 and d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, cmn.lossyCast(T, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(T, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
                             } else if (d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
                             } else {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(SAT, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(SAT, d.spatial_threshold[_plane]));
                             }
                         },
                     }

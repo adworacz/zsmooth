@@ -64,17 +64,17 @@ fn TemporalMedian(comptime T: type) type {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
-            for (0..height) |h| {
-                var x: usize = 0;
-                while (x < width_simd) : (x += vec_size) {
-                    const offset = h * stride + x;
+            for (0..height) |row| {
+                var column: usize = 0;
+                while (column < width_simd) : (column += vec_size) {
+                    const offset = row * stride + column;
                     median_vec(srcp, dstp, offset, diameter);
                 }
 
                 // If the video width is not perfectly aligned with the vector width, do one
                 // last operation at the end of the plane to cover what's leftover from the loop above.
                 if (width_simd < width) {
-                    median_vec(srcp, dstp, width - vec_size, diameter);
+                    median_vec(srcp, dstp, (row * stride) + width_simd - (stride - width), diameter);
                 }
             }
         }
@@ -171,6 +171,7 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         test "process_plane should find the median value" {
+            //TODO: Add tests using stride
             //Emulate a 2 x 64 (height x width) video.
             const height = 2;
             const width = 64;

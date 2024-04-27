@@ -4,8 +4,8 @@ from vstools import depth
 core = vs.core
 
 # radius = 7
-# format = 'u8'
 # output = 'all'
+# format = 'u8'
 
 length = 3000
 match format:
@@ -23,6 +23,10 @@ match format:
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
+
+# Use 720 x 480 to check stride issues.
+# clip = clip.resize.Lanczos(720, 480)
+
 clip.set_output(0)
 
 

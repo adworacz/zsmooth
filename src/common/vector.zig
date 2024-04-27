@@ -7,9 +7,20 @@ pub fn load(comptime T: type, src: [*]const @typeInfo(T).Vector.child, offset: u
     return src[offset..][0..@typeInfo(T).Vector.len].*;
 }
 
+pub fn load2(comptime T: type, src: []const @typeInfo(T).Vector.child, offset: usize) T {
+    return src[offset..][0..@typeInfo(T).Vector.len].*;
+}
+
 /// Stores data in a vector into memory at a given offset.
 pub fn store(comptime T: type, _dst: [*]@typeInfo(T).Vector.child, offset: usize, result: T) void {
     var dst: [*]@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
+    inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
+        d.* = result[i];
+    }
+}
+
+pub fn store2(comptime T: type, _dst: []@typeInfo(T).Vector.child, offset: usize, result: T) void {
+    var dst: []@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
     inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
         d.* = result[i];
     }

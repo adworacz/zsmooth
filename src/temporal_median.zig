@@ -39,6 +39,9 @@ const TemporalMedianData = struct {
 };
 
 fn TemporalMedian(comptime T: type) type {
+    const vec_size = vec.getVecSize(T);
+    const VecType = @Vector(vec_size, T);
+
     return struct {
         fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, diameter: i8) void {
             var temp: [MAX_DIAMETER]T = undefined;
@@ -61,7 +64,6 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn processPlaneVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, diameter: i8) void {
-            const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -74,15 +76,51 @@ fn TemporalMedian(comptime T: type) type {
                 // If the video width is not perfectly aligned with the vector width, do one
                 // last operation at the end of the plane to cover what's leftover from the loop above.
                 if (width_simd < width) {
-                    medianVector(srcp, dstp, (row * stride) + width_simd - (stride - width), diameter);
+                    medianVector(srcp, dstp, (row * stride) + width - vec_size, diameter);
                 }
             }
         }
 
-        fn medianVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, offset: usize, diameter: i8) void {
-            const vec_size = vec.getVecSize(T);
-            const VecType = @Vector(vec_size, T);
+        test "processPlane should find the median value" {
+            const height = 2;
+            const width = 56;
+            const stride = width + 8 + 32;
+            const size = height * stride;
 
+            const radius = 4;
+            const diameter = radius * 2 + 1;
+            const expectedMedian = ([_]T{radius + 1} ** size)[0..];
+
+            var src: [MAX_DIAMETER][]const T = undefined;
+            for (0..diameter) |i| {
+                const frame = try testingAllocator.alloc(T, size);
+                @memset(frame, cmn.lossyCast(T, i + 1));
+
+                src[i] = frame;
+            }
+            defer {
+                for (0..diameter) |i| {
+                    testingAllocator.free(src[i]);
+                }
+            }
+
+            const dstp_scalar = try testingAllocator.alloc(T, size);
+            const dstp_vec = try testingAllocator.alloc(T, size);
+            defer testingAllocator.free(dstp_scalar);
+            defer testingAllocator.free(dstp_vec);
+
+            processPlaneScalar(src, dstp_scalar, width, height, stride, diameter);
+            processPlaneVector(src, dstp_vec, width, height, stride, diameter);
+
+            for (0..height) |row| {
+                const start = row * stride;
+                const end = start + width;
+                try testing.expectEqualDeep(expectedMedian[start..end], dstp_scalar[start..end]);
+                try testing.expectEqualDeep(expectedMedian[start..end], dstp_vec[start..end]);
+            }
+        }
+
+        fn medianVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, offset: usize, diameter: i8) void {
             var src: [MAX_DIAMETER]VecType = undefined;
 
             for (0..@intCast(diameter)) |r| {
@@ -169,46 +207,6 @@ fn TemporalMedian(comptime T: type) type {
             }
 
             return null;
-        }
-
-        test "processPlane should find the median value" {
-            //Emulate a 2 x 64 (height x width) video.
-            const height = 2;
-            const width = 64;
-            const stride = width + 32;
-            const size = height * stride;
-
-            const radius = 4;
-            const diameter = radius * 2 + 1;
-            const expectedMedian = ([_]T{radius + 1} ** size)[0..];
-
-            var src: [MAX_DIAMETER][]const T = undefined;
-            for (0..diameter) |i| {
-                const frame = try testingAllocator.alloc(T, size);
-                @memset(frame, cmn.lossyCast(T, i + 1));
-
-                src[i] = frame;
-            }
-            defer {
-                for (0..diameter) |i| {
-                    testingAllocator.free(src[i]);
-                }
-            }
-
-            const dstp_scalar = try testingAllocator.alloc(T, size);
-            const dstp_vec = try testingAllocator.alloc(T, size);
-            defer testingAllocator.free(dstp_scalar);
-            defer testingAllocator.free(dstp_vec);
-
-            processPlaneScalar(src, dstp_scalar, width, height, stride, diameter);
-            processPlaneVector(src, dstp_vec, width, height, stride, diameter);
-
-            for (0..height) |row| {
-                const start = row * stride;
-                const end = start + width;
-                try testing.expectEqualDeep(expectedMedian[start..end], dstp_scalar[start..end]);
-                try testing.expectEqualDeep(expectedMedian[start..end], dstp_vec[start..end]);
-            }
         }
     };
 }

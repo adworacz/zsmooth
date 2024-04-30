@@ -107,7 +107,7 @@ fn TemporalSoften(comptime T: type) type {
                 }
 
                 if (width_simd < width) {
-                    temporalSmoothVector(srcp, dstp, (row * stride) + width_simd - (stride - width), frames, threshold);
+                    temporalSmoothVector(srcp, dstp, (row * stride) + width - vec_size, frames, threshold);
                 }
             }
         }
@@ -173,10 +173,9 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         test "processPlane should find the average value" {
-            //Emulate a 2 x 64 (height x width) video.
             const height = 2;
-            const width = 64;
-            const stride = width + 32;
+            const width = 54;
+            const stride = width + 8 + 32;
             const size = height * stride;
 
             const radius = 2;

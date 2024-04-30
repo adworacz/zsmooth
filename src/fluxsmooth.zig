@@ -179,7 +179,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                 }
 
                 if (width_simd < width) {
-                    fluxsmoothTVector(srcp, dstp, (row * stride) + width_simd - (stride - width), threshold);
+                    fluxsmoothTVector(srcp, dstp, (row * stride) + width - vec_size, threshold);
                 }
             }
         }
@@ -440,7 +440,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                 }
 
                 if (width_simd < width) {
-                    fluxsmoothSTVector(srcp, dstp, (row * stride) + width_simd - (stride - width), stride, temporal_threshold, spatial_threshold);
+                    fluxsmoothSTVector(srcp, dstp, (row * stride) + width - vec_size, stride, temporal_threshold, spatial_threshold);
                 }
 
                 // Copy the first and last pixels.

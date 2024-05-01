@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.5
+* Final fixes for stride related issues, as reported in https://github.com/adworacz/zsmooth/issues/1
+* Fixes implemented in TemporaMedian, TemporalSoften, and FluxSmooth. RemoveGrain was not effected.
 
 ## 0.4
 * More fixes for stride handling, this time for high bit depth content. I was missing a divide.

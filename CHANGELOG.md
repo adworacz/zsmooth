@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.6
+
 ## 0.5
 * Final fixes for stride related issues, as reported in https://github.com/adworacz/zsmooth/issues/1
 * Fixes implemented in TemporaMedian, TemporalSoften, and FluxSmooth. RemoveGrain was not effected.

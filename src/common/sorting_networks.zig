@@ -13,8 +13,7 @@ fn compareSwap(comptime T: type, a: *T, b: *T) void {
 // 3. To form a network.
 pub fn SortingNetwork(comptime layers: anytype) type {
     return struct {
-        pub fn sort(comptime T: type, comptime N: usize, input: *[N]T) void {
-
+        pub fn sort(comptime T: type, input: []T) void {
             // For each layer, get swap pairs.
             // Iterate over swap pairs.
             inline for (layers) |layer| {
@@ -39,7 +38,7 @@ pub fn SortingNetwork(comptime layers: anytype) type {
 ///
 /// Quickly generated using this rough script (my sed and awk foo is weak, but it works):
 /// echo '<array values from sorter hunter>' | sed 's/[()]//g' | sed 's/\[/{/g' | sed 's/\]/}/g' | awk '{ print "&[_]usize"$1"," }'
-pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
+pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
     // Only odd number networks are currently supported.
     std.debug.assert(N % 2 == 1);
     const Layer = []const usize;
@@ -49,7 +48,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 0, 1 },
             &[_]usize{ 1, 2 },
             &[_]usize{ 0, 1 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         // https://bertdobbelaere.github.io/median_networks.html#N5L7D5
         5 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3 },
@@ -57,7 +56,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 2, 4 },
             &[_]usize{ 1, 2 },
             &[_]usize{ 2, 4 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         // https://bertdobbelaere.github.io/median_networks.html#N7L13D6
         7 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 6, 1, 2, 3, 4 },
@@ -66,7 +65,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 1, 3, 2, 4 },
             &[_]usize{ 3, 4 },
             &[_]usize{ 2, 3 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         // https://bertdobbelaere.github.io/median_networks.html#N9L19D7
         9 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 7, 1, 2, 3, 5, 4, 8 },
@@ -76,7 +75,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 2, 5, 4, 6 },
             &[_]usize{ 2, 3, 4, 5 },
             &[_]usize{ 3, 4 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         11 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 },
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
@@ -89,7 +88,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 4, 5 },
             &[_]usize{ 4, 8 },
             &[_]usize{ 5, 8 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         13 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
             &[_]usize{ 0, 8, 1, 9, 2, 4, 3, 5, 6, 10, 7, 11 },
@@ -101,7 +100,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 5, 7, 6, 10 },
             &[_]usize{ 5, 6 },
             &[_]usize{ 6, 7 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         15 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 },
             &[_]usize{ 0, 12, 1, 13, 2, 8, 3, 9, 10, 14 },
@@ -115,7 +114,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 6, 7, 8, 9 },
             &[_]usize{ 6, 8 },
             &[_]usize{ 7, 8 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         17 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15 },
@@ -129,7 +128,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 7, 9, 8, 12 },
             &[_]usize{ 6, 7, 8, 9 },
             &[_]usize{ 7, 8 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         19 => SortingNetwork([_]Layer{
             // TODO: Try out some of the other sorting networks provided by sorter hunter
             // to see if there's a performance difference.
@@ -148,7 +147,7 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 8, 9 },
             &[_]usize{ 9, 18 },
             &[_]usize{ 8, 9 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         21 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 },
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15, 16, 18, 17, 19 },
@@ -165,11 +164,11 @@ pub fn median(comptime T: type, comptime N: usize, input: *[N]T) T {
             &[_]usize{ 9, 10 },
             &[_]usize{ 10, 20 },
             &[_]usize{ 9, 10 },
-        }).sort(T, N, input),
+        }).sort(T, input),
         else => unreachable,
     }
 
-    return input[@divTrunc(N, 2)];
+    return input[N / 2];
 }
 
 test "Sorting Networks - Median" {

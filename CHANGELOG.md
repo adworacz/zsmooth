@@ -1,6 +1,10 @@
 # Changelog
 
 ## 0.6
+* Optimize TemporalMedian even more. Latest tests show a bump from 340fps to 413fps in 
+  single core tests on my laptop. Essentially I heavily reduced branching calculations by
+  moving diameter calculations to comptime. This does blow up the size of the binary by about double,
+  from about 850kB to 1.6MB, but oh well.
 
 ## 0.5
 * Final fixes for stride related issues, as reported in https://github.com/adworacz/zsmooth/issues/1

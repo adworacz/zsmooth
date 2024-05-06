@@ -43,8 +43,8 @@ fn TemporalMedian(comptime T: type) type {
     const VecType = @Vector(vec_size, T);
 
     return struct {
-        fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, diameter: i8) void {
-            var temp: [MAX_DIAMETER]T = undefined;
+        fn processPlaneScalar(comptime diameter: u8, srcp: [][]const T, dstp: []T, width: usize, height: usize, stride: usize) void {
+            var temp: [diameter]T = undefined;
 
             for (0..height) |row| {
                 for (0..width) |column| {
@@ -56,9 +56,9 @@ fn TemporalMedian(comptime T: type) type {
 
                     // 60fps with radius 1
                     // 7 fps with radius 10
-                    std.mem.sortUnstable(T, temp[0..@intCast(diameter)], {}, comptime std.sort.asc(T));
+                    std.mem.sortUnstable(T, temp[0..diameter], {}, comptime std.sort.asc(T));
 
-                    dstp[current_pixel] = temp[@intCast(@divTrunc(diameter, 2))];
+                    dstp[current_pixel] = temp[diameter / 2];
                 }
             }
         }
@@ -91,7 +91,7 @@ fn TemporalMedian(comptime T: type) type {
             const diameter = radius * 2 + 1;
             const expectedMedian = ([_]T{radius + 1} ** size)[0..];
 
-            var src: [MAX_DIAMETER][]const T = undefined;
+            var src: [diameter][]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
                 @memset(frame, cmn.lossyCast(T, i + 1));
@@ -109,8 +109,8 @@ fn TemporalMedian(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            processPlaneScalar(src, dstp_scalar, width, height, stride, diameter);
-            processPlaneVector(src, dstp_vec, width, height, stride, diameter);
+            processPlaneScalar(diameter, &src, dstp_scalar, width, height, stride);
+            processPlaneVector(diameter, &src, dstp_vec, width, height, stride);
 
             for (0..height) |row| {
                 const start = row * stride;

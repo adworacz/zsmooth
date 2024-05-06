@@ -206,11 +206,7 @@ pub fn getFormatMaximum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
         return lossyCast(T, @as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) 0.5 else 1.0));
     }
 
-    return lossyCast(T, @as(u16, switch (vf.bytesPerSample) {
-        1 => 255,
-        2 => 65535,
-        else => unreachable,
-    }));
+    return lossyCast(T, (@as(u32, 1) << @intCast(vf.bitsPerSample)) - 1);
 }
 
 pub fn getFormatMinimum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
@@ -257,6 +253,15 @@ test getFormatMaximum {
         .subSamplingW = 2,
         .subSamplingH = 2,
     };
+    const u10_vf: vs.VideoFormat = .{
+        .sampleType = vs.SampleType.Integer,
+        .colorFamily = vs.ColorFamily.RGB,
+        .bitsPerSample = 10,
+        .bytesPerSample = 2,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
     const u16_vf: vs.VideoFormat = .{
         .sampleType = vs.SampleType.Integer,
         .colorFamily = vs.ColorFamily.RGB,
@@ -269,6 +274,7 @@ test getFormatMaximum {
 
     try std.testing.expectEqual(1.0, getFormatMaximum(f32, float_vf, false));
     try std.testing.expectEqual(255, getFormatMaximum(f32, u8_vf, false));
+    try std.testing.expectEqual(1023, getFormatMaximum(f32, u10_vf, false));
     try std.testing.expectEqual(65535, getFormatMaximum(f32, u16_vf, false));
 }
 

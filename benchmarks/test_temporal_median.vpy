@@ -3,9 +3,11 @@ from vstools import depth
 from vspreview.api import is_preview
 
 core = vs.core
+core.max_cache_size = 1024
+core.num_threads = 1
 
 if is_preview():
-    radius = 4
+    radius = 1
     output = 'all'
 #format = 'u8'
 
@@ -28,6 +30,7 @@ match format:
 # clip = depth(clip, 32)
 
 # Use 720 x 480 to check stride issues.
+# clip = clip.resize.Lanczos(720, 480, format=vs.YUV444P16)
 # clip = clip.resize.Lanczos(720, 480)
 
 clip.set_output(0)

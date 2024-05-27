@@ -12,6 +12,17 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "src/zsmooth.zig" },
         .target = target,
         .optimize = optimize,
+
+        // Improve build times by giving an upper bound to memory,
+        // thus enabling multi-threaded builds.
+        .max_rss = 1024 * 1024 * 1024 * 2, // 2GB
+
+        // This application is single threaded (as VapourSynth handles the threading for us)
+        // so might as well mark it so in case we ever import data
+        // structures that *might* have thread safety built in,
+        // in which case setting this value will optimize out any threading
+        // or locking constructs.
+        .single_threaded = true,
     });
 
     const vapoursynth_dep = b.dependency("vapoursynth", .{

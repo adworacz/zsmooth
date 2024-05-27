@@ -32,8 +32,6 @@ const TemporalSoftenData = struct {
 
     // The temporal radius from which we'll build a median.
     radius: i8,
-    // Figure out how to make this work with floating point.
-    // maybe use @bitCast to cast back and forth between u32 and f32, etc.
     threshold: [3]f32,
     scenechange: u8,
     scenechange_prop_prev: []const u8,
@@ -357,7 +355,6 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         [_]f32{ cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0) };
 
     for (0..3) |i| {
-        // Float support
         if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
             if (scalep and (_threshold < 0 or _threshold > 255)) {
                 return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);

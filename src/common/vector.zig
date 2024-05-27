@@ -2,15 +2,15 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-/// Loads data from memory to type T data at a specific offset address.
-pub fn load(comptime T: type, src: []const @typeInfo(T).Vector.child, offset: usize) T {
-    return src[offset..][0..@typeInfo(T).Vector.len].*;
+/// Loads a vector of type VT from the specific offset memory address.
+pub fn load(comptime VT: type, src: []const @typeInfo(VT).Vector.child, offset: usize) VT {
+    return src[offset..][0..@typeInfo(VT).Vector.len].*;
 }
 
-/// Stores data in a vector into memory at a given offset.
-pub fn store(comptime T: type, _dst: []@typeInfo(T).Vector.child, offset: usize, result: T) void {
-    var dst: []@typeInfo(T).Vector.child = @ptrCast(@alignCast(_dst));
-    inline for (dst[offset..][0..@typeInfo(T).Vector.len], 0..) |*d, i| {
+/// Stores vector data into memory at a given offset.
+pub fn store(comptime VT: type, _dst: []@typeInfo(VT).Vector.child, offset: usize, result: VT) void {
+    var dst: []@typeInfo(VT).Vector.child = @ptrCast(@alignCast(_dst));
+    inline for (dst[offset..][0..@typeInfo(VT).Vector.len], 0..) |*d, i| {
         d.* = result[i];
     }
 }

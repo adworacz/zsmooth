@@ -1,20 +1,64 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+// TODO: Move all Vapoursynth related functions to ./common/vapoursynth.zig
 const vs = vapoursynth.vapoursynth4;
 
 pub inline fn isFloat(comptime T: type) bool {
-    return @typeInfo(T) == .Float;
-}
-
-pub inline fn isInt(comptime T: type) bool {
-    return @typeInfo(T) == .Int;
+    const type_info = @typeInfo(T);
+    return switch (type_info) {
+        .Float => true,
+        .Vector => isFloat(type_info.Vector.child),
+        else => false,
+    };
 }
 
 test isFloat {
     try std.testing.expectEqual(true, isFloat(f32));
+    try std.testing.expectEqual(true, isFloat(@Vector(1, f32)));
     try std.testing.expectEqual(true, isFloat(f16));
+    try std.testing.expectEqual(true, isFloat(@Vector(1, f16)));
     try std.testing.expectEqual(false, isFloat(u16));
+    try std.testing.expectEqual(false, isFloat(@Vector(1, u16)));
     try std.testing.expectEqual(false, isFloat(u8));
+    try std.testing.expectEqual(false, isFloat(@Vector(1, u8)));
+}
+
+pub inline fn isInt(comptime T: type) bool {
+    const type_info = @typeInfo(T);
+    return switch (type_info) {
+        .Int => true,
+        .Vector => isInt(type_info.Vector.child),
+        else => false,
+    };
+}
+
+test isInt {
+    try std.testing.expectEqual(true, isInt(u16));
+    try std.testing.expectEqual(true, isInt(@Vector(1, u16)));
+    try std.testing.expectEqual(true, isInt(u8));
+    try std.testing.expectEqual(true, isInt(@Vector(1, u8)));
+    try std.testing.expectEqual(false, isInt(f32));
+    try std.testing.expectEqual(false, isInt(@Vector(1, f32)));
+    try std.testing.expectEqual(false, isInt(f16));
+    try std.testing.expectEqual(false, isInt(@Vector(1, f16)));
+}
+
+pub inline fn isVector(comptime T: type) bool {
+    return @typeInfo(T) == .Vector;
+}
+
+test isVector {
+    try std.testing.expectEqual(true, isVector(@Vector(1, u8)));
+    try std.testing.expectEqual(false, isVector(u8));
+}
+
+pub inline fn isScalar(comptime T: type) bool {
+    return !isVector(T);
+}
+
+test isScalar {
+    try std.testing.expectEqual(true, isScalar(u8));
+    try std.testing.expectEqual(false, isScalar(@Vector(1, u8)));
 }
 
 /////////////////////////////////////////////////
@@ -52,6 +96,15 @@ pub fn lossyCast(comptime T: type, value: anytype) T {
         },
         else => @compileError("bad result type"),
     }
+}
+
+// Identical to std.math.clamp, just works with Vectors
+// by removing the assert it previously used. Ideally this should be fixed in the std library...
+pub fn clamp(val: anytype, lower: anytype, upper: anytype) @TypeOf(val, lower, upper) {
+    if (isScalar(@TypeOf(val, lower, upper))) {
+        std.debug.assert(lower <= upper);
+    }
+    return @max(lower, @min(val, upper));
 }
 
 /////////////////////////////////////////////////

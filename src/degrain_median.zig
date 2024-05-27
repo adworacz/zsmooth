@@ -204,19 +204,6 @@ fn DegrainMedian(comptime T: type) type {
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
-        // fn mode0Vector(prev: GridV, current: GridV, next: GridV, limit: VT, pixel_min: VT, pixel_max: VT) VT {
-        //     // var diff: VT = pixel_max;
-        //     // var max: VT = pixel_max;
-        //     // var min: VT = 0;
-        //
-        //     _ = prev;
-        //     _ = current;
-        //     _ = next;
-        //     _ = pixel_min;
-        //     _ = pixel_max;
-        //     return limit;
-        // }
-
         fn processPlaneScalar(comptime mode: u8, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
             // Copy the first line
             @memcpy(dstp[0..width], srcp[1][0..width]);
@@ -286,6 +273,13 @@ fn DegrainMedian(comptime T: type) type {
             // Copy the first line
             @memcpy(dstp[0..width], srcp[1][0..width]);
 
+            // These assertions honestly seems to lead to some nice speedups.
+            // I'm seeing a difference of ~190 -> ~200fps, single core.
+            // TODO: add checking in init.
+            assert(width >= vector_len);
+            assert(stride >= width);
+            assert(stride % vector_len == 0);
+
             for (1..height - 1) |row| {
                 // Copy the pixel at the beginning of the line.
                 dstp[(row * stride)] = srcp[1][(row * stride)];
@@ -299,6 +293,10 @@ fn DegrainMedian(comptime T: type) type {
                     const prev = GridV.init(T, srcp[0][grid_offset..], stride);
                     const current = GridV.init(T, srcp[1][grid_offset..], stride);
                     const next = GridV.init(T, srcp[2][grid_offset..], stride);
+
+                    // @prefetch(srcp[0].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
+                    // @prefetch(srcp[1].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
+                    // @prefetch(srcp[2].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
 
                     const result = switch (mode) {
                         0 => mode0(prev, current, next, limit, pixel_min, pixel_max),

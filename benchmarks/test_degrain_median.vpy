@@ -12,7 +12,7 @@ limit = 4
 mode = 0
 #format = 'u8'
 
-length = 1000
+length = 3000
 match format:
     case 'u8':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
@@ -26,7 +26,7 @@ match format:
     case _:
         clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
 
-clip = depth(clip, 16)
+# clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
 

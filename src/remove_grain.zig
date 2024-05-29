@@ -845,20 +845,20 @@ fn RemoveGrain(comptime T: type) type {
             return cmn.lossyCast(T, c - h + l);
         }
 
-        pub fn processPlaneScalar(mode: comptime_int, srcp: []const T, dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
+        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp, srcp[0..width]);
 
-            for (1..height - 1) |h| {
+            for (1..height - 1) |row| {
                 // Handle interlacing (top field/bottom field) modes
-                if (shouldSkipLine(mode, h)) {
-                    const currentLine = (h * stride);
+                if (shouldSkipLine(mode, row)) {
+                    const currentLine = (row * stride);
                     @memcpy(dstp[currentLine..], srcp[currentLine..(currentLine + width)]);
                     continue;
                 }
 
                 // Copy the pixel at the beginning of the line.
-                dstp[(h * stride)] = srcp[(h * stride)];
+                dstp[(row * stride)] = srcp[(row * stride)];
                 for (1..width - 1) |w| {
                     // Retrieve pixels from the 3x3 grid surrounding the current pixel
                     //
@@ -867,9 +867,9 @@ fn RemoveGrain(comptime T: type) type {
                     // a6 a7 a8
 
                     // Build c and a1-a8 pixels.
-                    const rowPrev = ((h - 1) * stride);
-                    const rowCurr = ((h) * stride);
-                    const rowNext = ((h + 1) * stride);
+                    const rowPrev = ((row - 1) * stride);
+                    const rowCurr = ((row) * stride);
+                    const rowNext = ((row + 1) * stride);
 
                     const a1 = srcp[rowPrev + w - 1];
                     const a2 = srcp[rowPrev + w];
@@ -909,7 +909,7 @@ fn RemoveGrain(comptime T: type) type {
                     };
                 }
                 // Copy the pixel at the end of the line.
-                dstp[(h * stride) + (width - 1)] = srcp[(h * stride) + (width - 1)];
+                dstp[(row * stride) + (width - 1)] = srcp[(row * stride) + (width - 1)];
             }
 
             // Copy the last line.
@@ -1003,29 +1003,7 @@ fn RemoveGrain(comptime T: type) type {
                     // These double switches (see the other in process_plane_scalar, which operates at comptime)
                     // are a bit gratuitous but they are *FAST*.
                     switch (d.modes[_plane]) {
-                        1 => processPlaneScalar(1, srcp, dstp, width, height, stride, chroma),
-                        2 => processPlaneScalar(2, srcp, dstp, width, height, stride, chroma),
-                        3 => processPlaneScalar(3, srcp, dstp, width, height, stride, chroma),
-                        4 => processPlaneScalar(4, srcp, dstp, width, height, stride, chroma),
-                        5 => processPlaneScalar(5, srcp, dstp, width, height, stride, chroma),
-                        6 => processPlaneScalar(6, srcp, dstp, width, height, stride, chroma),
-                        7 => processPlaneScalar(7, srcp, dstp, width, height, stride, chroma),
-                        8 => processPlaneScalar(8, srcp, dstp, width, height, stride, chroma),
-                        9 => processPlaneScalar(9, srcp, dstp, width, height, stride, chroma),
-                        10 => processPlaneScalar(10, srcp, dstp, width, height, stride, chroma),
-                        11, 12 => processPlaneScalar(11, srcp, dstp, width, height, stride, chroma),
-                        13 => processPlaneScalar(13, srcp, dstp, width, height, stride, chroma),
-                        14 => processPlaneScalar(14, srcp, dstp, width, height, stride, chroma),
-                        15 => processPlaneScalar(15, srcp, dstp, width, height, stride, chroma),
-                        16 => processPlaneScalar(16, srcp, dstp, width, height, stride, chroma),
-                        17 => processPlaneScalar(17, srcp, dstp, width, height, stride, chroma),
-                        18 => processPlaneScalar(18, srcp, dstp, width, height, stride, chroma),
-                        19 => processPlaneScalar(19, srcp, dstp, width, height, stride, chroma),
-                        20 => processPlaneScalar(20, srcp, dstp, width, height, stride, chroma),
-                        21 => processPlaneScalar(21, srcp, dstp, width, height, stride, chroma),
-                        22 => processPlaneScalar(22, srcp, dstp, width, height, stride, chroma),
-                        23 => processPlaneScalar(23, srcp, dstp, width, height, stride, chroma),
-                        24 => processPlaneScalar(24, srcp, dstp, width, height, stride, chroma),
+                        inline 1...24 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride, chroma),
                         else => unreachable,
                     }
                 }

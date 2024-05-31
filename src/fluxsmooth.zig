@@ -198,6 +198,14 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             const curr = vec.load(VecType, srcp[1], offset);
             const next = vec.load(VecType, srcp[2], offset);
 
+            // So this works surprisingly well.
+            // Request one cache line ahead to start retrieving data before we need it.
+            // Need to test this on other architectures, but it leads to a pretty signifcant speedup,
+            // like going from around 430-450 fps to 480-500 fps.
+            // @prefetch(srcp[0].ptr + offset + 64, .{ .locality = 2 });
+            // @prefetch(srcp[1].ptr + offset + 64, .{ .locality = 2 });
+            // @prefetch(srcp[2].ptr + offset + 64, .{ .locality = 2 });
+
             //if ((prev < curr and next < curr) or (prev > curr and next > curr))
             //
             // const prevnextless = (prev < curr) & (next < curr);

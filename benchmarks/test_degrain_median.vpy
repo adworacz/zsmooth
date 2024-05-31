@@ -36,7 +36,7 @@ match format:
 
 clip.set_output(0)
 
-if format != 'f16' and format != 'f32':
+if (format not in ['f16', 'f32']):
     dgm = clip.dgm.DegrainMedian(limit=limit, mode=mode)
 
 zsmooth = clip.zsmooth.DegrainMedian(limit=limit, mode=mode, scalep=True)

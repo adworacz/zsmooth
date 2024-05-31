@@ -5,6 +5,10 @@
   single core tests on my laptop. Essentially I heavily reduced branching calculations by
   moving diameter calculations to comptime. This does blow up the size of the binary by about double,
   from about 850kB to 1.6MB, but oh well.
+* Add DegrainMedian implementation.
+* Refactored internal common code significantly, and introduced a helper type called Grid for operating on a 3x3
+  grid of pixels as either scalars or vectors.
+* Added more testing to many of the common functions.
 
 ## 0.5
 * Final fixes for stride related issues, as reported in https://github.com/adworacz/zsmooth/issues/1

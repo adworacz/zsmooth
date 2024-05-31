@@ -3,11 +3,12 @@ const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
-const cmn = @import("common.zig");
+const string = @import("common/string.zig");
+const types = @import("common/type.zig");
+const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 
-const math = std.math;
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
@@ -83,7 +84,7 @@ fn TemporalSoften(comptime T: type) type {
                         sum += value;
                     }
 
-                    dstp[current_pixel] = if (cmn.isFloat(T))
+                    dstp[current_pixel] = if (types.isFloat(T))
                         @floatCast(sum / @as(f32, @floatFromInt(frames)))
                     else
                         // Add half_frames to round the integer value up to the nearest integer value.
@@ -122,7 +123,7 @@ fn TemporalSoften(comptime T: type) type {
             for (1..frames) |i| {
                 const frame_value_vec = vec.load(VecType, srcp[i], offset);
 
-                const abs_vec = if (cmn.isFloat(T))
+                const abs_vec = if (types.isFloat(T))
                     @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec)
                 else
                     @max(current_value_vec, frame_value_vec) - @min(current_value_vec, frame_value_vec);
@@ -132,7 +133,7 @@ fn TemporalSoften(comptime T: type) type {
                 sum_vec += @select(T, lte_threshold_vec, frame_value_vec, current_value_vec);
             }
 
-            const result: VecType = if (cmn.isFloat(T))
+            const result: VecType = if (types.isFloat(T))
                 @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames))))
             else result: {
                 // As it turns out, integer division can be dog slow.
@@ -178,13 +179,13 @@ fn TemporalSoften(comptime T: type) type {
 
             const radius = 2;
             const diameter = radius * 2 + 1;
-            const threshold: u32 = if (cmn.isInt(T)) 4 else @bitCast(@as(f32, 4));
+            const threshold: u32 = if (types.isInt(T)) 4 else @bitCast(@as(f32, 4));
             const expectedAverage = ([_]T{3} ** size)[0..];
 
             var src: [MAX_DIAMETER][]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
-                if (cmn.isFloat(T)) {
+                if (types.isFloat(T)) {
                     @memset(frame, @floatFromInt(i + 1));
                 } else {
                     @memset(frame, @intCast(i + 1));
@@ -291,7 +292,7 @@ fn TemporalSoften(comptime T: type) type {
                     }
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
-                    const threshold = cmn.lossyCast(T, d.threshold[_plane]);
+                    const threshold = math.lossyCast(T, d.threshold[_plane]);
 
                     // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
                     processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
@@ -350,26 +351,26 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     // Check threshold param
     d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
-        [_]f32{ cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 4, 0) }
+        [_]f32{ vscmn.scaleToFormat(f32, d.vi.format, 4, 0), vscmn.scaleToFormat(f32, d.vi.format, 4, 0), vscmn.scaleToFormat(f32, d.vi.format, 4, 0) }
     else
-        [_]f32{ cmn.scaleToFormat(f32, d.vi.format, 4, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0), cmn.scaleToFormat(f32, d.vi.format, 8, 0) };
+        [_]f32{ vscmn.scaleToFormat(f32, d.vi.format, 4, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0) };
 
     for (0..3) |i| {
         if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
             if (scalep and (_threshold < 0 or _threshold > 255)) {
-                return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
+                return vscmn.reportError(string.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
             }
 
             const threshold = if (scalep)
-                cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_threshold), 0)
+                vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_threshold), 0)
             else
                 _threshold;
 
-            const formatMaximum = cmn.getFormatMaximum(f32, d.vi.format, i > 0);
-            const formatMinimum = cmn.getFormatMinimum(f32, d.vi.format, i > 0);
+            const formatMaximum = vscmn.getFormatMaximum(f32, d.vi.format, i > 0);
+            const formatMinimum = vscmn.getFormatMinimum(f32, d.vi.format, i > 0);
 
             if ((threshold < formatMinimum or threshold > formatMaximum)) {
-                return vscmn.reportError(cmn.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
+                return vscmn.reportError(string.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
             }
             d.threshold[i] = threshold;
         } else {

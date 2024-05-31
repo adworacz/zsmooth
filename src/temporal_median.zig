@@ -3,12 +3,11 @@ const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
-const cmn = @import("common.zig");
+const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 const sort = @import("common/sorting_networks.zig");
 
-const math = std.math;
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
@@ -94,7 +93,7 @@ fn TemporalMedian(comptime T: type) type {
             var src: [diameter][]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
-                @memset(frame, cmn.lossyCast(T, i + 1));
+                @memset(frame, math.lossyCast(T, i + 1));
 
                 src[i] = frame;
             }

@@ -3,13 +3,13 @@ const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
-const cmn = @import("common.zig");
+const string = @import("common/string.zig");
+const types = @import("common/type.zig");
+const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
-const sort = @import("common/sorting_networks.zig");
 const grid = @import("common/grid.zig");
 
-const math = std.math;
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
@@ -52,7 +52,7 @@ fn DegrainMedian(comptime T: type) type {
         /// and no greater than pixel_max or less than pixel_min.
         // fn limitPixelCorrectionScalar(old_pixel: T, new_pixel: T, limit: T, pixel_min: T, pixel_max: T) T
         fn limitPixelCorrection(old_pixel: anytype, new_pixel: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(new_pixel) {
-            const lower = if (cmn.isInt(T))
+            const lower = if (types.isInt(T))
                 // Integer formats never go below zero
                 // so we an use saturating subtraction.
                 old_pixel -| limit
@@ -61,7 +61,7 @@ fn DegrainMedian(comptime T: type) type {
                 // so we clamp to pixel_min.
                 @max(pixel_min, old_pixel - limit);
 
-            const upper = if (cmn.isInt(T))
+            const upper = if (types.isInt(T))
                 // Using saturating addition to prevent integer overflow.
                 @min(old_pixel +| limit, pixel_max)
             else
@@ -80,7 +80,7 @@ fn DegrainMedian(comptime T: type) type {
             try std.testing.expectEqual(@as(VT, @splat(9)), limitPixelCorrection(@as(VT, @splat(10)), @as(VT, @splat(8)), @as(VT, @splat(1)), @as(VT, @splat(0)), @as(VT, @splat(255))));
 
             // New pixel is lesser - below pixel_min (clamped)
-            if (cmn.isFloat(T)) {
+            if (types.isFloat(T)) {
                 try std.testing.expectEqual(9, limitPixelCorrection(10, 8, 255, 9, 255));
                 try std.testing.expectEqual(@as(VT, @splat(9)), limitPixelCorrection(@as(VT, @splat(10)), @as(VT, @splat(8)), @as(VT, @splat(255)), @as(VT, @splat(9)), @as(VT, @splat(255))));
             }
@@ -104,12 +104,12 @@ fn DegrainMedian(comptime T: type) type {
         /// corresponding values of the two pixels.
         // fn checkBetterNeighorsScalar(a: T, b: T, diff: *T, min: *T, max: *T) void
         fn checkBetterNeighbors(a: anytype, b: anytype, diff: anytype, min: anytype, max: anytype) void {
-            const newdiff = if (cmn.isFloat(T))
+            const newdiff = if (types.isFloat(T))
                 @abs(a - b)
             else
                 @max(a, b) - @min(a, b);
 
-            if (cmn.isScalar(@TypeOf(a))) {
+            if (types.isScalar(@TypeOf(a))) {
                 // scalar
                 if (newdiff <= diff.*) {
                     diff.* = newdiff;
@@ -170,7 +170,7 @@ fn DegrainMedian(comptime T: type) type {
             const R = @TypeOf(pixel_max);
             var diff: R = pixel_max;
             var max: R = pixel_max;
-            var min: R = if (cmn.isScalar(R)) 0 else @splat(0);
+            var min: R = if (types.isScalar(R)) 0 else @splat(0);
 
             // Check the diagonals of the temporal neighbors.
             checkBetterNeighbors(next.top_left, prev.bottom_right, &diff, &min, &max);
@@ -199,7 +199,7 @@ fn DegrainMedian(comptime T: type) type {
             // if !norow
             checkBetterNeighbors(current.center_left, current.center_right, &diff, &min, &max);
 
-            const result = cmn.clamp(current.center_center, min, max);
+            const result = math.clamp(current.center_center, min, max);
 
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
@@ -381,12 +381,12 @@ fn DegrainMedian(comptime T: type) type {
                     };
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
-                    const pixel_max = cmn.getFormatMaximum(T, d.vi.format, _plane > 0);
-                    const pixel_min = cmn.getFormatMinimum(T, d.vi.format, _plane > 0);
+                    const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
+                    const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
 
                     switch (d.mode[_plane]) {
-                        // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, cmn.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                        inline 0...5 => |m| processPlaneVector(m, srcp, dstp, width, height, stride, cmn.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                        // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                        inline 0...5 => |m| processPlaneVector(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                         else => unreachable,
                     }
                 }
@@ -434,19 +434,19 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
     for (0..3) |i| {
         if (vsh.mapGetN(f32, in, "limit", @intCast(i), vsapi)) |_limit| {
             if (scalep and (_limit < 0 or _limit > 255)) {
-                return vscmn.reportError(cmn.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), vsapi, out, d.node);
+                return vscmn.reportError(string.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), vsapi, out, d.node);
             }
 
             const limit = if (scalep)
-                cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_limit), 0)
+                vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_limit), 0)
             else
                 _limit;
 
-            const formatMaximum = cmn.getFormatMaximum(f32, d.vi.format, i > 0);
-            const formatMinimum = cmn.getFormatMinimum(f32, d.vi.format, i > 0);
+            const formatMaximum = vscmn.getFormatMaximum(f32, d.vi.format, i > 0);
+            const formatMinimum = vscmn.getFormatMinimum(f32, d.vi.format, i > 0);
 
             if ((limit < formatMinimum or limit > formatMaximum)) {
-                return vscmn.reportError(cmn.printf(allocator, "DegrainMedian: Index {d} limit '{d}' must be between {d} and {d} (inclusive)", .{ i, limit, formatMinimum, formatMaximum }), vsapi, out, d.node);
+                return vscmn.reportError(string.printf(allocator, "DegrainMedian: Index {d} limit '{d}' must be between {d} and {d} (inclusive)", .{ i, limit, formatMinimum, formatMaximum }), vsapi, out, d.node);
             }
 
             d.limit[i] = limit;

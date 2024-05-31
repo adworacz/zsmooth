@@ -3,11 +3,12 @@ const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
-const cmn = @import("common.zig");
+const string = @import("common/string.zig");
+const types = @import("common/type.zig");
+const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 
-const math = std.math;
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
@@ -80,7 +81,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // If both pixels from the corresponding previous and next frames
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
-                if (cmn.isInt(T)) {
+                if (types.isInt(T)) {
                     const prevdiff = @max(prev, curr) - @min(prev, curr);
                     const nextdiff = @max(next, curr) - @min(next, curr);
 
@@ -146,7 +147,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // Pixels are not both darker or ligher, so pixel stays the same.
             try std.testing.expectEqual(1, fluxsmoothTemporalScalar(0, 1, 2, threshold));
 
-            if (cmn.isInt(T)) {
+            if (types.isInt(T)) {
                 // Both pixels darker.
                 try std.testing.expectEqual(4, fluxsmoothTemporalScalar(1, 11, 1, threshold));
                 // Test rounding
@@ -167,7 +168,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneTemporalVector(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
+        fn processPlaneTemporalVector(srcp: [3][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -186,7 +187,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
-        fn fluxsmoothTVector(srcp: [3][]const T, dstp: []T, offset: usize, _threshold: T) void {
+        fn fluxsmoothTVector(srcp: [3][]const T, noalias dstp: []T, offset: usize, _threshold: T) void {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -217,12 +218,12 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
             // max-min is about same perf as saturating subtraction on laptop
             // TODO: Try on desktop.
-            const prevabsdiff = if (cmn.isInt(T))
+            const prevabsdiff = if (types.isInt(T))
                 @max(prev, curr) - @min(prev, curr)
             else
                 @abs(prev - curr);
 
-            const nextabsdiff = if (cmn.isInt(T))
+            const nextabsdiff = if (types.isInt(T))
                 @max(next, curr) - @min(next, curr)
             else
                 @abs(next - curr);
@@ -243,7 +244,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // count += @select(T, threshold > nextabsdiff, ones, zeroes);
 
             const result: VecType = result: {
-                if (cmn.isFloat(T)) {
+                if (types.isFloat(T)) {
                     break :result sum / count;
                 }
                 const sum_f: @Vector(vec_size, f32) = @floatFromInt(sum);
@@ -297,7 +298,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memset(curr, 11);
             @memset(next, 1);
             @memset(dstp, 0);
-            @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
+            @memset(expected, if (types.isInt(T)) 4 else 13.0 / 3.0); // 4.33
             fluxsmoothTVector(srcp, dstp, 0, threshold);
             try std.testing.expectEqualDeep(expected, dstp);
 
@@ -306,7 +307,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             @memset(curr, 1);
             @memset(next, 2);
             @memset(dstp, 0);
-            @memset(expected, if (cmn.isInt(T)) 4 else 13.0 / 3.0); // 4.33
+            @memset(expected, if (types.isInt(T)) 4 else 13.0 / 3.0); // 4.33
             fluxsmoothTVector(srcp, dstp, 0, threshold);
             try std.testing.expectEqualDeep(expected, dstp);
         }
@@ -361,7 +362,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         // TODO: Add tests.
         fn fluxsmoothSpatialTemporalScalar(prev: T, curr: T, next: T, neighbors: [8]T, temporal_threshold: SAT, spatial_threshold: SAT) T {
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
-                if (cmn.isInt(T)) {
+                if (types.isInt(T)) {
                     const prevdiff = @max(prev, curr) - @min(prev, curr);
                     const nextdiff = @max(next, curr) - @min(next, curr);
 
@@ -500,12 +501,12 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
             // TODO: commonize this absdiff logic, and support
             // scalars and vectors.
-            const prevabsdiff = if (cmn.isInt(T))
+            const prevabsdiff = if (types.isInt(T))
                 @max(prev, curr) - @min(prev, curr)
             else
                 @abs(prev - curr);
 
-            const nextabsdiff = if (cmn.isInt(T))
+            const nextabsdiff = if (types.isInt(T))
                 @max(next, curr) - @min(next, curr)
             else
                 @abs(next - curr);
@@ -523,7 +524,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
             // if neighbor <= neighbor_threshold; sum += neighbor; count += 1;
             inline for (neighbors) |n| {
-                const nabsdiff = if (cmn.isInt(T))
+                const nabsdiff = if (types.isInt(T))
                     @max(n, curr) - @min(n, curr)
                 else
                     @abs(n - curr);
@@ -533,7 +534,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
 
             const result: VecType = result: {
-                if (cmn.isFloat(T)) {
+                if (types.isFloat(T)) {
                     break :result sum / count;
                 }
                 // Float division is *much* faster than integer division
@@ -601,18 +602,18 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (mode) {
-                        // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, cmn.lossyCast(T, temporal_threshold)),
-                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(T, d.temporal_threshold[_plane])),
+                        // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, math.lossyCast(T, temporal_threshold)),
+                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[_plane])),
                         .SpatialTemporal => {
                             // We can produce faster code if we know that a given threshold is
                             // greater then -1, since we can use unsigned types.
                             // This picks the optimal function based on the threshold values.
                             if (d.temporal_threshold[_plane] >= 0 and d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(T, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[_plane]), math.lossyCast(T, d.spatial_threshold[_plane]));
                             } else if (d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(T, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[_plane]), math.lossyCast(T, d.spatial_threshold[_plane]));
                             } else {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, cmn.lossyCast(SAT, d.temporal_threshold[_plane]), cmn.lossyCast(SAT, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[_plane]), math.lossyCast(SAT, d.spatial_threshold[_plane]));
                             }
                         },
                     }
@@ -644,7 +645,7 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
     d.vi = vsapi.?.getVideoInfo.?(d.node);
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: only constant format input supported", .{func_name}).ptr);
+        vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: only constant format input supported", .{func_name}).ptr);
         vsapi.?.freeNode.?(d.node);
         return;
     }
@@ -659,15 +660,15 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         if (vsh.mapGetN(f32, in, "temporal_threshold", @intCast(i), vsapi)) |threshold| {
             temporal_threshold[i] = if (scalep and threshold >= 0) thresh: {
                 if (threshold < 0 or threshold > 255) {
-                    vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
+                    vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }
-                break :thresh cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
+                break :thresh vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
             } else threshold;
         } else {
             temporal_threshold[i] = if (i == 0)
-                cmn.scaleToFormat(f32, d.vi.format, 7, 0)
+                vscmn.scaleToFormat(f32, d.vi.format, 7, 0)
             else
                 temporal_threshold[i - 1];
         }
@@ -676,14 +677,14 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
             if (vsh.mapGetN(f32, in, "spatial_threshold", @intCast(i), vsapi)) |threshold| {
                 spatial_threshold[i] = if (scalep and threshold >= 0) thresh: {
                     if (threshold < 0 or threshold > 255) {
-                        vsapi.?.mapSetError.?(out, cmn.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
+                        vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
                         vsapi.?.freeNode.?(d.node);
                         return;
                     }
-                    break :thresh cmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
+                    break :thresh vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
                 } else threshold;
             } else {
-                spatial_threshold[i] = if (i == 0) cmn.scaleToFormat(f32, d.vi.format, 7, 0) else spatial_threshold[i - 1];
+                spatial_threshold[i] = if (i == 0) vscmn.scaleToFormat(f32, d.vi.format, 7, 0) else spatial_threshold[i - 1];
             }
         }
     }

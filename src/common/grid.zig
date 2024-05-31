@@ -15,9 +15,13 @@ pub fn Grid(comptime T: type) type {
 
         const Self = @This();
 
-        /// Loads a Grid from a slice, starting at the
+        /// Loads a Grid from a slice of elements of type R, starting at the
         /// slice's index 0, and then jumping in slice by stride
         /// to access each row.
+        ///
+        /// Note that types R and T are not identical. We can create a grid of vectors,
+        /// where the vector type is T, but from a slice of pixels which have type R.
+        ///
         /// TODO: Support loading a grid from a center pixel instead of the top left pixel.
         pub fn init(comptime R: type, slice: []const R, stride: u32) Self {
             // Vector
@@ -85,7 +89,7 @@ test "Grid init" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(&data, 3);
+    const grid = Grid(T).init(T, &data, 3);
 
     try std.testing.expectEqual(0, grid.top_left);
     try std.testing.expectEqual(1, grid.top_center);
@@ -108,7 +112,7 @@ test "Grid min" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(&data, 3);
+    const grid = Grid(T).init(T, &data, 3);
 
     try std.testing.expectEqual(0, grid.min());
 }
@@ -121,7 +125,7 @@ test "Grid max" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(&data, 3);
+    const grid = Grid(T).init(T, &data, 3);
 
     try std.testing.expectEqual(8, grid.max());
 }
@@ -134,7 +138,7 @@ test "Grid toArray" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(&data, 3);
+    const grid = Grid(T).init(T, &data, 3);
 
     try std.testing.expectEqualDeep(data, grid.toArray());
 }

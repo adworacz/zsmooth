@@ -1,12 +1,11 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
 const testing = @import("std").testing;
-const testingAllocator = @import("std").testing.allocator;
 
-const cmn = @import("common.zig");
+const types = @import("common/type.zig");
+const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 
-const math = std.math;
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
@@ -93,25 +92,25 @@ fn RemoveGrain(comptime T: type) type {
             // min-max sorting algorithm.
 
             // Sort pixel pairs 1 pixel away
-            cmn.compareSwap(T, &a[1], &a[2]);
-            cmn.compareSwap(T, &a[3], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[6]);
-            cmn.compareSwap(T, &a[7], &a[8]);
+            math.compareSwap(T, &a[1], &a[2]);
+            math.compareSwap(T, &a[3], &a[4]);
+            math.compareSwap(T, &a[5], &a[6]);
+            math.compareSwap(T, &a[7], &a[8]);
 
             // Sort pixel pairs 2 pixels away
-            cmn.compareSwap(T, &a[1], &a[3]);
-            cmn.compareSwap(T, &a[2], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[7]);
-            cmn.compareSwap(T, &a[6], &a[8]);
+            math.compareSwap(T, &a[1], &a[3]);
+            math.compareSwap(T, &a[2], &a[4]);
+            math.compareSwap(T, &a[5], &a[7]);
+            math.compareSwap(T, &a[6], &a[8]);
 
             // Sort pivots
-            cmn.compareSwap(T, &a[2], &a[3]);
-            cmn.compareSwap(T, &a[6], &a[7]);
+            math.compareSwap(T, &a[2], &a[3]);
+            math.compareSwap(T, &a[6], &a[7]);
 
             // Sort pixels pairs 4 pixels away
             a[5] = @max(a[1], a[5]); // compareSwap(a[1], a[5]);
-            cmn.compareSwap(T, &a[2], &a[6]);
-            cmn.compareSwap(T, &a[3], &a[7]);
+            math.compareSwap(T, &a[2], &a[6]);
+            math.compareSwap(T, &a[3], &a[7]);
             a[4] = @min(a[4], a[8]); // compareSwap(a[4], a[8]);
 
             a[3] = @min(a[3], a[5]); // compareSwap(a[3], a[5]);
@@ -133,25 +132,25 @@ fn RemoveGrain(comptime T: type) type {
             // min-max sorting algorithm.
 
             // Sort pixel pairs 1 pixel away
-            cmn.compareSwap(T, &a[1], &a[2]);
-            cmn.compareSwap(T, &a[3], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[6]);
-            cmn.compareSwap(T, &a[7], &a[8]);
+            math.compareSwap(T, &a[1], &a[2]);
+            math.compareSwap(T, &a[3], &a[4]);
+            math.compareSwap(T, &a[5], &a[6]);
+            math.compareSwap(T, &a[7], &a[8]);
 
             // Sort pixel pairs 2 pixels away
-            cmn.compareSwap(T, &a[1], &a[3]);
-            cmn.compareSwap(T, &a[2], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[7]);
-            cmn.compareSwap(T, &a[6], &a[8]);
+            math.compareSwap(T, &a[1], &a[3]);
+            math.compareSwap(T, &a[2], &a[4]);
+            math.compareSwap(T, &a[5], &a[7]);
+            math.compareSwap(T, &a[6], &a[8]);
 
             // Sort pivots
-            cmn.compareSwap(T, &a[2], &a[3]);
-            cmn.compareSwap(T, &a[6], &a[7]);
+            math.compareSwap(T, &a[2], &a[3]);
+            math.compareSwap(T, &a[6], &a[7]);
 
             // Sort pixels pairs 4 pixels away
             a[5] = @max(a[1], a[5]); // compareSwap(a[1], a[5]);
-            cmn.compareSwap(T, &a[2], &a[6]);
-            cmn.compareSwap(T, &a[3], &a[7]);
+            math.compareSwap(T, &a[2], &a[6]);
+            math.compareSwap(T, &a[3], &a[7]);
             a[4] = @min(a[4], a[8]); // compareSwap(a[4], a[8]);
 
             a[3] = @min(a[3], a[5]); // compareSwap(a[3], a[5]);
@@ -176,20 +175,20 @@ fn RemoveGrain(comptime T: type) type {
             // min-max sorting algorithm.
 
             // Sort pixel pairs 1 pixel away
-            cmn.compareSwap(T, &a[1], &a[2]);
-            cmn.compareSwap(T, &a[3], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[6]);
-            cmn.compareSwap(T, &a[7], &a[8]);
+            math.compareSwap(T, &a[1], &a[2]);
+            math.compareSwap(T, &a[3], &a[4]);
+            math.compareSwap(T, &a[5], &a[6]);
+            math.compareSwap(T, &a[7], &a[8]);
 
             // Sort pixel pairs 2 pixels away
-            cmn.compareSwap(T, &a[1], &a[3]);
-            cmn.compareSwap(T, &a[2], &a[4]);
-            cmn.compareSwap(T, &a[5], &a[7]);
-            cmn.compareSwap(T, &a[6], &a[8]);
+            math.compareSwap(T, &a[1], &a[3]);
+            math.compareSwap(T, &a[2], &a[4]);
+            math.compareSwap(T, &a[5], &a[7]);
+            math.compareSwap(T, &a[6], &a[8]);
 
             // compare pivots
-            cmn.compareSwap(T, &a[2], &a[3]);
-            cmn.compareSwap(T, &a[6], &a[7]);
+            math.compareSwap(T, &a[2], &a[3]);
+            math.compareSwap(T, &a[6], &a[7]);
 
             // Everything above this is identical to mode 1.
 
@@ -202,7 +201,7 @@ fn RemoveGrain(comptime T: type) type {
             a[5] = @max(a[3], a[5]); // compareSwap(a[3], a[5]);
             a[4] = @min(a[4], a[6]); // compareSwap(a[4], a[6]);
 
-            cmn.compareSwap(T, &a[4], &a[5]);
+            math.compareSwap(T, &a[4], &a[5]);
 
             return std.math.clamp(c, a[4], a[5]);
         }
@@ -328,8 +327,8 @@ fn RemoveGrain(comptime T: type) type {
             // Maybe it doesn't matter...
             // In theory it would only be an issue if every pixel around this
             // pixel was white and this one was black
-            const maxChroma = cmn.getTypeMaximum(T, true);
-            const maxNoChroma = cmn.getTypeMaximum(T, false);
+            const maxChroma = types.getTypeMaximum(T, true);
+            const maxNoChroma = types.getTypeMaximum(T, false);
 
             const maximum = if (chroma) maxChroma else maxNoChroma;
 
@@ -407,10 +406,10 @@ fn RemoveGrain(comptime T: type) type {
             const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
-            const maxChroma = cmn.getTypeMaximum(T, true);
-            const maxNoChroma = cmn.getTypeMaximum(T, false);
-            const minChroma = cmn.getTypeMinimum(T, true);
-            const minNoChroma = cmn.getTypeMinimum(T, false);
+            const maxChroma = types.getTypeMaximum(T, true);
+            const maxNoChroma = types.getTypeMaximum(T, false);
+            const minChroma = types.getTypeMinimum(T, true);
+            const minNoChroma = types.getTypeMinimum(T, false);
 
             const maximum = if (chroma) maxChroma else maxNoChroma;
             const minimum = if (chroma) minChroma else minNoChroma;
@@ -539,14 +538,14 @@ fn RemoveGrain(comptime T: type) type {
         /// Identical to Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
         fn rgMode1112(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sum = 4 * @as(UAT, c) + 2 * (@as(UAT, a2) + a4 + a5 + a7) + a1 + a3 + a6 + a8;
-            return if (cmn.isFloat(T))
+            return if (types.isFloat(T))
                 sum / 16
             else
                 @intCast((sum + 8) / 16);
         }
 
         test "RG Mode 11-12" {
-            if (cmn.isInt(T)) {
+            if (types.isInt(T)) {
                 try std.testing.expectEqual(5, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
             } else {
                 try std.testing.expectEqual(5.25, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
@@ -568,17 +567,17 @@ fn RemoveGrain(comptime T: type) type {
             const mindiff = @min(d1, d2, d3);
 
             if (mindiff == d2) {
-                return if (cmn.isFloat(T))
+                return if (types.isFloat(T))
                     (@as(UAT, a2) + a7) / 2
                 else
                     @intCast((@as(UAT, a2) + a7 + 1) / 2);
             } else if (mindiff == d3) {
-                return if (cmn.isFloat(T))
+                return if (types.isFloat(T))
                     (@as(UAT, a3) + a6) / 2
                 else
                     @intCast((@as(UAT, a3) + a6 + 1) / 2);
             }
-            return if (cmn.isFloat(T))
+            return if (types.isFloat(T))
                 (@as(UAT, a1) + a8) / 2
             else
                 @intCast((@as(UAT, a1) + a8 + 1) / 2);
@@ -604,17 +603,17 @@ fn RemoveGrain(comptime T: type) type {
 
             const mindiff = @min(d1, d2, d3);
 
-            const average = if (cmn.isFloat(T))
+            const average = if (types.isFloat(T))
                 (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8) / 8
             else
                 (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8 + 4) / 8;
 
             if (mindiff == d2) {
-                return cmn.lossyCast(T, std.math.clamp(average, @min(a2, a7), @max(a2, a7)));
+                return math.lossyCast(T, std.math.clamp(average, @min(a2, a7), @max(a2, a7)));
             } else if (mindiff == d3) {
-                return cmn.lossyCast(T, std.math.clamp(average, @min(a3, a6), @max(a3, a6)));
+                return math.lossyCast(T, std.math.clamp(average, @min(a3, a6), @max(a3, a6)));
             }
-            return cmn.lossyCast(T, std.math.clamp(average, @min(a1, a8), @max(a1, a8)));
+            return math.lossyCast(T, std.math.clamp(average, @min(a1, a8), @max(a1, a8)));
         }
 
         test "RG Mode 15-16" {
@@ -688,14 +687,14 @@ fn RemoveGrain(comptime T: type) type {
             _ = c;
             const sum = @as(UAT, a1) + a2 + a3 + a4 + a5 + a6 + a7 + a8;
 
-            return if (cmn.isFloat(T))
+            return if (types.isFloat(T))
                 sum / 8
             else
                 @intCast((sum + 4) / 8);
         }
 
         test "RG Mode 19" {
-            if (cmn.isFloat(T)) {
+            if (types.isFloat(T)) {
                 try std.testing.expectEqual(4.5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
             } else {
                 try std.testing.expectEqual(5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
@@ -709,7 +708,7 @@ fn RemoveGrain(comptime T: type) type {
         fn rgMode20(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
             const sum = @as(UAT, a1) + a2 + a3 + c + a4 + a5 + a6 + a7 + a8;
 
-            return if (cmn.isFloat(T))
+            return if (types.isFloat(T))
                 sum / 9
             else
                 @intCast((sum + 4) / 9);
@@ -733,18 +732,18 @@ fn RemoveGrain(comptime T: type) type {
             const l4h = (@as(UAT, a4) + a5 + 1) / 2;
 
             const min = @min(l1l, l2l, l3l, l4l);
-            const max = if (cmn.isInt(T))
+            const max = if (types.isInt(T))
                 @max(l1h, l2h, l3h, l4h)
             else
                 @max(l1l, l2l, l3l, l4l);
 
-            return cmn.lossyCast(T, std.math.clamp(c, min, max));
+            return math.lossyCast(T, std.math.clamp(c, min, max));
         }
 
         /// Same as mode 21 but simpler and faster. (rounding handled differently)
         /// Identical for floating point.
         fn rgMode22(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            if (cmn.isFloat(T)) {
+            if (types.isFloat(T)) {
                 return rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8);
             }
 
@@ -756,7 +755,7 @@ fn RemoveGrain(comptime T: type) type {
             const min = @min(l1, l2, l3, l4);
             const max = @max(l1, l2, l3, l4);
 
-            return cmn.lossyCast(T, std.math.clamp(c, min, max));
+            return math.lossyCast(T, std.math.clamp(c, min, max));
         }
 
         test "RG Mode 21-22" {
@@ -798,7 +797,7 @@ fn RemoveGrain(comptime T: type) type {
             const l4 = @min(sorted.min4 - cT, linediff4);
             const l = @max(0, l1, l2, l3, l4);
 
-            return cmn.lossyCast(T, c - h + l);
+            return math.lossyCast(T, c - h + l);
         }
 
         /// Same as mode 23 but considerably more conservative and slightly slower. Preferred.
@@ -842,7 +841,7 @@ fn RemoveGrain(comptime T: type) type {
             const l4 = @min(tl4, linediff4 - tl4);
             const l = @max(0, l1, l2, l3, l4);
 
-            return cmn.lossyCast(T, c - h + l);
+            return math.lossyCast(T, c - h + l);
         }
 
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {

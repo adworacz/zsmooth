@@ -1,6 +1,8 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
-const lossyCast = @import("./math.zig").lossyCast;
+
+const lossyCast = @import("math.zig").lossyCast;
+const getVecSize = @import("vector.zig").getVecSize;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -254,6 +256,80 @@ test isChromaPlane {
     try std.testing.expectEqual(false, isChromaPlane(vs.ColorFamily.YUV, 0));
     try std.testing.expectEqual(true, isChromaPlane(vs.ColorFamily.YUV, 1));
     try std.testing.expectEqual(true, isChromaPlane(vs.ColorFamily.YUV, 2));
+}
+
+// Returns the recommended vector (SIMD) length of the given video format.
+//
+// This is useful for ensuring that we can always use vectorized algorithms for
+// optimal speed.
+//
+// Luckily, the required width here is actually quite small.
+//
+// For 8 bit (which is the smallest data type and thus requires the greatest
+// number of pixels to fill), we need a minimum of 64 pixels on AVX512, and 32
+// pixels on AVX2.
+//
+pub fn formatVectorLength(format: vs.VideoFormat) u8 {
+    const sample_type = format.sampleType;
+    const num_bytes = format.bytesPerSample;
+
+    return switch (num_bytes) {
+        1 => getVecSize(u8),
+        2 => if (sample_type == .Integer) getVecSize(u16) else getVecSize(f16),
+        4 => getVecSize(f32),
+        else => unreachable,
+    };
+}
+
+test formatVectorLength {
+    const u8_format = vs.VideoFormat{
+        .bytesPerSample = 1,
+        .sampleType = vs.SampleType.Integer,
+
+        .colorFamily = vs.ColorFamily.RGB,
+        .bitsPerSample = 8,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    const u16_format = vs.VideoFormat{
+        .bytesPerSample = 2,
+        .sampleType = vs.SampleType.Integer,
+
+        .colorFamily = vs.ColorFamily.RGB,
+        .bitsPerSample = 16,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    const f16_format = vs.VideoFormat{
+        .bytesPerSample = 2,
+        .sampleType = vs.SampleType.Float,
+
+        .colorFamily = vs.ColorFamily.RGB,
+        .bitsPerSample = 16,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    const f32_format = vs.VideoFormat{
+        .bytesPerSample = 4,
+        .sampleType = vs.SampleType.Float,
+
+        .colorFamily = vs.ColorFamily.RGB,
+        .bitsPerSample = 32,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    try std.testing.expectEqual(getVecSize(u8), formatVectorLength(u8_format));
+    try std.testing.expectEqual(getVecSize(u16), formatVectorLength(u16_format));
+    try std.testing.expectEqual(getVecSize(f16), formatVectorLength(f16_format));
+    try std.testing.expectEqual(getVecSize(f32), formatVectorLength(f32_format));
 }
 
 /// Creates a new video frame with optional copying of source planes from a src

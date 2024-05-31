@@ -294,10 +294,6 @@ fn DegrainMedian(comptime T: type) type {
                     const current = GridV.init(T, srcp[1][grid_offset..], stride);
                     const next = GridV.init(T, srcp[2][grid_offset..], stride);
 
-                    // @prefetch(srcp[0].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
-                    // @prefetch(srcp[1].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
-                    // @prefetch(srcp[2].ptr + grid_offset + (vector_len * 2), .{ .locality = 3 });
-
                     const result = switch (mode) {
                         0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
@@ -420,6 +416,14 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
         return vscmn.reportError("DegrainMedian: only constant format YUV, RGB or Grey input is supported", vsapi, out, d.node);
+    }
+
+    const vector_len = vscmn.formatVectorLength(d.vi.format);
+    if (d.vi.width < vector_len) {
+        return vscmn.reportError(string.printf(allocator,
+            \\DegrainMedian: For performance reasons, DegrainMedian does not support clip widths under {} for this sample type. 
+            \\If you have good reason to process such small clips, please open an issue describing your use csae.
+        , .{vector_len}), vsapi, out, d.node);
     }
 
     const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;

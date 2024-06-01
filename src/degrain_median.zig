@@ -165,6 +165,19 @@ fn DegrainMedian(comptime T: type) type {
             try std.testing.expectEqualDeep(.{ @as(VT, @splat(5)), @as(VT, @splat(0)), @as(VT, @splat(255)) }, .{ diffV, minV, maxV });
         }
 
+        /// Essentially a spatial-temporal, line-sensitive, limited, clipping function.
+        ///
+        /// Compares the current pixel's neighbors (diagonal, vertical, and horizontal) in both temporal
+        /// (previous, next frames) and spatial (current frame) domains. Whenever the pixels being compared
+        /// have a difference less than the current known minimum difference, the minimum difference is updated
+        /// and new min/max values are calculated.
+        ///
+        /// Next, the min and max values are used to clamp the current pixel.
+        ///
+        /// Finally, the clamped result is limited according to the `limit` parameter.
+        ///
+        /// Similar to RemoveGrain mode 9.
+        ///
         // fn mode0Scalar(prev: GridS, current: GridS, next: GridS, limit: T, pixel_min: T, pixel_max: T) T {
         fn mode0(prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
             const R = @TypeOf(pixel_max);
@@ -264,8 +277,6 @@ fn DegrainMedian(comptime T: type) type {
             // to calculate a safe width.
             const width_simd = (width - grid_radius) / vector_len * vector_len;
 
-            // TODO: Test if it's more performant to pass the scalar values to
-            // mode0Vector instead. Likely won't matter due to inlining.
             const limit: VT = @splat(_limit);
             const pixel_min: VT = @splat(_pixel_min);
             const pixel_max: VT = @splat(_pixel_max);
@@ -273,9 +284,9 @@ fn DegrainMedian(comptime T: type) type {
             // Copy the first line
             @memcpy(dstp[0..width], srcp[1][0..width]);
 
+            // Compiler optimizer hints
             // These assertions honestly seems to lead to some nice speedups.
             // I'm seeing a difference of ~190 -> ~200fps, single core.
-            // TODO: add checking in init.
             assert(width >= vector_len);
             assert(stride >= width);
             assert(stride % vector_len == 0);

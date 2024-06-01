@@ -60,8 +60,7 @@ test isScalar {
 
 pub inline fn getTypeMaximum(comptime T: type, comptime chroma: bool) T {
     return switch (T) {
-        u8 => 255, // 0xFF
-        u16 => 65535, // 0xFFFF
+        u8, u16 => |t| std.math.maxInt(t),
         f16, f32 => if (chroma) 0.5 else 1.0,
         else => unreachable,
     };

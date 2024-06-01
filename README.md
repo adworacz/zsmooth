@@ -19,10 +19,10 @@ issue.
 - [x] TemporalSoften
 - [x] RemoveGrain
 - [x] FluxSmooth
+- [x] DegrainMedian
 - [ ] Repair
 - [ ] Clense
 - [ ] MiniDeen
-- [ ] DegrainMedian
 - [ ] TTempSmooth
 - [ ] CCD
 - [ ] Dogway's IQM/IQM5/IQMV/IQMST/IQMS functions
@@ -118,6 +118,29 @@ The first and last rows and the first and last columns are not processed by Flux
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | temporal_threshold | float[] | -1 - bit depth max ([7,7,7]) | Temporal neighbour pixels within this threshold from the current pixel are included in the average. Can be specified as an array, with values corresonding to each plane of the input clip. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
 | spatial_threshold | float[] | -1 - bit depth max ([7,7,7]) | Spatial neighbour pixels within this threshold from the current pixel are included in the average. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
+| scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
+
+### DegrainMedian
+clip:vnode;limit:float[]:opt;mode:int[]:opt;scalep:int:opt
+```py
+core.zsmooth.DegrainMedian(clip clip[, float[] limit, int[] mode, int scalep])
+```
+
+Modes:
+| Mode | Description |
+| --- | --- |
+| 0 | Spatial-Temporal version of RemoveGrain mode 9. Essentially a line (or edge) sensitive, limited, clipping function. Clipping parameters are calculated from the minimum difference of the current pixels spatial-temporal neighbors, in a 3x3 grid. |
+| 1 | Spatial-Temporal and stronger version of RemoveGrain mode 8 |
+| 2 | Spatial-Temporal version of RemoveGrain Mode 8 | 
+| 3 | Spatial-Temporal version of RemoveGrain Mode 7 |
+| 4 | Spatial-Temporal version of RemoveGrain Mode 6 |
+| 5 | Spatial-Temporal version of RemoveGrain Mode 5 |
+ 
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| limit | float[] | 0 - bit depth max ([7, 7, 7]) | The maximum amount that a pixel can change. A higher limit results in more smoothing. Can be specified as an array, with values corresonding to each plane of the input clip. |
+| mode | int[] | 0 - 5, inclusive ([1,1,1]) | The processing mode. 0 is the strongest, 5 is the weakest. Can be specified as an array, with values corresponding to each plane. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ## Building

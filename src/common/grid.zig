@@ -57,6 +57,42 @@ pub fn Grid(comptime T: type) type {
             };
         }
 
+        /// Just like `init`, only it loads data from two rows (lines) away instead of one,
+        /// so as to ensure we're loading data from the same field instead of blending two fields together.
+        pub fn initInterlaced(comptime R: type, slice: []const R, stride: u32) Self {
+            // Vector
+            if (@typeInfo(T) == .Vector) {
+                return Self{
+                    .top_left = vec.load(T, slice, 0),
+                    .top_center = vec.load(T, slice, 1),
+                    .top_right = vec.load(T, slice, 2),
+
+                    .center_left = vec.load(T, slice, (stride * 2)),
+                    .center_center = vec.load(T, slice, (stride * 2) + 1),
+                    .center_right = vec.load(T, slice, (stride * 2) + 2),
+
+                    .bottom_left = vec.load(T, slice, (stride * 4)),
+                    .bottom_center = vec.load(T, slice, (stride * 4) + 1),
+                    .bottom_right = vec.load(T, slice, (stride * 4) + 2),
+                };
+            }
+
+            // Scalar
+            return Self{
+                .top_left = slice[0],
+                .top_center = slice[1],
+                .top_right = slice[2],
+
+                .center_left = slice[stride * 2 ..][0],
+                .center_center = slice[stride * 2 ..][1],
+                .center_right = slice[stride * 2 ..][2],
+
+                .bottom_left = slice[stride * 4 ..][0],
+                .bottom_center = slice[stride * 4 ..][1],
+                .bottom_right = slice[stride * 4 ..][2],
+            };
+        }
+
         // Need to benchmark this - might be slower or faster, not sure.
         // pub fn min(self: Self) T {
         //     const vector: @Vector(9, T) = self.toArray();

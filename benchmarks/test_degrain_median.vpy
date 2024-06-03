@@ -10,6 +10,7 @@ if is_preview():
     output = 'all'
 limit = 4
 mode = 0
+interlaced = False
 #format = 'u8'
 
 length = 3000
@@ -37,9 +38,9 @@ match format:
 clip.set_output(0)
 
 if (format not in ['f16', 'f32']):
-    dgm = clip.dgm.DegrainMedian(limit=limit, mode=mode)
+    dgm = clip.dgm.DegrainMedian(limit=limit, mode=mode, interlaced=interlaced)
 
-zsmooth = clip.zsmooth.DegrainMedian(limit=limit, mode=mode, scalep=True)
+zsmooth = clip.zsmooth.DegrainMedian(limit=limit, mode=mode, scalep=True, interlaced=interlaced)
 
 match output:
     case 'zsmooth':

@@ -219,11 +219,17 @@ fn DegrainMedian(comptime T: type) type {
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
-        fn processPlaneScalar(comptime mode: u8, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+        fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+            const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
+
             // Copy the first line
             @memcpy(dstp[0..width], srcp[1][0..width]);
+            if (interlaced) {
+                // Copy the second line if the video is interlaced
+                @memcpy(dstp[stride .. stride + width], srcp[1][stride .. stride + width]);
+            }
 
-            for (1..height - 1) |row| {
+            for (skip_rows..height - skip_rows) |row| {
                 // Copy the pixel at the beginning of the line.
                 dstp[(row * stride)] = srcp[1][(row * stride)];
 
@@ -236,20 +242,25 @@ fn DegrainMedian(comptime T: type) type {
                     // above, and then subtract 1 to get the pixel in the top left, instead of the top center.
                     //
                     // All of this is to make loading from Grid.init easier.
-                    const offset = current_pixel - stride - 1;
+                    const offset = if (interlaced)
+                        current_pixel - (stride * 2) - 1
+                    else
+                        current_pixel - stride - 1;
 
-                    // Current LLVM prefetch implementation screws up the autovectorization
-                    // of loops...
-                    // https://discourse.llvm.org/t/rfc-loop-vectorization-for-builtin-prefetch/72234
-                    // https://reviews.llvm.org/D156068
-                    //
-                    // @prefetch(srcp[0].ptr + offset + 64, .{ .locality = 1 });
-                    // @prefetch(srcp[1].ptr + offset + 64, .{ .locality = 1 });
-                    // @prefetch(srcp[2].ptr + offset + 64, .{ .locality = 1 });
+                    const prev = if (interlaced)
+                        GridS.initInterlaced(T, srcp[0][offset..], stride)
+                    else
+                        GridS.init(T, srcp[0][offset..], stride);
 
-                    const prev = GridS.init(T, srcp[0][offset..], stride);
-                    const current = GridS.init(T, srcp[1][offset..], stride);
-                    const next = GridS.init(T, srcp[2][offset..], stride);
+                    const current = if (interlaced)
+                        GridS.initInterlaced(T, srcp[1][offset..], stride)
+                    else
+                        GridS.init(T, srcp[1][offset..], stride);
+
+                    const next = if (interlaced)
+                        GridS.initInterlaced(T, srcp[2][offset..], stride)
+                    else
+                        GridS.init(T, srcp[2][offset..], stride);
 
                     dstp[current_pixel] = switch (mode) {
                         0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
@@ -261,10 +272,18 @@ fn DegrainMedian(comptime T: type) type {
                 dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
+            //TODO: Stick this in a loop
+            if (interlaced) {
+                // Copy the second to last line, if the video is interlaced
+                const line = ((height - 2) * stride);
+                const end = line + width;
+                @memcpy(dstp[line..end], srcp[1][line..end]);
+            }
+
             // Copy the last line
-            const lastLine = ((height - 1) * stride);
-            const end = lastLine + width;
-            @memcpy(dstp[lastLine..end], srcp[1][lastLine..end]);
+            const line = ((height - 1) * stride);
+            const end = line + width;
+            @memcpy(dstp[line..end], srcp[1][line..end]);
         }
 
         fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
@@ -288,7 +307,7 @@ fn DegrainMedian(comptime T: type) type {
             @memcpy(dstp[0..width], srcp[1][0..width]);
             if (interlaced) {
                 // Video is interlaced, so we copy the second line as well.
-                @memcpy(dstp[width .. width * 2], srcp[1][width .. width * 2]);
+                @memcpy(dstp[stride .. stride + width], srcp[1][stride .. stride + width]);
             }
 
             // Compiler optimizer hints
@@ -434,14 +453,14 @@ fn DegrainMedian(comptime T: type) type {
 
                     if (d.interlaced) {
                         switch (d.mode[_plane]) {
-                            // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneScalar(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            // inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                             else => unreachable,
                         }
                     } else {
                         switch (d.mode[_plane]) {
-                            // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneScalar(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            // inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                             else => unreachable,
                         }
                     }

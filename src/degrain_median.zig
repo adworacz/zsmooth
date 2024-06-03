@@ -31,6 +31,8 @@ const DegrainMedianData = struct {
     limit: [3]f32,
     // Processing mode, 0-5.
     mode: [3]u8,
+    // Process as interlaced or not.
+    interlaced: bool,
 
     // Which planes we will process.
     process: [3]bool,
@@ -245,8 +247,6 @@ fn DegrainMedian(comptime T: type) type {
                     // @prefetch(srcp[1].ptr + offset + 64, .{ .locality = 1 });
                     // @prefetch(srcp[2].ptr + offset + 64, .{ .locality = 1 });
 
-                    // TODO: Move the current_pixel / offset calculations out of the here and up to
-                    // a single variable.
                     const prev = GridS.init(T, srcp[0][offset..], stride);
                     const current = GridS.init(T, srcp[1][offset..], stride);
                     const next = GridS.init(T, srcp[2][offset..], stride);
@@ -267,10 +267,11 @@ fn DegrainMedian(comptime T: type) type {
             @memcpy(dstp[lastLine..end], srcp[1][lastLine..end]);
         }
 
-        fn processPlaneVector(comptime mode: u8, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
+        fn processPlaneVector(comptime mode: u8, interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
             // TODO: Consider replacing all uses of '1' with 'grid_radius', since
             // that's what it actually means.
-            const grid_radius = comptime (3 / 2);
+            const grid_radius = comptime (3 / 2); // Diameter of 3 frames, cut in half to get radius.
+
             // We need to make sure we don't read past the edge of the frame.
             // So we take into account the size of vector and the size of the grid we
             // need to load, and work backwards (subtract) from the overall frame size
@@ -281,8 +282,14 @@ fn DegrainMedian(comptime T: type) type {
             const pixel_min: VT = @splat(_pixel_min);
             const pixel_max: VT = @splat(_pixel_max);
 
+            const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
+
             // Copy the first line
             @memcpy(dstp[0..width], srcp[1][0..width]);
+            if (interlaced) {
+                // Video is interlaced, so we copy the second line as well.
+                @memcpy(dstp[width .. width * 2], srcp[1][width .. width * 2]);
+            }
 
             // Compiler optimizer hints
             // These assertions honestly seems to lead to some nice speedups.
@@ -291,7 +298,7 @@ fn DegrainMedian(comptime T: type) type {
             assert(stride >= width);
             assert(stride % vector_len == 0);
 
-            for (1..height - 1) |row| {
+            for (skip_rows..height - skip_rows) |row| {
                 // Copy the pixel at the beginning of the line.
                 dstp[(row * stride)] = srcp[1][(row * stride)];
 
@@ -299,11 +306,25 @@ fn DegrainMedian(comptime T: type) type {
                 while (column < width_simd) : (column += vector_len) {
                     const current_pixel = row * stride + column;
                     // Target the offset at the pixel in the top left;
-                    const grid_offset = current_pixel - stride - 1;
+                    const grid_offset = if (interlaced)
+                        current_pixel - (stride * 2) - 1
+                    else
+                        current_pixel - stride - 1;
 
-                    const prev = GridV.init(T, srcp[0][grid_offset..], stride);
-                    const current = GridV.init(T, srcp[1][grid_offset..], stride);
-                    const next = GridV.init(T, srcp[2][grid_offset..], stride);
+                    const prev = if (interlaced)
+                        GridV.initInterlaced(T, srcp[0][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[0][grid_offset..], stride);
+
+                    const current = if (interlaced)
+                        GridV.initInterlaced(T, srcp[1][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[1][grid_offset..], stride);
+
+                    const next = if (interlaced)
+                        GridV.initInterlaced(T, srcp[2][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[2][grid_offset..], stride);
 
                     const result = switch (mode) {
                         0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
@@ -318,11 +339,25 @@ fn DegrainMedian(comptime T: type) type {
                 if (width_simd < width) {
                     const current_pixel = row * stride + width - vector_len - grid_radius;
                     // Target the offset at the pixel in the top left;
-                    const grid_offset = current_pixel - stride - 1;
+                    const grid_offset = if (interlaced)
+                        current_pixel - (stride * 2) - 1
+                    else
+                        current_pixel - stride - 1;
 
-                    const prev = GridV.init(T, srcp[0][grid_offset..], stride);
-                    const current = GridV.init(T, srcp[1][grid_offset..], stride);
-                    const next = GridV.init(T, srcp[2][grid_offset..], stride);
+                    const prev = if (interlaced)
+                        GridV.initInterlaced(T, srcp[0][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[0][grid_offset..], stride);
+
+                    const current = if (interlaced)
+                        GridV.initInterlaced(T, srcp[1][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[1][grid_offset..], stride);
+
+                    const next = if (interlaced)
+                        GridV.initInterlaced(T, srcp[2][grid_offset..], stride)
+                    else
+                        GridV.init(T, srcp[2][grid_offset..], stride);
 
                     const result = switch (mode) {
                         0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
@@ -336,17 +371,23 @@ fn DegrainMedian(comptime T: type) type {
                 dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
+            if (interlaced) {
+                // Video is interlaced, so we copy the second to last line as well.
+                const line = ((height - 2) * stride);
+                const end = line + width;
+                @memcpy(dstp[line..end], srcp[1][line..end]);
+            }
             // Copy the last line
-            const lastLine = ((height - 1) * stride);
-            const end = lastLine + width;
-            @memcpy(dstp[lastLine..end], srcp[1][lastLine..end]);
+            const line = ((height - 1) * stride);
+            const end = line + width;
+            @memcpy(dstp[line..end], srcp[1][line..end]);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
-            const d: *DegrainMedianData = @ptrCast(@alignCast(instance_data));
+            const d: *const DegrainMedianData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
                 // Request previous, current, and next frames.
@@ -393,7 +434,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     switch (d.mode[_plane]) {
                         // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                        inline 0...5 => |m| processPlaneVector(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                        inline 0...5 => |m| processPlaneVector(m, d.interlaced, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                         else => unreachable,
                     }
                 }
@@ -436,6 +477,8 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
             \\If you have good reason to process such small clips, please open an issue describing your use csae.
         , .{vector_len}), vsapi, out, d.node);
     }
+
+    d.interlaced = vsh.mapGetN(bool, in, "interlaced", 0, vsapi) orelse false;
 
     const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
 
@@ -525,6 +568,5 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    //TODO: rename norow to incrow, and flip the meaning.
     _ = vsapi.registerFunction.?("DegrainMedian", "clip:vnode;limit:float[]:opt;mode:int[]:opt;interlaced:int:opt;norow:int:opt;scalep:int:opt", "clip:vnode;", degrainMedianCreate, null, plugin);
 }

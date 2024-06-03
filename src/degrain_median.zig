@@ -267,7 +267,7 @@ fn DegrainMedian(comptime T: type) type {
             @memcpy(dstp[lastLine..end], srcp[1][lastLine..end]);
         }
 
-        fn processPlaneVector(comptime mode: u8, interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
+        fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
             // TODO: Consider replacing all uses of '1' with 'grid_radius', since
             // that's what it actually means.
             const grid_radius = comptime (3 / 2); // Diameter of 3 frames, cut in half to get radius.
@@ -432,10 +432,18 @@ fn DegrainMedian(comptime T: type) type {
                     const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
                     const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
 
-                    switch (d.mode[_plane]) {
-                        // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                        inline 0...5 => |m| processPlaneVector(m, d.interlaced, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                        else => unreachable,
+                    if (d.interlaced) {
+                        switch (d.mode[_plane]) {
+                            // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            else => unreachable,
+                        }
+                    } else {
+                        switch (d.mode[_plane]) {
+                            // inline 0...5 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            else => unreachable,
+                        }
                     }
                 }
 

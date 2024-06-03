@@ -453,14 +453,14 @@ fn DegrainMedian(comptime T: type) type {
 
                     if (d.interlaced) {
                         switch (d.mode[_plane]) {
-                            inline 0...5 => |m| processPlaneScalar(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            // inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            // inline 0...5 => |m| processPlaneScalar(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                             else => unreachable,
                         }
                     } else {
                         switch (d.mode[_plane]) {
-                            inline 0...5 => |m| processPlaneScalar(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            // inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            // inline 0...5 => |m| processPlaneScalar(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
+                            inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
                             else => unreachable,
                         }
                     }

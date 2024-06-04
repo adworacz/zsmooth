@@ -222,11 +222,14 @@ fn DegrainMedian(comptime T: type) type {
         fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
-            // Copy the first line
-            @memcpy(dstp[0..width], srcp[1][0..width]);
-            if (interlaced) {
-                // Copy the second line if the video is interlaced
-                @memcpy(dstp[stride .. stride + width], srcp[1][stride .. stride + width]);
+            // Copy the first and second lines, first only if not interlaced.
+            {
+                var row: u32 = 0;
+                while (row < skip_rows) : (row += 1) {
+                    const line = row * stride;
+                    const end = line + width;
+                    @memcpy(dstp[line..end], srcp[1][line..end]);
+                }
             }
 
             for (skip_rows..height - skip_rows) |row| {
@@ -272,18 +275,13 @@ fn DegrainMedian(comptime T: type) type {
                 dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
-            //TODO: Stick this in a loop
-            if (interlaced) {
-                // Copy the second to last line, if the video is interlaced
-                const line = ((height - 2) * stride);
+            // Copy the last lines, second to last and last if interlaced, just last if not interlaced
+            var row = (height - skip_rows);
+            while (row < height) : (row += 1) {
+                const line = row * stride;
                 const end = line + width;
                 @memcpy(dstp[line..end], srcp[1][line..end]);
             }
-
-            // Copy the last line
-            const line = ((height - 1) * stride);
-            const end = line + width;
-            @memcpy(dstp[line..end], srcp[1][line..end]);
         }
 
         fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
@@ -303,11 +301,14 @@ fn DegrainMedian(comptime T: type) type {
 
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
-            // Copy the first line
-            @memcpy(dstp[0..width], srcp[1][0..width]);
-            if (interlaced) {
-                // Video is interlaced, so we copy the second line as well.
-                @memcpy(dstp[stride .. stride + width], srcp[1][stride .. stride + width]);
+            // Copy the first and second lines, first only if not interlaced.
+            {
+                var row: u32 = 0;
+                while (row < skip_rows) : (row += 1) {
+                    const line = row * stride;
+                    const end = line + width;
+                    @memcpy(dstp[line..end], srcp[1][line..end]);
+                }
             }
 
             // Compiler optimizer hints
@@ -390,16 +391,13 @@ fn DegrainMedian(comptime T: type) type {
                 dstp[(row * stride) + (width - 1)] = srcp[1][(row * stride) + (width - 1)];
             }
 
-            if (interlaced) {
-                // Video is interlaced, so we copy the second to last line as well.
-                const line = ((height - 2) * stride);
+            // Copy the last lines, second to last and last if interlaced, just last if not interlaced
+            var row = (height - skip_rows);
+            while (row < height) : (row += 1) {
+                const line = row * stride;
                 const end = line + width;
                 @memcpy(dstp[line..end], srcp[1][line..end]);
             }
-            // Copy the last line
-            const line = ((height - 1) * stride);
-            const end = line + width;
-            @memcpy(dstp[line..end], srcp[1][line..end]);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

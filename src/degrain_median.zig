@@ -9,6 +9,7 @@ const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 const grid = @import("common/grid.zig");
+const copy = @import("common/copy.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -302,14 +303,7 @@ fn DegrainMedian(comptime T: type) type {
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
             // Copy the first and second lines, first only if not interlaced.
-            {
-                var row: u32 = 0;
-                while (row < skip_rows) : (row += 1) {
-                    const line = row * stride;
-                    const end = line + width;
-                    @memcpy(dstp[line..end], srcp[1][line..end]);
-                }
-            }
+            copy.copyFirstNLines(T, dstp, srcp[1], width, stride, skip_rows);
 
             // Compiler optimizer hints
             // These assertions honestly seems to lead to some nice speedups.
@@ -392,12 +386,7 @@ fn DegrainMedian(comptime T: type) type {
             }
 
             // Copy the last lines, second to last and last if interlaced, just last if not interlaced
-            var row = (height - skip_rows);
-            while (row < height) : (row += 1) {
-                const line = row * stride;
-                const end = line + width;
-                @memcpy(dstp[line..end], srcp[1][line..end]);
-            }
+            copy.copyLastNLines(T, dstp, srcp[1], height, width, stride, skip_rows);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

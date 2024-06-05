@@ -75,6 +75,7 @@ pub fn orB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).Vector.len, 
 }
 
 /// Gets a pertinent vector size for the given type based on the compilation target.
+// TODO: Rename to getVectorLength, and rename all vec_size variables to vector_len
 pub inline fn getVecSize(comptime T: type) comptime_int {
     if (std.simd.suggestVectorLength(T)) |suggested| {
         return suggested;

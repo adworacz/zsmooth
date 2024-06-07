@@ -31,7 +31,7 @@ const DegrainMedianData = struct {
     // Limit of the allowed pixel change.
     limit: [3]f32,
     // Processing mode, 0-5.
-    mode: [3]u8,
+    mode: [3]u3,
     // Process as interlaced or not.
     interlaced: bool,
 
@@ -48,6 +48,46 @@ fn DegrainMedian(comptime T: type) type {
         const GridS = Grid(T);
         // Grid of vector values
         const GridV = Grid(VT);
+
+        const Options = packed struct(u5) {
+            mode: u3 = 0,
+            interlaced: bool = false,
+            norow: bool = false,
+        };
+
+        const DegrainMedianOperation = enum(u5) {
+            MODE_0 = @bitCast(Options{ .mode = 0 }),
+            MODE_0_INTERLACED = @bitCast(Options{ .mode = 0, .interlaced = true }),
+
+            const Self = @This();
+
+            pub fn processPlane(self: Self, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+                switch (self) {
+                    // inline else => |m| processPlaneScalar(m.getMode(), m.getInterlaced(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                    inline else => |m| processPlaneVector(m.getMode(), m.getInterlaced(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                }
+            }
+
+            pub fn init(mode: u3, interlaced: bool, norow: bool) Self {
+                const value: u5 = @bitCast(Options{ .mode = mode, .interlaced = interlaced, .norow = norow });
+                return @enumFromInt(value);
+            }
+
+            pub fn getMode(self: Self) u3 {
+                const options: Options = @bitCast(@intFromEnum(self));
+                return options.mode;
+            }
+
+            pub fn getInterlaced(self: Self) bool {
+                const options: Options = @bitCast(@intFromEnum(self));
+                return options.interlaced;
+            }
+
+            pub fn getNoRow(self: Self) bool {
+                const options: Options = @bitCast(@intFromEnum(self));
+                return options.norow;
+            }
+        };
 
         //TODO: Use a new generic (Kernel?) to remove the *anytype*s.
 
@@ -438,19 +478,8 @@ fn DegrainMedian(comptime T: type) type {
                     const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
                     const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
 
-                    if (d.interlaced) {
-                        switch (d.mode[_plane]) {
-                            // inline 0...5 => |m| processPlaneScalar(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            inline 0...5 => |m| processPlaneVector(m, true, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            else => unreachable,
-                        }
-                    } else {
-                        switch (d.mode[_plane]) {
-                            // inline 0...5 => |m| processPlaneScalar(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            inline 0...5 => |m| processPlaneVector(m, false, srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max),
-                            else => unreachable,
-                        }
-                    }
+                    DegrainMedianOperation.init(d.mode[_plane], d.interlaced, false)
+                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max);
                 }
 
                 return dst;
@@ -545,7 +574,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         return vscmn.reportError("DegrainMedian: mode has more elements than there are planes.", vsapi, out, d.node);
     }
 
-    d.mode = [3]u8{ 1, 1, 1 };
+    d.mode = [3]u3{ 1, 1, 1 };
 
     for (0..3) |i| {
         if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {

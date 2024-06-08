@@ -2,6 +2,8 @@ import vapoursynth as vs
 from vspreview.api import is_preview
 
 core = vs.core
+core.max_cache_size = 1024
+core.num_threads = 1
 
 if is_preview():
     radius = 7

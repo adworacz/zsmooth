@@ -3,6 +3,8 @@ from vstools import depth, get_depth
 from vspreview.api import is_preview
 
 core = vs.core
+core.max_cache_size = 1024
+core.num_threads = 1
 
 threshold = 20
 # threshold = 20 << 8

@@ -44,6 +44,13 @@ const DegrainMedianData = struct {
 fn DegrainMedian(comptime T: type) type {
     const vector_len = vec.getVecSize(T);
     const VT = @Vector(vector_len, T);
+    const UAT = switch (T) {
+        u8 => u16,
+        u16 => u32,
+        f16 => f16, //TODO: This might be more performant as f32 on some systems.
+        f32 => f32,
+        else => unreachable,
+    };
 
     return struct {
         // Grid of scalar values
@@ -62,6 +69,26 @@ fn DegrainMedian(comptime T: type) type {
             MODE_0_INTERLACED = @bitCast(Options{ .mode = 0, .interlaced = true }),
             MODE_0_NOROW = @bitCast(Options{ .mode = 0, .norow = true }),
             MODE_0_INTERLACED_NOROW = @bitCast(Options{ .mode = 0, .interlaced = true, .norow = true }),
+
+            MODE_1 = @bitCast(Options{ .mode = 1 }),
+            MODE_1_INTERLACED = @bitCast(Options{ .mode = 1, .interlaced = true }),
+            MODE_1_NOROW = @bitCast(Options{ .mode = 1, .norow = true }),
+            MODE_1_INTERLACED_NOROW = @bitCast(Options{ .mode = 1, .interlaced = true, .norow = true }),
+
+            MODE_2 = @bitCast(Options{ .mode = 2 }),
+            MODE_2_INTERLACED = @bitCast(Options{ .mode = 2, .interlaced = true }),
+            MODE_2_NOROW = @bitCast(Options{ .mode = 2, .norow = true }),
+            MODE_2_INTERLACED_NOROW = @bitCast(Options{ .mode = 2, .interlaced = true, .norow = true }),
+
+            MODE_3 = @bitCast(Options{ .mode = 3 }),
+            MODE_3_INTERLACED = @bitCast(Options{ .mode = 3, .interlaced = true }),
+            MODE_3_NOROW = @bitCast(Options{ .mode = 3, .norow = true }),
+            MODE_3_INTERLACED_NOROW = @bitCast(Options{ .mode = 3, .interlaced = true, .norow = true }),
+
+            MODE_4 = @bitCast(Options{ .mode = 4 }),
+            MODE_4_INTERLACED = @bitCast(Options{ .mode = 4, .interlaced = true }),
+            MODE_4_NOROW = @bitCast(Options{ .mode = 4, .norow = true }),
+            MODE_4_INTERLACED_NOROW = @bitCast(Options{ .mode = 4, .interlaced = true, .norow = true }),
 
             const Self = @This();
 
@@ -212,6 +239,52 @@ fn DegrainMedian(comptime T: type) type {
             try std.testing.expectEqualDeep(.{ @as(VT, @splat(5)), @as(VT, @splat(0)), @as(VT, @splat(255)) }, .{ diffV, minV, maxV });
         }
 
+        fn diagWeight(comptime mode: u3, old_pixel: anytype, a: anytype, b: anytype, old_result: anytype, old_weight: anytype, pixel_min: anytype, pixel_max: anytype) void {
+            const R = @TypeOf(a);
+            const U = if (types.isScalar(R)) UAT else @Vector(vector_len, UAT);
+
+            var new_pixel: U = @max(a, b);
+            var weight: U = @min(a, b);
+
+            const pixel_clamped_diff = if (types.isInt(T))
+                old_pixel -| new_pixel
+            else
+                @max(pixel_min, old_pixel - new_pixel);
+
+            new_pixel = @max(weight, @min(old_pixel, new_pixel));
+            weight = if (types.isInt(T))
+                weight -| old_pixel
+            else
+                @max(pixel_min, weight - old_pixel);
+
+            weight = @max(weight, pixel_clamped_diff);
+
+            var neighbor_abs_diff: U = if (types.isFloat(T))
+                @abs(a - b)
+            else
+                @max(a, b) - @min(a, b);
+
+            if (mode == 4) {
+                weight *= if (types.isScalar(R)) 2 else @splat(2);
+            } else if (mode == 2) {
+                neighbor_abs_diff *= if (types.isScalar(R)) 2 else @splat(2);
+            } else if (mode == 1) {
+                neighbor_abs_diff *= if (types.isScalar(R)) 4 else @splat(4);
+            }
+
+            weight = @min(weight + neighbor_abs_diff, pixel_max);
+
+            if (types.isScalar(R)) {
+                if (weight <= old_weight.*) {
+                    old_weight.* = math.lossyCast(T, weight);
+                    old_result.* = math.lossyCast(T, new_pixel);
+                }
+            } else {
+                old_weight.* = @select(T, weight <= old_weight.*, math.lossyCast(VT, weight), old_weight.*);
+                old_result.* = @select(T, weight <= old_weight.*, math.lossyCast(VT, new_pixel), old_result.*);
+            }
+        }
+
         /// Essentially a spatial-temporal, line-sensitive, limited, clipping function.
         ///
         /// Compares the current pixel's neighbors (diagonal, vertical, and horizontal) in both temporal
@@ -266,6 +339,39 @@ fn DegrainMedian(comptime T: type) type {
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
+        fn mode1to4(comptime mode: u3, comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
+            const R = @TypeOf(pixel_max);
+
+            var result: R = if (types.isScalar(R)) 0 else @splat(0);
+            var weight = pixel_max;
+
+            //Compare the neighbors of the current frame.
+            diagWeight(mode, current.center_center, current.top_left, current.bottom_right, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, current.bottom_left, current.top_right, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, current.bottom_center, current.top_center, &result, &weight, pixel_min, pixel_max);
+
+            if (!norow) {
+                diagWeight(mode, current.center_center, current.center_left, current.center_right, &result, &weight, pixel_min, pixel_max);
+            }
+
+            //Compare the diagonals of the next and previous frames.
+            diagWeight(mode, current.center_center, next.top_left, prev.bottom_right, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.top_right, prev.bottom_left, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.bottom_left, prev.top_right, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.bottom_right, prev.top_left, &result, &weight, pixel_min, pixel_max);
+
+            // Compare the verticals
+            diagWeight(mode, current.center_center, next.bottom_center, prev.top_center, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.top_center, prev.bottom_center, &result, &weight, pixel_min, pixel_max);
+
+            // Compare the horizontals
+            diagWeight(mode, current.center_center, next.center_left, prev.center_right, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.center_right, prev.center_left, &result, &weight, pixel_min, pixel_max);
+            diagWeight(mode, current.center_center, next.center_center, prev.center_center, &result, &weight, pixel_min, pixel_max);
+
+            return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
+        }
+
         fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
@@ -314,6 +420,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     dstp[current_pixel] = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
                 }
@@ -388,6 +495,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     const result = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 
@@ -421,6 +529,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     const result = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 
@@ -484,7 +593,7 @@ fn DegrainMedian(comptime T: type) type {
                     const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
                     const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
 
-                    DegrainMedianOperation.init(d.mode[_plane], d.interlaced, false)
+                    DegrainMedianOperation.init(d.mode[_plane], d.interlaced, d.norow)
                         .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max);
                 }
 
@@ -545,13 +654,17 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
                 return vscmn.reportError(string.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), vsapi, out, d.node);
             }
 
-            const limit = if (scalep)
-                vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_limit), 0)
-            else
-                _limit;
-
             const formatMaximum = vscmn.getFormatMaximum(f32, d.vi.format, i > 0);
             const formatMinimum = vscmn.getFormatMinimum(f32, d.vi.format, i > 0);
+
+            const limit = if (scalep)
+                // vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_limit), 0)
+                // The original VS plugin uses a slightly different scaling
+                // method than I've seen before.
+                // I've matched that here to ensure identical output.
+                formatMaximum * _limit / 255
+            else
+                _limit;
 
             if ((limit < formatMinimum or limit > formatMaximum)) {
                 return vscmn.reportError(string.printf(allocator, "DegrainMedian: Index {d} limit '{d}' must be between {d} and {d} (inclusive)", .{ i, limit, formatMinimum, formatMaximum }), vsapi, out, d.node);

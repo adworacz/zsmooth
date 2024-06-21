@@ -34,6 +34,8 @@ const DegrainMedianData = struct {
     mode: [3]u3,
     // Process as interlaced or not.
     interlaced: bool,
+    // Include the pixels on the left/right of the current pixel in calculations.
+    norow: bool,
 
     // Which planes we will process.
     process: [3]bool,
@@ -58,13 +60,15 @@ fn DegrainMedian(comptime T: type) type {
         const DegrainMedianOperation = enum(u5) {
             MODE_0 = @bitCast(Options{ .mode = 0 }),
             MODE_0_INTERLACED = @bitCast(Options{ .mode = 0, .interlaced = true }),
+            MODE_0_NOROW = @bitCast(Options{ .mode = 0, .norow = true }),
+            MODE_0_INTERLACED_NOROW = @bitCast(Options{ .mode = 0, .interlaced = true, .norow = true }),
 
             const Self = @This();
 
             pub fn processPlane(self: Self, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
                 switch (self) {
-                    // inline else => |m| processPlaneScalar(m.getMode(), m.getInterlaced(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
-                    inline else => |m| processPlaneVector(m.getMode(), m.getInterlaced(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                    // inline else => |m| processPlaneScalar(m.getMode(), m.getInterlaced(), m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                    inline else => |m| processPlaneVector(m.getMode(), m.getInterlaced(), m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
                 }
             }
 
@@ -222,7 +226,7 @@ fn DegrainMedian(comptime T: type) type {
         /// Similar to RemoveGrain mode 9.
         ///
         // fn mode0Scalar(prev: GridS, current: GridS, next: GridS, limit: T, pixel_min: T, pixel_max: T) T {
-        fn mode0(prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
+        fn mode0(comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
             const R = @TypeOf(pixel_max);
             var diff: R = pixel_max;
             var max: R = pixel_max;
@@ -252,15 +256,17 @@ fn DegrainMedian(comptime T: type) type {
             // Check the vertical of the current frame.
             checkBetterNeighbors(current.top_center, current.bottom_center, &diff, &min, &max);
 
-            // if !norow
-            checkBetterNeighbors(current.center_left, current.center_right, &diff, &min, &max);
+            // Include the left/right pixels on the same line if the 'norow' option is disabled.
+            if (!norow) {
+                checkBetterNeighbors(current.center_left, current.center_right, &diff, &min, &max);
+            }
 
             const result = math.clamp(current.center_center, min, max);
 
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
-        fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+        fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
             // Copy the first and second lines, first only if not interlaced.
@@ -307,7 +313,7 @@ fn DegrainMedian(comptime T: type) type {
                         GridS.init(T, srcp[2][offset..], stride);
 
                     dstp[current_pixel] = switch (mode) {
-                        0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
+                        0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
                 }
@@ -325,7 +331,7 @@ fn DegrainMedian(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
+        fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
             // TODO: Consider replacing all uses of '1' with 'grid_radius', since
             // that's what it actually means.
             const grid_radius = comptime (3 / 2); // Diameter of 3 frames, cut in half to get radius.
@@ -381,7 +387,7 @@ fn DegrainMedian(comptime T: type) type {
                         GridV.init(T, srcp[2][grid_offset..], stride);
 
                     const result = switch (mode) {
-                        0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
+                        0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 
@@ -414,7 +420,7 @@ fn DegrainMedian(comptime T: type) type {
                         GridV.init(T, srcp[2][grid_offset..], stride);
 
                     const result = switch (mode) {
-                        0 => mode0(prev, current, next, limit, pixel_min, pixel_max),
+                        0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 
@@ -522,6 +528,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
     }
 
     d.interlaced = vsh.mapGetN(bool, in, "interlaced", 0, vsapi) orelse false;
+    d.norow = vsh.mapGetN(bool, in, "norow", 0, vsapi) orelse false;
 
     const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
 

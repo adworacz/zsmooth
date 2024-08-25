@@ -2,7 +2,7 @@ const std = @import("std");
 
 // TODO: Use these copy helpers in all filters.
 
-pub fn copyFirstNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, width: usize, stride: usize, comptime num_lines: u32) void {
+pub fn copyFirstNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, width: usize, stride: usize, num_lines: u32) void {
     var row: u32 = 0;
     while (row < num_lines) : (row += 1) {
         const line = row * stride;
@@ -34,7 +34,7 @@ test copyFirstNLines {
     }, dstp);
 }
 
-pub fn copyLastNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, height: usize, width: usize, stride: usize, comptime num_lines: u32) void {
+pub fn copyLastNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, height: usize, width: usize, stride: usize, num_lines: u32) void {
     var row = (height - num_lines);
     while (row < height) : (row += 1) {
         const line = row * stride;

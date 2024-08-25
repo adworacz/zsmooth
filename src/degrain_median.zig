@@ -58,60 +58,53 @@ fn DegrainMedian(comptime T: type) type {
         // Grid of vector values
         const GridV = Grid(VT);
 
-        const Options = packed struct(u5) {
+        // Note that `interlaced` is intentionally absent from this options
+        // list. In my testing, having `interlaced` as a comptime known option
+        // provided no speed benefit (when using vectorized algorithms), and
+        // bloated the final library size from 4.5 MB -> 6.0 MB. I believe this
+        // is because the `interlaced` option is high enough in the processing
+        // loop that branch predictors can accurately guess which branch to
+        // take (since its going to be the same for the entire frame, and thus
+        // *always* the same branch being taken) and thus there's no real
+        // performance penalty for having the "if interlaced" branch.
+        const Options = packed struct(u4) {
             mode: u3 = 0,
-            interlaced: bool = false,
             norow: bool = false,
         };
 
-        const DegrainMedianOperation = enum(u5) {
+        const DegrainMedianOperation = enum(u4) {
             MODE_0 = @bitCast(Options{ .mode = 0 }),
-            MODE_0_INTERLACED = @bitCast(Options{ .mode = 0, .interlaced = true }),
             MODE_0_NOROW = @bitCast(Options{ .mode = 0, .norow = true }),
-            MODE_0_INTERLACED_NOROW = @bitCast(Options{ .mode = 0, .interlaced = true, .norow = true }),
 
             MODE_1 = @bitCast(Options{ .mode = 1 }),
-            MODE_1_INTERLACED = @bitCast(Options{ .mode = 1, .interlaced = true }),
             MODE_1_NOROW = @bitCast(Options{ .mode = 1, .norow = true }),
-            MODE_1_INTERLACED_NOROW = @bitCast(Options{ .mode = 1, .interlaced = true, .norow = true }),
 
             MODE_2 = @bitCast(Options{ .mode = 2 }),
-            MODE_2_INTERLACED = @bitCast(Options{ .mode = 2, .interlaced = true }),
             MODE_2_NOROW = @bitCast(Options{ .mode = 2, .norow = true }),
-            MODE_2_INTERLACED_NOROW = @bitCast(Options{ .mode = 2, .interlaced = true, .norow = true }),
 
             MODE_3 = @bitCast(Options{ .mode = 3 }),
-            MODE_3_INTERLACED = @bitCast(Options{ .mode = 3, .interlaced = true }),
             MODE_3_NOROW = @bitCast(Options{ .mode = 3, .norow = true }),
-            MODE_3_INTERLACED_NOROW = @bitCast(Options{ .mode = 3, .interlaced = true, .norow = true }),
 
             MODE_4 = @bitCast(Options{ .mode = 4 }),
-            MODE_4_INTERLACED = @bitCast(Options{ .mode = 4, .interlaced = true }),
             MODE_4_NOROW = @bitCast(Options{ .mode = 4, .norow = true }),
-            MODE_4_INTERLACED_NOROW = @bitCast(Options{ .mode = 4, .interlaced = true, .norow = true }),
 
             const Self = @This();
 
-            pub fn processPlane(self: Self, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+            pub fn processPlane(self: Self, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T, interlaced: bool) void {
                 switch (self) {
-                    // inline else => |m| processPlaneScalar(m.getMode(), m.getInterlaced(), m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
-                    inline else => |m| processPlaneVector(m.getMode(), m.getInterlaced(), m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                    // inline else => |m| processPlaneScalar(m.getMode(), interlaced, m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
+                    inline else => |m| processPlaneVector(m.getMode(), interlaced, m.getNoRow(), srcp, dstp, width, height, stride, limit, pixel_min, pixel_max),
                 }
             }
 
-            pub fn init(mode: u3, interlaced: bool, norow: bool) Self {
-                const value: u5 = @bitCast(Options{ .mode = mode, .interlaced = interlaced, .norow = norow });
+            pub fn init(mode: u3, norow: bool) Self {
+                const value: u4 = @bitCast(Options{ .mode = mode, .norow = norow });
                 return @enumFromInt(value);
             }
 
             pub fn getMode(self: Self) u3 {
                 const options: Options = @bitCast(@intFromEnum(self));
                 return options.mode;
-            }
-
-            pub fn getInterlaced(self: Self) bool {
-                const options: Options = @bitCast(@intFromEnum(self));
-                return options.interlaced;
             }
 
             pub fn getNoRow(self: Self) bool {
@@ -366,7 +359,7 @@ fn DegrainMedian(comptime T: type) type {
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
-        fn processPlaneScalar(comptime mode: u8, comptime interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
+        fn processPlaneScalar(comptime mode: u8, interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T) void {
             const skip_rows = @as(u8, 1) << @intFromBool(interlaced);
 
             // Copy the first and second lines, first only if not interlaced.
@@ -432,7 +425,7 @@ fn DegrainMedian(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(comptime mode: u8, comptime interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
+        fn processPlaneVector(comptime mode: u8, interlaced: bool, comptime norow: bool, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, _limit: T, _pixel_min: T, _pixel_max: T) void {
             // TODO: Consider replacing all uses of '1' with 'grid_radius', since
             // that's what it actually means.
             const grid_radius = comptime (3 / 2); // Diameter of 3 frames, cut in half to get radius.
@@ -587,8 +580,8 @@ fn DegrainMedian(comptime T: type) type {
                     const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
                     const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
 
-                    DegrainMedianOperation.init(d.mode[_plane], d.interlaced, d.norow)
-                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max);
+                    DegrainMedianOperation.init(d.mode[_plane], d.norow)
+                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max, d.interlaced);
                 }
 
                 return dst;

@@ -1,5 +1,5 @@
 const std = @import("std");
-const isScalar = @import("./type.zig").isScalar;
+const types = @import("./type.zig");
 
 /////////////////////////////////////////////////
 // Math
@@ -34,6 +34,31 @@ pub fn lossyCast(comptime T: type, value: anytype) T {
                 else => @compileError("bad type"),
             }
         },
+        .Vector => {
+            switch (@typeInfo(@typeInfo(T).Vector.child)) {
+                .Float => {
+                    switch (@typeInfo(@typeInfo(@TypeOf(value)).Vector.child)) {
+                        .Int => return @as(T, @floatFromInt(value)),
+                        .Float => return @as(T, @floatCast(value)),
+                        .ComptimeInt => return @as(T, value),
+                        .ComptimeFloat => return @as(T, value),
+                        else => @compileError("bad type"),
+                    }
+                },
+                .Int => {
+                    switch (@typeInfo(@typeInfo(@TypeOf(value)).Vector.child)) {
+                        .Int, .ComptimeInt => {
+                            return @as(T, @intCast(value));
+                        },
+                        .Float, .ComptimeFloat => {
+                            return @as(T, @intFromFloat(value));
+                        },
+                        else => @compileError("bad type"),
+                    }
+                },
+                else => @compileError("bad result type"),
+            }
+        },
         else => @compileError("bad result type"),
     }
 }
@@ -41,10 +66,44 @@ pub fn lossyCast(comptime T: type, value: anytype) T {
 // Identical to std.math.clamp, just works with Vectors
 // by removing the assert it previously used. Ideally this should be fixed in the std library...
 pub fn clamp(val: anytype, lower: anytype, upper: anytype) @TypeOf(val, lower, upper) {
-    if (isScalar(@TypeOf(val, lower, upper))) {
+    if (types.isScalar(@TypeOf(val, lower, upper))) {
         std.debug.assert(lower <= upper);
     }
     return @max(lower, @min(val, upper));
+}
+
+/// Performs a clamped (or "saturating") subtraction of two values.
+/// The second parameter is subtracted from the first parameter.
+/// So clampSub(10, 5) == 10 - 5
+/// Integers clamp to zero, and floats clamp to pixel_min.
+/// TODO: Check in godbolt if this saturating subtraction actually helps us
+pub fn clampSub(a: anytype, b: anytype, min: anytype) @TypeOf(a, b) {
+    return if (types.isInt(@TypeOf(a, b)))
+        a -| b
+    else
+        @max(min, a - b);
+}
+
+test clampSub {
+    try std.testing.expectEqual(5, clampSub(10, 5, 0));
+    try std.testing.expectEqual(0, clampSub(5, 10, 2)); // Integers clamp to zero.
+    try std.testing.expectEqual(1.0, clampSub(5.0, 10.0, 1.0));
+}
+
+/// Computes the absolute difference of two values.
+/// Supports fast operation on unsigned types using max/min.
+pub fn absDiff(a: anytype, b: anytype) @TypeOf(a, b) {
+    return if (types.isFloat(@TypeOf(a, b)))
+        @abs(a - b)
+    else
+        @max(a, b) - @min(a, b);
+}
+
+test absDiff {
+    try std.testing.expectEqual(10, absDiff(0, 10));
+    try std.testing.expectEqual(10, absDiff(10, 0));
+    try std.testing.expectEqual(0.5, absDiff(0, -0.5));
+    try std.testing.expectEqual(0.5, absDiff(-0.5, 0));
 }
 
 /// Finds the min/max of the values of a and b and then assigns

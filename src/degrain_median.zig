@@ -178,10 +178,7 @@ fn DegrainMedian(comptime T: type) type {
         /// corresponding values of the two pixels.
         // fn checkBetterNeighorsScalar(a: T, b: T, diff: *T, min: *T, max: *T) void
         fn checkBetterNeighbors(a: anytype, b: anytype, diff: anytype, min: anytype, max: anytype) void {
-            const newdiff = if (types.isFloat(T))
-                @abs(a - b)
-            else
-                @max(a, b) - @min(a, b);
+            const newdiff = math.absDiff(a, b);
 
             if (types.isScalar(@TypeOf(a))) {
                 // scalar
@@ -259,10 +256,7 @@ fn DegrainMedian(comptime T: type) type {
 
             weight = @max(weight, pixel_clamped_diff);
 
-            var neighbor_abs_diff: U = if (types.isFloat(T))
-                @abs(a - b)
-            else
-                @max(a, b) - @min(a, b);
+            var neighbor_abs_diff: U = math.absDiff(a, b);
 
             if (mode == 4) {
                 weight *= if (types.isScalar(R)) 2 else @splat(2);

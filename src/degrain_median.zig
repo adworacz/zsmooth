@@ -88,6 +88,9 @@ fn DegrainMedian(comptime T: type) type {
             MODE_4 = @bitCast(Options{ .mode = 4 }),
             MODE_4_NOROW = @bitCast(Options{ .mode = 4, .norow = true }),
 
+            MODE_5 = @bitCast(Options{ .mode = 5 }),
+            MODE_5_NOROW = @bitCast(Options{ .mode = 5, .norow = true }),
+
             const Self = @This();
 
             pub fn processPlane(self: Self, srcp: [3][]const T, noalias dstp: []T, width: u32, height: u32, stride: u32, limit: T, pixel_min: T, pixel_max: T, interlaced: bool) void {
@@ -229,6 +232,7 @@ fn DegrainMedian(comptime T: type) type {
             try std.testing.expectEqualDeep(.{ @as(VT, @splat(5)), @as(VT, @splat(0)), @as(VT, @splat(255)) }, .{ diffV, minV, maxV });
         }
 
+        //TODO: Add tests?
         fn diagWeight(comptime mode: u3, old_pixel: anytype, a: anytype, b: anytype, old_result: anytype, old_weight: anytype, pixel_min: anytype, pixel_max: anytype) void {
             const R = @TypeOf(a);
             const U = if (types.isScalar(R)) UAT else @Vector(vector_len, UAT);
@@ -249,17 +253,21 @@ fn DegrainMedian(comptime T: type) type {
 
             weight = @max(weight, pixel_clamped_diff);
 
-            var neighbor_abs_diff: U = math.absDiff(a, b);
+            // Mode 1-4 require additional calculations,
+            // Mode 5 just jumps to weight <= old_weight
+            if (mode != 5) {
+                var neighbor_abs_diff: U = math.absDiff(a, b);
 
-            if (mode == 4) {
-                weight *= if (types.isScalar(R)) 2 else @splat(2);
-            } else if (mode == 2) {
-                neighbor_abs_diff *= if (types.isScalar(R)) 2 else @splat(2);
-            } else if (mode == 1) {
-                neighbor_abs_diff *= if (types.isScalar(R)) 4 else @splat(4);
+                if (mode == 4) {
+                    weight *= if (types.isScalar(R)) 2 else @splat(2);
+                } else if (mode == 2) {
+                    neighbor_abs_diff *= if (types.isScalar(R)) 2 else @splat(2);
+                } else if (mode == 1) {
+                    neighbor_abs_diff *= if (types.isScalar(R)) 4 else @splat(4);
+                }
+
+                weight = @min(weight + neighbor_abs_diff, pixel_max);
             }
-
-            weight = @min(weight + neighbor_abs_diff, pixel_max);
 
             if (types.isScalar(R)) {
                 if (weight <= old_weight.*) {
@@ -326,7 +334,8 @@ fn DegrainMedian(comptime T: type) type {
             return limitPixelCorrection(current.center_center, result, limit, pixel_min, pixel_max);
         }
 
-        fn mode1to4(comptime mode: u3, comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
+        //TODO: Add tests?
+        fn mode1to5(comptime mode: u3, comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
             const R = @TypeOf(pixel_max);
 
             var result: R = if (types.isScalar(R)) 0 else @splat(0);
@@ -407,7 +416,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     dstp[current_pixel] = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
-                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...5 => |m| mode1to5(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
                 }
@@ -482,7 +491,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     const result = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
-                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...5 => |m| mode1to5(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 
@@ -516,7 +525,7 @@ fn DegrainMedian(comptime T: type) type {
 
                     const result = switch (mode) {
                         0 => mode0(norow, prev, current, next, limit, pixel_min, pixel_max),
-                        1...4 => |m| mode1to4(m, norow, prev, current, next, limit, pixel_min, pixel_max),
+                        1...5 => |m| mode1to5(m, norow, prev, current, next, limit, pixel_min, pixel_max),
                         else => unreachable,
                     };
 

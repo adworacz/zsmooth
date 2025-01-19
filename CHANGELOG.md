@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.7
+* TBD
+
 ## 0.6
 * Add DegrainMedian implementation.
 * Optimize TemporalMedian even more. Latest tests show a bump from 340fps to 413fps in 

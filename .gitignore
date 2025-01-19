@@ -3,3 +3,5 @@ zig-out
 .zig-cache
 .direnv
 .vspreview
+.vsjet
+/build

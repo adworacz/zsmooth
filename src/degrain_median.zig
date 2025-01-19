@@ -243,13 +243,13 @@ fn DegrainMedian(comptime T: type) type {
             const pixel_clamped_diff = if (types.isInt(T))
                 old_pixel -| new_pixel
             else
-                @max(pixel_min, old_pixel - new_pixel);
+                @max(old_pixel - new_pixel, pixel_min);
 
             new_pixel = @max(weight, @min(old_pixel, new_pixel));
             weight = if (types.isInt(T))
                 weight -| old_pixel
             else
-                @max(pixel_min, weight - old_pixel);
+                @max(weight - old_pixel, pixel_min);
 
             weight = @max(weight, pixel_clamped_diff);
 
@@ -258,15 +258,34 @@ fn DegrainMedian(comptime T: type) type {
             if (mode != 5) {
                 var neighbor_abs_diff: U = math.absDiff(a, b);
 
+                // TODO: Find out why this is slower than DGM plugin
+                //
+                // Don't need to clamp float, since later calculations
+                // clamp inherently.
                 if (mode == 4) {
-                    weight *= if (types.isScalar(R)) 2 else @splat(2);
+                    // Weight * 2
+                    weight = if (types.isInt(U))
+                        weight +| weight
+                    else
+                        weight + weight;
                 } else if (mode == 2) {
-                    neighbor_abs_diff *= if (types.isScalar(R)) 2 else @splat(2);
+                    // neighbor_abs_diff * 2
+                    neighbor_abs_diff = if (types.isInt(T))
+                        neighbor_abs_diff +| neighbor_abs_diff
+                    else
+                        neighbor_abs_diff + neighbor_abs_diff;
                 } else if (mode == 1) {
-                    neighbor_abs_diff *= if (types.isScalar(R)) 4 else @splat(4);
+                    // neighbor_abs_diff * 4
+                    neighbor_abs_diff = if (types.isInt(T))
+                        neighbor_abs_diff +| neighbor_abs_diff +| neighbor_abs_diff +| neighbor_abs_diff
+                    else
+                        neighbor_abs_diff + neighbor_abs_diff + neighbor_abs_diff + neighbor_abs_diff;
                 }
 
-                weight = @min(weight + neighbor_abs_diff, pixel_max);
+                weight = if (types.isInt(T))
+                    @min(weight +| neighbor_abs_diff, pixel_max)
+                else
+                    @min(weight + neighbor_abs_diff, pixel_max);
             }
 
             if (types.isScalar(R)) {

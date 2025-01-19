@@ -26,7 +26,8 @@ match format:
     case 'f32':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, length=length)
     case _:
-        clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)

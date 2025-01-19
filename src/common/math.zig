@@ -77,17 +77,17 @@ pub fn clamp(val: anytype, lower: anytype, upper: anytype) @TypeOf(val, lower, u
 /// So clampSub(10, 5) == 10 - 5
 /// Integers clamp to zero, and floats clamp to pixel_min.
 /// TODO: Check in godbolt if this saturating subtraction actually helps us
-pub fn clampSub(a: anytype, b: anytype, min: anytype) @TypeOf(a, b) {
+pub fn subSat(a: anytype, b: anytype, min: anytype) @TypeOf(a, b) {
     return if (types.isInt(@TypeOf(a, b)))
         a -| b
     else
         @max(min, a - b);
 }
 
-test clampSub {
-    try std.testing.expectEqual(5, clampSub(10, 5, 0));
-    try std.testing.expectEqual(0, clampSub(5, 10, 2)); // Integers clamp to zero.
-    try std.testing.expectEqual(1.0, clampSub(5.0, 10.0, 1.0));
+test subSat {
+    try std.testing.expectEqual(5, subSat(10, 5, 0));
+    try std.testing.expectEqual(0, subSat(@as(u8, 5), 10, 2)); // Integers clamp to zero.
+    try std.testing.expectEqual(1.0, subSat(5.0, 10.0, 1.0));
 }
 
 /// Computes the absolute difference of two values.

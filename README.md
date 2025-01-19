@@ -20,8 +20,9 @@ issue.
 - [x] RemoveGrain
 - [x] FluxSmooth
 - [x] DegrainMedian
-- [ ] Repair
-- [ ] Clense
+- [ ] Repair (RG)
+- [ ] Clense (RG)
+- [ ] VerticalCleaner (RG)
 - [ ] MiniDeen
 - [ ] TTempSmooth
 - [ ] CCD
@@ -121,9 +122,8 @@ The first and last rows and the first and last columns are not processed by Flux
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### DegrainMedian
-clip:vnode;limit:float[]:opt;mode:int[]:opt;scalep:int:opt
 ```py
-core.zsmooth.DegrainMedian(clip clip[, float[] limit, int[] mode, int scalep])
+core.zsmooth.DegrainMedian(clip clip[, float[] limit, int[] mode, bool scalep])
 ```
 
 Modes:

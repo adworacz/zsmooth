@@ -9,6 +9,7 @@
 * Refactored internal common code significantly, and introduced a helper type called Grid for operating on a 3x3
   grid of pixels as either scalars or vectors.
 * Added more testing to many of the common functions.
+* Add generic builds for Mac OS, on x86_64 and aarch64 architectures.
 
 ## 0.5
 * Final fixes for stride related issues, as reported in https://github.com/adworacz/zsmooth/issues/1

@@ -846,7 +846,7 @@ fn RemoveGrain(comptime T: type) type {
 
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
-            @memcpy(dstp, srcp[0..width]);
+            @memcpy(dstp[0..width], srcp[0..width]);
 
             for (1..height - 1) |row| {
                 // Handle interlacing (top field/bottom field) modes

@@ -37,22 +37,17 @@ match format:
 
 clip.set_output(0)
 
+# Make a nice and blury clip to feed to repair functions, since the blur should
+# provide a lot of change and thus make repair operations more evident.
+repair_clip = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
+
 if (format not in ['f16', 'f32']):
-    rg = clip.rgvs.RemoveGrain(mode)
+    rg = clip.rgvs.Repair(repair_clip, mode)
 else:
     # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
     rg = clip.rgsf.RemoveGrain(mode)
 
-if mode == 4:
-    std = clip.std.Median()
-if mode in [11, 12]:
-    std = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
-if mode == 19:
-    std = clip.std.Convolution(matrix=[1, 1, 1, 1, 0, 1, 1, 1, 1])
-if mode == 20:
-    std = clip.std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
-
-zsmooth = clip.zsmooth.RemoveGrain(mode)
+zsmooth = clip.zsmooth.Repair(repair_clip, mode)
 
 match output:
     case 'zsmooth':
@@ -62,9 +57,7 @@ match output:
     case 'all':
         clip.set_output(0)
         rg.set_output(1)
-        if mode in [4, 11, 12, 19, 20]:
-            std.set_output(2)
-        zsmooth.set_output(3)
+        zsmooth.set_output(2)
 
 
 

@@ -42,7 +42,7 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
     // Only odd number networks are currently supported.
     std.debug.assert(N % 2 == 1);
     const Layer = []const usize;
-    switch (N) {
+    switch (comptime N) {
         // https://bertdobbelaere.github.io/median_networks.html#N3L3D3
         3 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1 },
@@ -201,4 +201,40 @@ test "Sorting Networks - Median" {
 
     var input21 = [_]u8{ 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(11, median(u8, input21.len, &input21));
+}
+
+// Sorts input array in place using sorting networks.
+//
+// Wouldn't have been possible without the wonderful work of SorterHunter:
+// https://bertdobbelaere.github.io/sorting_networks.html
+pub fn sort(comptime T: type, comptime N: u8, input: *[N]T) void {
+    const Layer = []const usize;
+    switch (comptime N) {
+        // https://bertdobbelaere.github.io/sorting_networks.html#N8L19D6
+        // 8 => SortingNetwork([_]Layer{
+        //     &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
+        //     &[_]usize{ 0, 4, 1, 5, 2, 6, 3, 7 },
+        //     &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 },
+        //     &[_]usize{ 2, 4, 3, 5 },
+        //     &[_]usize{ 1, 4, 3, 6 },
+        //     &[_]usize{ 1, 2, 3, 4, 5, 6 },
+        // }).sort(T, input),
+        // https://bertdobbelaere.github.io/sorting_networks.html#N9L25D7
+        9 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 3, 1, 7, 2, 5, 4, 8 },
+            &[_]usize{ 0, 7, 2, 4, 3, 8, 5, 6 },
+            &[_]usize{ 0, 2, 1, 3, 4, 5, 7, 8 },
+            &[_]usize{ 1, 4, 3, 6, 5, 7 },
+            &[_]usize{ 0, 1, 2, 4, 3, 5, 6, 8 },
+            &[_]usize{ 2, 3, 4, 5, 6, 7 },
+            &[_]usize{ 1, 2, 3, 4, 5, 6 },
+        }).sort(T, input),
+        else => unreachable,
+    }
+}
+
+test "Sorting Networks - sort" {
+    var input9 = [_]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
+    sort(u8, input9.len, &input9);
+    try std.testing.expectEqualDeep([_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, input9);
 }

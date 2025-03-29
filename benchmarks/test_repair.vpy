@@ -1,5 +1,5 @@
 import vapoursynth as vs
-from vstools import depth
+from vstools import get_sample_type, depth
 from vspreview.api import is_preview
 
 core = vs.core
@@ -41,11 +41,12 @@ clip.set_output(0)
 # provide a lot of change and thus make repair operations more evident.
 repair_clip = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
 
-if (format not in ['f16', 'f32']):
+# if (format not in ['f16', 'f32']):
+if (get_sample_type(clip) == vs.INTEGER):
     rg = clip.rgvs.Repair(repair_clip, mode)
 else:
-    # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-    rg = clip.rgsf.RemoveGrain(mode)
+    # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
+    rg = clip.rgsf.Repair(repair_clip, mode)
 
 zsmooth = clip.zsmooth.Repair(repair_clip, mode)
 
@@ -58,6 +59,4 @@ match output:
         clip.set_output(0)
         rg.set_output(1)
         zsmooth.set_output(2)
-
-
 

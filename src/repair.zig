@@ -5,6 +5,7 @@ const testing = @import("std").testing;
 const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
+const sort = @import("common/sorting_networks.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -80,7 +81,32 @@ fn Repair(comptime T: type) type {
 
         // Clamp the source pixel to the min/max of the repair pixels.
         fn repairMode1(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            return @max(@min(c, a1, a2, a3, a4, a5, a6, a7, a8), @min(src, @max(c, a1, a2, a3, a4, a5, a6, a7, a8)));
+            const min = @min(c, a1, a2, a3, a4, a5, a6, a7, a8);
+            const max = @max(c, a1, a2, a3, a4, a5, a6, a7, a8);
+
+            return math.clamp(src, min, max);
+        }
+
+        fn repairMode2(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+
+            sort.sort(T, a.len, &a);
+
+            return math.clamp(src, a[1], a[7]);
+        }
+
+        test "Repair Mode 1-4" {
+            // In range
+            try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode2(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+
+            // Out of range - high
+            try std.testing.expectEqual(9, repairMode1(10, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(8, repairMode2(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+
+            // Out of range - low
+            try std.testing.expectEqual(1, repairMode1(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(2, repairMode2(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
         }
 
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
@@ -123,6 +149,7 @@ fn Repair(comptime T: type) type {
 
                     dstp[rowCurr + w] = switch (mode) {
                         1 => repairMode1(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        2 => repairMode2(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

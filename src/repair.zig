@@ -95,18 +95,40 @@ fn Repair(comptime T: type) type {
             return math.clamp(src, a[1], a[7]);
         }
 
+        fn repairMode3(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+
+            sort.sort(T, a.len, &a);
+
+            return math.clamp(src, a[2], a[6]);
+        }
+
+        fn repairMode4(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
+
+            sort.sort(T, a.len, &a);
+
+            return math.clamp(src, a[3], a[5]);
+        }
+
         test "Repair Mode 1-4" {
             // In range
             try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
             try std.testing.expectEqual(5, repairMode2(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode3(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode4(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
 
             // Out of range - high
             try std.testing.expectEqual(9, repairMode1(10, 1, 2, 3, 4, 5, 6, 7, 8, 9));
             try std.testing.expectEqual(8, repairMode2(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(7, repairMode3(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(6, repairMode4(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
 
             // Out of range - low
             try std.testing.expectEqual(1, repairMode1(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
             try std.testing.expectEqual(2, repairMode2(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(3, repairMode3(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(4, repairMode4(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
         }
 
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
@@ -150,6 +172,8 @@ fn Repair(comptime T: type) type {
                     dstp[rowCurr + w] = switch (mode) {
                         1 => repairMode1(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         2 => repairMode2(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        3 => repairMode3(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        4 => repairMode4(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

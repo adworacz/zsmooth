@@ -5,6 +5,7 @@ const testing = @import("std").testing;
 const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
+const sort = @import("common/sorting_networks.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -84,126 +85,30 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 1, except the second-lowest and second-highest values are used.
         fn rgMode2(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) @TypeOf(c) {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-            // "normal" implementation, but stupid slow due to the sorting algorithm.
-            // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
-            // return std.math.clamp(c, a[2 - 1], a[7 - 1]);
+            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
 
-            // min-max sorting algorithm.
+            sort.sort(T, a.len, &a);
 
-            // Sort pixel pairs 1 pixel away
-            math.compareSwap(T, &a[1], &a[2]);
-            math.compareSwap(T, &a[3], &a[4]);
-            math.compareSwap(T, &a[5], &a[6]);
-            math.compareSwap(T, &a[7], &a[8]);
-
-            // Sort pixel pairs 2 pixels away
-            math.compareSwap(T, &a[1], &a[3]);
-            math.compareSwap(T, &a[2], &a[4]);
-            math.compareSwap(T, &a[5], &a[7]);
-            math.compareSwap(T, &a[6], &a[8]);
-
-            // Sort pivots
-            math.compareSwap(T, &a[2], &a[3]);
-            math.compareSwap(T, &a[6], &a[7]);
-
-            // Sort pixels pairs 4 pixels away
-            a[5] = @max(a[1], a[5]); // compareSwap(a[1], a[5]);
-            math.compareSwap(T, &a[2], &a[6]);
-            math.compareSwap(T, &a[3], &a[7]);
-            a[4] = @min(a[4], a[8]); // compareSwap(a[4], a[8]);
-
-            a[3] = @min(a[3], a[5]); // compareSwap(a[3], a[5]);
-            a[6] = @max(a[4], a[6]); // compareSwap(a[4], a[6]);
-
-            a[2] = @min(a[2], a[3]); // compareSwap(a[2], a[3]);
-            a[7] = @max(a[6], a[7]); // compareSwap(a[6], a[7]);
-
-            return std.math.clamp(c, a[2], a[7]);
+            return math.clamp(c, a[1], a[6]);
         }
 
         /// Same as mode 1, except the third-lowest and third-highest values are used.
         fn rgMode3(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-            // "normal" implementation, but stupid slow due to the sorting algorithm.
-            // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
-            // return std.math.clamp(c, a[3 - 1], a[6 - 1]);
+            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
 
-            // min-max sorting algorithm.
+            sort.sort(T, a.len, &a);
 
-            // Sort pixel pairs 1 pixel away
-            math.compareSwap(T, &a[1], &a[2]);
-            math.compareSwap(T, &a[3], &a[4]);
-            math.compareSwap(T, &a[5], &a[6]);
-            math.compareSwap(T, &a[7], &a[8]);
-
-            // Sort pixel pairs 2 pixels away
-            math.compareSwap(T, &a[1], &a[3]);
-            math.compareSwap(T, &a[2], &a[4]);
-            math.compareSwap(T, &a[5], &a[7]);
-            math.compareSwap(T, &a[6], &a[8]);
-
-            // Sort pivots
-            math.compareSwap(T, &a[2], &a[3]);
-            math.compareSwap(T, &a[6], &a[7]);
-
-            // Sort pixels pairs 4 pixels away
-            a[5] = @max(a[1], a[5]); // compareSwap(a[1], a[5]);
-            math.compareSwap(T, &a[2], &a[6]);
-            math.compareSwap(T, &a[3], &a[7]);
-            a[4] = @min(a[4], a[8]); // compareSwap(a[4], a[8]);
-
-            a[3] = @min(a[3], a[5]); // compareSwap(a[3], a[5]);
-            a[6] = @max(a[4], a[6]); // compareSwap(a[4], a[6]);
-
-            //everything above this line is identical to Mode 2.
-
-            a[3] = @max(a[2], a[3]); // compareSwap(a[2], a[3]);
-            a[6] = @min(a[6], a[7]); // compareSwap(a[6], a[7]);
-
-            return std.math.clamp(c, a[3], a[6]);
+            return std.math.clamp(c, a[2], a[5]);
         }
 
         /// Same as mode 1, except the fourth-lowest and fourth-highest values are used.
         /// This is identical to std.Median.
         fn rgMode4(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-            // "normal" implementation, but stupid slow due to the sorting algorithm.
-            // std.mem.sortUnstable(T, &a, {}, comptime std.sort.asc(T));
-            // return std.math.clamp(c, a[3 - 1], a[6 - 1]);
+            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
 
-            // min-max sorting algorithm.
+            sort.sort(T, a.len, &a);
 
-            // Sort pixel pairs 1 pixel away
-            math.compareSwap(T, &a[1], &a[2]);
-            math.compareSwap(T, &a[3], &a[4]);
-            math.compareSwap(T, &a[5], &a[6]);
-            math.compareSwap(T, &a[7], &a[8]);
-
-            // Sort pixel pairs 2 pixels away
-            math.compareSwap(T, &a[1], &a[3]);
-            math.compareSwap(T, &a[2], &a[4]);
-            math.compareSwap(T, &a[5], &a[7]);
-            math.compareSwap(T, &a[6], &a[8]);
-
-            // compare pivots
-            math.compareSwap(T, &a[2], &a[3]);
-            math.compareSwap(T, &a[6], &a[7]);
-
-            // Everything above this is identical to mode 1.
-
-            // Sort pixels pairs 4 pixels away
-            a[5] = @max(a[1], a[5]); // compareSwap(a[1], a[5]);
-            a[6] = @max(a[2], a[6]); // compareSwap(a[2], a[6]);
-            a[3] = @min(a[3], a[7]); // compareSwap(a[3], a[7]);
-            a[4] = @min(a[4], a[8]); // compareSwap(a[4], a[8]);
-
-            a[5] = @max(a[3], a[5]); // compareSwap(a[3], a[5]);
-            a[4] = @min(a[4], a[6]); // compareSwap(a[4], a[6]);
-
-            math.compareSwap(T, &a[4], &a[5]);
-
-            return std.math.clamp(c, a[4], a[5]);
+            return std.math.clamp(c, a[3], a[4]);
         }
 
         test "RG Mode 1-4" {

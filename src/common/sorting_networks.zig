@@ -211,14 +211,14 @@ pub fn sort(comptime T: type, comptime N: u8, input: *[N]T) void {
     const Layer = []const usize;
     switch (comptime N) {
         // https://bertdobbelaere.github.io/sorting_networks.html#N8L19D6
-        // 8 => SortingNetwork([_]Layer{
-        //     &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
-        //     &[_]usize{ 0, 4, 1, 5, 2, 6, 3, 7 },
-        //     &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 },
-        //     &[_]usize{ 2, 4, 3, 5 },
-        //     &[_]usize{ 1, 4, 3, 6 },
-        //     &[_]usize{ 1, 2, 3, 4, 5, 6 },
-        // }).sort(T, input),
+        8 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
+            &[_]usize{ 0, 4, 1, 5, 2, 6, 3, 7 },
+            &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7 },
+            &[_]usize{ 2, 4, 3, 5 },
+            &[_]usize{ 1, 4, 3, 6 },
+            &[_]usize{ 1, 2, 3, 4, 5, 6 },
+        }).sort(T, input),
         // https://bertdobbelaere.github.io/sorting_networks.html#N9L25D7
         9 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 3, 1, 7, 2, 5, 4, 8 },

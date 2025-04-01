@@ -5,6 +5,11 @@
 * Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and
 10-20x over the RGSF output for many modes. Mode 2-4 and 5 show the most gains. Other modes (like Mode 1) "only" show an
 increase of 1.5x over RGVS, but ~2-4x over RGSF. All tests were done single threaded, which provides the most consistent benchmarks.
+* Add Linux binary buids for GNU (Glibc) and Musl, in both x86_64 and aarch64 variants. Similar to the
+[vs-plugin-build](https://github.com/Stefan-Olt/vs-plugin-build) project, I'm targeting a very old (and thus very
+compatible) version of glibc, 2.17 (released in 2012). This should ensure maximum compatibility with various
+distributions. There's no significant speed penalty here, as this plugin makes *very* little use of libc functions. We
+only allocate memory once for each filter instance to share filter data between the create->getFrame phase.
 
 ## 0.6
 * Add DegrainMedian implementation.

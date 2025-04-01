@@ -167,22 +167,27 @@ fn RemoveGrain(comptime T: type) type {
 
             const cT = @as(SAT, c);
 
-            const c1 = @abs(cT - std.math.clamp(c, sorted.min1, sorted.max1));
-            const c2 = @abs(cT - std.math.clamp(c, sorted.min2, sorted.max2));
-            const c3 = @abs(cT - std.math.clamp(c, sorted.min3, sorted.max3));
-            const c4 = @abs(cT - std.math.clamp(c, sorted.min4, sorted.max4));
+            const clipped1 = std.math.clamp(c, sorted.min1, sorted.max1);
+            const clipped2 = std.math.clamp(c, sorted.min2, sorted.max2);
+            const clipped3 = std.math.clamp(c, sorted.min3, sorted.max3);
+            const clipped4 = std.math.clamp(c, sorted.min4, sorted.max4);
+
+            const c1 = @abs(cT - clipped1);
+            const c2 = @abs(cT - clipped2);
+            const c3 = @abs(cT - clipped3);
+            const c4 = @abs(cT - clipped4);
 
             const mindiff = @min(c1, c2, c3, c4);
 
             // This order matters to match RGVS output.
             if (mindiff == c4) {
-                return std.math.clamp(c, sorted.min4, sorted.max4);
+                return clipped4;
             } else if (mindiff == c2) {
-                return std.math.clamp(c, sorted.min2, sorted.max2);
+                return clipped2;
             } else if (mindiff == c3) {
-                return std.math.clamp(c, sorted.min3, sorted.max3);
+                return clipped3;
             }
-            return std.math.clamp(c, sorted.min1, sorted.max1);
+            return clipped1;
         }
 
         test "RG Mode 5" {

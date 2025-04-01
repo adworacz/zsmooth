@@ -111,6 +111,101 @@ fn Repair(comptime T: type) type {
             return math.clamp(src, a[3], a[5]);
         }
 
+        fn sortPixels(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
+            return .{
+                .max1 = @max(a1, a8, c),
+                .min1 = @min(a1, a8, c),
+                .max2 = @max(a2, a7, c),
+                .min2 = @min(a2, a7, c),
+                .max3 = @max(a3, a6, c),
+                .min3 = @min(a3, a6, c),
+                .max4 = @max(a4, a5, c),
+                .min4 = @min(a4, a5, c),
+            };
+        }
+
+        test sortPixels {
+            const sortedMinSrc = sortPixels(0, 2, 4, 6, 8, 7, 5, 3, 1);
+
+            try std.testing.expectEqual(2, sortedMinSrc.max1);
+            try std.testing.expectEqual(0, sortedMinSrc.min1);
+            try std.testing.expectEqual(4, sortedMinSrc.max2);
+            try std.testing.expectEqual(0, sortedMinSrc.min2);
+            try std.testing.expectEqual(6, sortedMinSrc.max3);
+            try std.testing.expectEqual(0, sortedMinSrc.min3);
+            try std.testing.expectEqual(8, sortedMinSrc.max4);
+            try std.testing.expectEqual(0, sortedMinSrc.min4);
+
+            const sortedMaxSrc = sortPixels(10, 2, 4, 6, 8, 7, 5, 3, 1);
+
+            try std.testing.expectEqual(10, sortedMaxSrc.max1);
+            try std.testing.expectEqual(1, sortedMaxSrc.min1);
+            try std.testing.expectEqual(10, sortedMaxSrc.max2);
+            try std.testing.expectEqual(3, sortedMaxSrc.min2);
+            try std.testing.expectEqual(10, sortedMaxSrc.max3);
+            try std.testing.expectEqual(5, sortedMaxSrc.min3);
+            try std.testing.expectEqual(10, sortedMaxSrc.max4);
+            try std.testing.expectEqual(7, sortedMaxSrc.min4);
+        }
+
+        /// Line-sensitive clipping giving the minimal change.
+        ///
+        /// Specifically, it clips the center pixel with four pairs
+        /// of opposing pixels respectively, and the pair that results
+        /// in the smallest change to the center pixel is used.
+        fn repairMode5(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const srcT = @as(SAT, src);
+
+            const clipped1 = std.math.clamp(src, sorted.min1, sorted.max1);
+            const clipped2 = std.math.clamp(src, sorted.min2, sorted.max2);
+            const clipped3 = std.math.clamp(src, sorted.min3, sorted.max3);
+            const clipped4 = std.math.clamp(src, sorted.min4, sorted.max4);
+
+            const c1 = @abs(srcT - clipped1);
+            const c2 = @abs(srcT - clipped2);
+            const c3 = @abs(srcT - clipped3);
+            const c4 = @abs(srcT - clipped4);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters to match RGVS output.
+            if (mindiff == c4) {
+                return clipped4;
+            } else if (mindiff == c2) {
+                return clipped2;
+            } else if (mindiff == c3) {
+                return clipped3;
+            }
+            return clipped1;
+        }
+
+        test "RG Mode 5" {
+            // a1 and a8 clipping.
+            try std.testing.expectEqual(2, repairMode5(1, 2, 2, 6, 6, 6, 7, 7, 7, 3));
+            try std.testing.expectEqual(3, repairMode5(3, 2, 2, 6, 6, 6, 7, 7, 7, 3));
+            // ^ The obove test is not ideal, since it doesn't properly test clamping behavior.
+            // But this is harder to test than RG Mode 5, since the Repair implementation incorporates
+            // the center pixel value into the min/max calculations of *all* pixel pairs. This means that the
+            // center pixel can influence the corresponding min or max for any given pair, meaning it's trivial
+            // to produce a "zero difference" clip value...
+            // I'm sure there's a better way to test this, but my brain is fried after staring at this problem
+            // for 30 minutes...
+
+            // a2 and a7 clipping.
+            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 2, 6, 6, 7, 7, 3, 7));
+            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 2, 6, 6, 7, 7, 3, 7));
+
+            // a3 and a6 clipping.
+            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 6, 2, 6, 7, 3, 7, 7));
+            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 6, 2, 6, 7, 3, 7, 7));
+
+            // a4 and a5 clipping.
+            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 6, 6, 2, 3, 7, 7, 7));
+            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 6, 6, 2, 3, 7, 7, 7));
+        }
+
         test "Repair Mode 1-4" {
             // In range
             try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
@@ -174,6 +269,7 @@ fn Repair(comptime T: type) type {
                         2 => repairMode2(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         3 => repairMode3(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         4 => repairMode4(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        5 => repairMode5(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

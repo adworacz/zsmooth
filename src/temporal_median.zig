@@ -82,8 +82,8 @@ fn TemporalMedian(comptime T: type) type {
 
         test "processPlane should find the median value" {
             const height = 2;
-            const width = 56;
-            const stride = width + 8 + 32;
+            const width = vec_size + 24;
+            const stride = width + 8 + vec_size;
             const size = height * stride;
 
             const radius = 4;

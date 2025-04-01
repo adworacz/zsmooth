@@ -42,6 +42,9 @@ const TemporalSoftenData = struct {
 };
 
 fn TemporalSoften(comptime T: type) type {
+    const vec_size = vec.getVecSize(T);
+    const VecType = @Vector(vec_size, T);
+
     return struct {
         /// Signed Arithmetic Type - used in signed arithmetic to safely hold
         /// the values (particularly integers) without overflowing when doing
@@ -95,7 +98,6 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn processPlaneVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
-            const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -112,9 +114,6 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn temporalSmoothVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, offset: usize, frames: u8, threshold: T) void {
-            const vec_size = vec.getVecSize(T);
-            const VecType = @Vector(vec_size, T);
-
             const threshold_vec: VecType = @splat(threshold);
             const current_value_vec = vec.load(VecType, srcp[0], offset);
 
@@ -173,8 +172,8 @@ fn TemporalSoften(comptime T: type) type {
 
         test "processPlane should find the average value" {
             const height = 2;
-            const width = 54;
-            const stride = width + 8 + 32;
+            const width = vec_size + 24;
+            const stride = width + 8 + vec_size;
             const size = height * stride;
 
             const radius = 2;

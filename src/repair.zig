@@ -111,6 +111,26 @@ fn Repair(comptime T: type) type {
             return math.clamp(src, a[3], a[5]);
         }
 
+        test "Repair Mode 1-4" {
+            // In range
+            try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode2(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode3(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode4(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+
+            // Out of range - high
+            try std.testing.expectEqual(9, repairMode1(10, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(8, repairMode2(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(7, repairMode3(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(6, repairMode4(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+
+            // Out of range - low
+            try std.testing.expectEqual(1, repairMode1(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(2, repairMode2(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(3, repairMode3(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(4, repairMode4(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+        }
+
         fn sortPixels(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
             return .{
                 .max1 = @max(a1, a8, c),
@@ -158,27 +178,27 @@ fn Repair(comptime T: type) type {
 
             const srcT = @as(SAT, src);
 
-            const clipped1 = std.math.clamp(src, sorted.min1, sorted.max1);
-            const clipped2 = std.math.clamp(src, sorted.min2, sorted.max2);
-            const clipped3 = std.math.clamp(src, sorted.min3, sorted.max3);
-            const clipped4 = std.math.clamp(src, sorted.min4, sorted.max4);
+            const clamp1 = std.math.clamp(src, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(src, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(src, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(src, sorted.min4, sorted.max4);
 
-            const c1 = @abs(srcT - clipped1);
-            const c2 = @abs(srcT - clipped2);
-            const c3 = @abs(srcT - clipped3);
-            const c4 = @abs(srcT - clipped4);
+            const c1 = @abs(srcT - clamp1);
+            const c2 = @abs(srcT - clamp2);
+            const c3 = @abs(srcT - clamp3);
+            const c4 = @abs(srcT - clamp4);
 
             const mindiff = @min(c1, c2, c3, c4);
 
             // This order matters to match RGVS output.
             if (mindiff == c4) {
-                return clipped4;
+                return clamp4;
             } else if (mindiff == c2) {
-                return clipped2;
+                return clamp2;
             } else if (mindiff == c3) {
-                return clipped3;
+                return clamp3;
             }
-            return clipped1;
+            return clamp1;
         }
 
         test "RG Mode 5" {
@@ -206,27 +226,62 @@ fn Repair(comptime T: type) type {
             try std.testing.expectEqual(3, repairMode5(3, 2, 6, 6, 6, 2, 3, 7, 7, 7));
         }
 
-        test "Repair Mode 1-4" {
-            // In range
-            try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode2(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode3(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode4(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+        /// Line-sensitive clipping, intermediate.
+        ///
+        /// It considers the range of the clipping operation
+        /// (the difference between the two opposing pixels)
+        /// as well as the change applied to the center pixel.
+        ///
+        /// The change applied to the center pixel is prioritized
+        /// (ratio 2:1) in this mode.
+        fn repairMode6(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
+            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
 
-            // Out of range - high
-            try std.testing.expectEqual(9, repairMode1(10, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(8, repairMode2(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(7, repairMode3(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(6, repairMode4(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
 
-            // Out of range - low
-            try std.testing.expectEqual(1, repairMode1(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(2, repairMode2(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(3, repairMode3(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(4, repairMode4(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            const clamp1 = std.math.clamp(src, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(src, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(src, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(src, sorted.min4, sorted.max4);
+
+            // Max / min Zig comptime + runtime shenanigans.
+            // TODO: Pretty sure there's a bug here.
+            // This maximum should likely be the maximum of the video bit depth,
+            // not the processing bit depth.
+            // Avisynth uses a max of the video bit depth, but RGVS uses a max of 0xFFFF.
+            // Maybe it doesn't matter...
+            // In theory it would only be an issue if every pixel around this
+            // pixel was white and this one was black
+            const maxChroma = types.getTypeMaximum(T, true);
+            const maxNoChroma = types.getTypeMaximum(T, false);
+
+            const maximum = if (chroma) maxChroma else maxNoChroma;
+
+            const srcT = @as(SAT, src);
+
+            const c1 = @min((@abs(srcT - clamp1) * 2) + d1, maximum);
+            const c2 = @min((@abs(srcT - clamp2) * 2) + d2, maximum);
+            const c3 = @min((@abs(srcT - clamp3) * 2) + d3, maximum);
+            const c4 = @min((@abs(srcT - clamp4) * 2) + d4, maximum);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
         }
 
-        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
 
@@ -270,6 +325,7 @@ fn Repair(comptime T: type) type {
                         3 => repairMode3(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         4 => repairMode4(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         5 => repairMode5(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        6 => repairMode6(src, c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
                         else => unreachable,
                     };
                 }
@@ -320,12 +376,11 @@ fn Repair(comptime T: type) type {
                     const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
                     const repairp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(repair_frame, plane))))[0..(height * stride)];
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-                    // const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
                     // See note in remove_grain about the use of "double switch" optimization.
                     switch (d.modes[_plane]) {
-                        // inline 1...24 => |mode| processPlaneScalar(mode, srcp, repairp, dstp, width, height, stride, chroma),
-                        inline 1...24 => |mode| processPlaneScalar(mode, srcp, repairp, dstp, width, height, stride),
+                        inline 1...24 => |mode| processPlaneScalar(mode, srcp, repairp, dstp, width, height, stride, chroma),
                         else => unreachable,
                     }
                 }

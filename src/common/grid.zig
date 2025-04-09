@@ -1,6 +1,7 @@
 const std = @import("std");
 const vec = @import("vector.zig");
 
+// Encapsulates data for a 3x3 grid of pixels.
 pub fn Grid(comptime T: type) type {
     return struct {
         top_left: T,

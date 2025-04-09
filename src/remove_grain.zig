@@ -30,6 +30,8 @@ const RemoveGrainData = struct {
     modes: [3]u5,
 };
 
+// TODO: Rewrite this plugin to use Grid implementation.
+
 /// Using a generic struct here as an optimization mechanism.
 ///
 /// Essentially, when I first implemented things using just raw functions.

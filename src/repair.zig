@@ -281,6 +281,40 @@ fn Repair(comptime T: type) type {
             return clamp1;
         }
 
+        fn repairMode7(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
+
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
+
+            const clamp1 = std.math.clamp(src, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(src, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(src, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(src, sorted.min4, sorted.max4);
+
+            const srcT = @as(SAT, src);
+
+            const c1 = @abs(srcT - clamp1) + d1;
+            const c2 = @abs(srcT - clamp2) + d2;
+            const c3 = @abs(srcT - clamp3) + d3;
+            const c4 = @abs(srcT - clamp4) + d4;
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -326,6 +360,7 @@ fn Repair(comptime T: type) type {
                         4 => repairMode4(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         5 => repairMode5(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         6 => repairMode6(src, c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
+                        7 => repairMode7(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
                         else => unreachable,
                     };
                 }

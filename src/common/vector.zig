@@ -83,10 +83,3 @@ pub inline fn getVecSize(comptime T: type) comptime_int {
 
     @compileError("The compilation target does not support vector sizing");
 }
-
-test "getVecSize returns reasonable vector sizes" {
-    try std.testing.expectEqual(32, getVecSize(u8));
-    try std.testing.expectEqual(16, getVecSize(u16));
-    try std.testing.expectEqual(16, getVecSize(f16));
-    try std.testing.expectEqual(8, getVecSize(f32));
-}

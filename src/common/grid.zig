@@ -2,7 +2,7 @@ const std = @import("std");
 const vec = @import("vector.zig");
 const sort = @import("sorting_networks.zig");
 
-// Encapsulates data for a 3x3 grid of pixels.
+/// Encapsulates data for a 3x3 grid of pixels.
 pub fn Grid(comptime T: type) type {
     return struct {
         top_left: T,
@@ -95,55 +95,56 @@ pub fn Grid(comptime T: type) type {
             };
         }
 
-        // Need to benchmark this - might be slower or faster, not sure.
-        // pub fn min(self: Self) T {
-        //     const vector: @Vector(9, T) = self.toArray();
-        //     return @reduce(.Min, vector);
-        // }
-        // pub fn max(self: Self) T {
-        //     const vector: @Vector(9, T) = self.toArray();
-        //     return @reduce(.Max, vector);
-        // }
-
-        // Finds the min value of all pixels, including the center.
+        /// Finds the min value of all pixels, including the center.
         pub fn minWithCenter(self: Self) T {
             return @min(self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
-        // Finds the min value of all pixels, *not* including the center.
+        /// Finds the min value of all pixels, *not* including the center.
         pub fn minWithoutCenter(self: Self) T {
             return @min(self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
+        /// Finds the max value of all pixels, including the center.
         pub fn maxWithCenter(self: Self) T {
             return @max(self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
-        // Finds the max value of all pixels, *not* including the center.
+        /// Finds the max value of all pixels, *not* including the center.
         pub fn maxWithoutCenter(self: Self) T {
             return @max(self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
-        // Creates an array of all pixels, including the center.
+        /// Creates an array of all pixels, including the center.
         pub fn toArrayWithCenter(self: Self) [9]T {
             return [9]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right };
         }
 
-        // Creates an array of all pixels, excluding the center.
+        /// Creates an array of all pixels, excluding the center.
         pub fn toArrayWithoutCenter(self: Self) [8]T {
             return [8]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right };
         }
 
-        // Sorts all pixels, excluding the center.
+        /// Sorts all pixels, excluding the center.
         pub fn sortWithoutCenter(self: Self) [8]T {
             var a = self.toArrayWithoutCenter();
+
+            sort.sort(T, a.len, &a);
+
+            return a;
+        }
+
+        /// Sorts all pixels, including the center.
+        pub fn sortWithCenter(self: Self) [9]T {
+            var a = self.toArrayWithCenter();
+
             sort.sort(T, a.len, &a);
 
             return a;
         }
 
         // Computes the min and max of opposing pixels in the 3x3 grid.
-        pub fn minMaxOpposites(self: Self) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
+        pub fn minMaxOppositesWithoutCenter(self: Self) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
             return .{
                 .max1 = @max(self.top_left, self.bottom_right),
                 .min1 = @min(self.top_left, self.bottom_right),
@@ -153,6 +154,19 @@ pub fn Grid(comptime T: type) type {
                 .min3 = @min(self.top_right, self.bottom_left),
                 .max4 = @max(self.center_left, self.center_right),
                 .min4 = @min(self.center_left, self.center_right),
+            };
+        }
+
+        pub fn minMaxOppositesWithCenter(self: Self) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
+            return .{
+                .max1 = @max(self.top_left, self.bottom_right, self.center_center),
+                .min1 = @min(self.top_left, self.bottom_right, self.center_center),
+                .max2 = @max(self.top_center, self.bottom_center, self.center_center),
+                .min2 = @min(self.top_center, self.bottom_center, self.center_center),
+                .max3 = @max(self.top_right, self.bottom_left, self.center_center),
+                .min3 = @min(self.top_right, self.bottom_left, self.center_center),
+                .max4 = @max(self.center_left, self.center_right, self.center_center),
+                .min4 = @min(self.center_left, self.center_right, self.center_center),
             };
         }
     };
@@ -232,7 +246,7 @@ test "Grid minMaxOpposites" {
     };
 
     const grid = Grid(T).init(T, &data, 3);
-    const minMax = grid.minMaxOpposites();
+    const minMax = grid.minMaxOppositesWithoutCenter();
 
     try std.testing.expectEqual(0, minMax.min1);
     try std.testing.expectEqual(8, minMax.max1);
@@ -245,4 +259,49 @@ test "Grid minMaxOpposites" {
 
     try std.testing.expectEqual(3, minMax.min4);
     try std.testing.expectEqual(5, minMax.max4);
+}
+
+test "Grid minMaxOppositesWithCenter" {
+    const T = u8;
+    const dataLow = [9]T{
+        1, 2, 3, //
+        4, 0, 5, //
+        6, 7, 8, //
+    };
+
+    const gridLow = Grid(T).init(T, &dataLow, 3);
+    const minMaxLow = gridLow.minMaxOppositesWithCenter();
+
+    try std.testing.expectEqual(0, minMaxLow.min1);
+    try std.testing.expectEqual(8, minMaxLow.max1);
+
+    try std.testing.expectEqual(0, minMaxLow.min2);
+    try std.testing.expectEqual(7, minMaxLow.max2);
+
+    try std.testing.expectEqual(0, minMaxLow.min3);
+    try std.testing.expectEqual(6, minMaxLow.max3);
+
+    try std.testing.expectEqual(0, minMaxLow.min4);
+    try std.testing.expectEqual(5, minMaxLow.max4);
+
+    const dataHigh = [9]T{
+        1, 2, 3, //
+        4, 9, 5, //
+        6, 7, 8, //
+    };
+
+    const gridHigh = Grid(T).init(T, &dataHigh, 3);
+    const minMaxHigh = gridHigh.minMaxOppositesWithCenter();
+
+    try std.testing.expectEqual(1, minMaxHigh.min1);
+    try std.testing.expectEqual(9, minMaxHigh.max1);
+
+    try std.testing.expectEqual(2, minMaxHigh.min2);
+    try std.testing.expectEqual(9, minMaxHigh.max2);
+
+    try std.testing.expectEqual(3, minMaxHigh.min3);
+    try std.testing.expectEqual(9, minMaxHigh.max3);
+
+    try std.testing.expectEqual(4, minMaxHigh.min4);
+    try std.testing.expectEqual(9, minMaxHigh.max4);
 }

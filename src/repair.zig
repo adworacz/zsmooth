@@ -6,6 +6,7 @@ const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
+const gridcmn = @import("common/grid.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -79,56 +80,52 @@ fn Repair(comptime T: type) type {
             else => unreachable,
         };
 
+        const Grid = gridcmn.Grid(T);
+
         // Clamp the source pixel to the min/max of the repair pixels.
-        fn repairMode1(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const min = @min(c, a1, a2, a3, a4, a5, a6, a7, a8);
-            const max = @max(c, a1, a2, a3, a4, a5, a6, a7, a8);
+        fn repairMode1(src: T, grid: Grid) T {
+            const min = grid.minWithCenter();
+            const max = grid.maxWithCenter();
 
             return math.clamp(src, min, max);
         }
 
-        fn repairMode2(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-
-            sort.sort(T, a.len, &a);
+        fn repairMode2(src: T, grid: Grid) T {
+            const a = grid.sortWithCenter();
 
             return math.clamp(src, a[1], a[7]);
         }
 
-        fn repairMode3(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-
-            sort.sort(T, a.len, &a);
+        fn repairMode3(src: T, grid: Grid) T {
+            const a = grid.sortWithCenter();
 
             return math.clamp(src, a[2], a[6]);
         }
 
-        fn repairMode4(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ c, a1, a2, a3, a4, a5, a6, a7, a8 };
-
-            sort.sort(T, a.len, &a);
+        fn repairMode4(src: T, grid: Grid) T {
+            const a = grid.sortWithCenter();
 
             return math.clamp(src, a[3], a[5]);
         }
 
         test "Repair Mode 1-4" {
             // In range
-            try std.testing.expectEqual(5, repairMode1(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode2(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode3(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, repairMode4(5, 1, 2, 3, 4, 5, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, repairMode1(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, repairMode2(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, repairMode3(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, repairMode4(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
 
             // Out of range - high
-            try std.testing.expectEqual(9, repairMode1(10, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(8, repairMode2(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(7, repairMode3(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(6, repairMode4(10, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(9, repairMode1(10, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(8, repairMode2(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(7, repairMode3(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(6, repairMode4(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
 
             // Out of range - low
-            try std.testing.expectEqual(1, repairMode1(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(2, repairMode2(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(3, repairMode3(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
-            try std.testing.expectEqual(4, repairMode4(0, 9, 8, 7, 6, 5, 4, 3, 2, 1));
+            try std.testing.expectEqual(1, repairMode1(0, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, repairMode2(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(3, repairMode3(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(4, repairMode4(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
         }
 
         fn sortPixels(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
@@ -173,8 +170,8 @@ fn Repair(comptime T: type) type {
         /// Specifically, it clips the center pixel with four pairs
         /// of opposing pixels respectively, and the pair that results
         /// in the smallest change to the center pixel is used.
-        fn repairMode5(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
+        fn repairMode5(src: T, grid: Grid) T {
+            const sorted = grid.minMaxOppositesWithCenter();
 
             const srcT = @as(SAT, src);
 
@@ -203,8 +200,8 @@ fn Repair(comptime T: type) type {
 
         test "RG Mode 5" {
             // a1 and a8 clipping.
-            try std.testing.expectEqual(2, repairMode5(1, 2, 2, 6, 6, 6, 7, 7, 7, 3));
-            try std.testing.expectEqual(3, repairMode5(3, 2, 2, 6, 6, 6, 7, 7, 7, 3));
+            try std.testing.expectEqual(2, repairMode5(1, Grid.init(T, &.{ 2, 6, 6, 6, 2, 7, 7, 7, 3 }, 3)));
+            try std.testing.expectEqual(3, repairMode5(3, Grid.init(T, &.{ 2, 6, 6, 6, 2, 7, 7, 7, 3 }, 3)));
             // ^ The obove test is not ideal, since it doesn't properly test clamping behavior.
             // But this is harder to test than RG Mode 5, since the Repair implementation incorporates
             // the center pixel value into the min/max calculations of *all* pixel pairs. This means that the
@@ -214,16 +211,16 @@ fn Repair(comptime T: type) type {
             // for 30 minutes...
 
             // a2 and a7 clipping.
-            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 2, 6, 6, 7, 7, 3, 7));
-            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 2, 6, 6, 7, 7, 3, 7));
+            try std.testing.expectEqual(2, repairMode5(1, Grid.init(T, &.{ 6, 2, 6, 6, 2, 7, 7, 3, 7 }, 3)));
+            try std.testing.expectEqual(3, repairMode5(3, Grid.init(T, &.{ 6, 2, 6, 6, 2, 7, 7, 3, 7 }, 3)));
 
             // a3 and a6 clipping.
-            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 6, 2, 6, 7, 3, 7, 7));
-            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 6, 2, 6, 7, 3, 7, 7));
+            try std.testing.expectEqual(2, repairMode5(1, Grid.init(T, &.{ 6, 6, 2, 6, 2, 7, 3, 7, 7 }, 3)));
+            try std.testing.expectEqual(3, repairMode5(3, Grid.init(T, &.{ 6, 6, 2, 6, 2, 7, 3, 7, 7 }, 3)));
 
             // a4 and a5 clipping.
-            try std.testing.expectEqual(2, repairMode5(1, 2, 6, 6, 6, 2, 3, 7, 7, 7));
-            try std.testing.expectEqual(3, repairMode5(3, 2, 6, 6, 6, 2, 3, 7, 7, 7));
+            try std.testing.expectEqual(2, repairMode5(1, Grid.init(T, &.{ 6, 6, 6, 2, 2, 3, 7, 7, 7 }, 3)));
+            try std.testing.expectEqual(3, repairMode5(3, Grid.init(T, &.{ 6, 6, 6, 2, 2, 3, 7, 7, 7 }, 3)));
         }
 
         /// Line-sensitive clipping, intermediate.
@@ -234,8 +231,8 @@ fn Repair(comptime T: type) type {
         ///
         /// The change applied to the center pixel is prioritized
         /// (ratio 2:1) in this mode.
-        fn repairMode6(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
-            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
+        fn repairMode6(src: T, grid: Grid, chroma: bool) T {
+            const sorted = grid.minMaxOppositesWithCenter();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -281,8 +278,8 @@ fn Repair(comptime T: type) type {
             return clamp1;
         }
 
-        fn repairMode7(src: T, c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(c, a1, a2, a3, a4, a5, a6, a7, a8);
+        fn repairMode7(src: T, grid: Grid) T {
+            const sorted = grid.minMaxOppositesWithCenter();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -324,43 +321,21 @@ fn Repair(comptime T: type) type {
                 dstp[(row * stride)] = srcp[(row * stride)];
 
                 for (1..width - 1) |w| {
-                    // Retrieve pixels from the 3x3 grid surrounding the current pixel
-                    //
-                    // a1 a2 a3
-                    // a4  c a5
-                    // a6 a7 a8
-
-                    // Build c, cr,  and a1-a8 pixels.
-                    //
-                    // Note that *most* of the pixels used are from the *REPAIR* clip,
-                    // and only the center pixel of the *SOURCE* clip is used.
-                    const rowPrev = ((row - 1) * stride);
                     const rowCurr = ((row) * stride);
-                    const rowNext = ((row + 1) * stride);
+                    const top_left = ((row - 1) * stride) + w - 1;
 
-                    const a1 = repairp[rowPrev + w - 1];
-                    const a2 = repairp[rowPrev + w];
-                    const a3 = repairp[rowPrev + w + 1];
-
-                    const a4 = repairp[rowCurr + w - 1];
-
-                    const c = repairp[rowCurr + w];
                     const src = srcp[rowCurr + w];
 
-                    const a5 = repairp[rowCurr + w + 1];
-
-                    const a6 = repairp[rowNext + w - 1];
-                    const a7 = repairp[rowNext + w];
-                    const a8 = repairp[rowNext + w + 1];
+                    const grid = Grid.init(T, repairp[top_left..], math.lossyCast(u32, stride));
 
                     dstp[rowCurr + w] = switch (mode) {
-                        1 => repairMode1(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        2 => repairMode2(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        3 => repairMode3(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        4 => repairMode4(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        5 => repairMode5(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        6 => repairMode6(src, c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
-                        7 => repairMode7(src, c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        1 => repairMode1(src, grid),
+                        2 => repairMode2(src, grid),
+                        3 => repairMode3(src, grid),
+                        4 => repairMode4(src, grid),
+                        5 => repairMode5(src, grid),
+                        6 => repairMode6(src, grid, chroma),
+                        7 => repairMode7(src, grid),
                         else => unreachable,
                     };
                 }

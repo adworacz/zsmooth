@@ -133,39 +133,13 @@ fn RemoveGrain(comptime T: type) type {
             try std.testing.expectEqual(4, rgMode4(Grid.init(T, &.{ 1, 2, 3, 4, 0, 6, 7, 8, 9 }, 3)));
         }
 
-        fn sortPixels(a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
-            return .{
-                .max1 = @max(a1, a8),
-                .min1 = @min(a1, a8),
-                .max2 = @max(a2, a7),
-                .min2 = @min(a2, a7),
-                .max3 = @max(a3, a6),
-                .min3 = @min(a3, a6),
-                .max4 = @max(a4, a5),
-                .min4 = @min(a4, a5),
-            };
-        }
-
-        test sortPixels {
-            const sorted = sortPixels(2, 4, 6, 8, 7, 5, 3, 1);
-
-            try std.testing.expectEqual(2, sorted.max1);
-            try std.testing.expectEqual(1, sorted.min1);
-            try std.testing.expectEqual(4, sorted.max2);
-            try std.testing.expectEqual(3, sorted.min2);
-            try std.testing.expectEqual(6, sorted.max3);
-            try std.testing.expectEqual(5, sorted.min3);
-            try std.testing.expectEqual(8, sorted.max4);
-            try std.testing.expectEqual(7, sorted.min4);
-        }
-
         /// Line-sensitive clipping giving the minimal change.
         ///
         /// Specifically, it clips the center pixel with four pairs
         /// of opposing pixels respectively, and the pair that results
         /// in the smallest change to the center pixel is used.
         fn rgMode5(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const cT = @as(SAT, grid.center_center);
 
@@ -219,7 +193,7 @@ fn RemoveGrain(comptime T: type) type {
         /// The change applied to the center pixel is prioritized
         /// (ratio 2:1) in this mode.
         fn rgMode6(grid: Grid, chroma: bool) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -269,7 +243,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 6, except the ratio is 1:1 in this mode.
         fn rgMode7(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -305,7 +279,7 @@ fn RemoveGrain(comptime T: type) type {
         /// Same as mode 6, except the difference between the two opposing
         /// pixels is prioritized in this mode, again with a 2:1 ratio.
         fn rgMode8(grid: Grid, chroma: bool) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const d1: UAT = sorted.max1 - sorted.min1;
             const d2: UAT = sorted.max2 - sorted.min2;
@@ -352,7 +326,7 @@ fn RemoveGrain(comptime T: type) type {
         /// and the pair with the smallest difference is used for cliping the center pixel.
         /// This can be useful to fix interrupted lines, as long as the length of the gap never exceeds one pixel.
         fn rgMode9(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -527,7 +501,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Clips the pixel with the minimum and maximum of respectively the maximum and minimum of each pair of opposite neighbour pixels.
         fn rgMode17(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
             const l = @max(sorted.min1, sorted.min2, sorted.min3, sorted.min4);
             const u = @min(sorted.max1, sorted.max2, sorted.max3, sorted.max4);
 
@@ -669,7 +643,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Small edge and halo removal, but reportedly useless.
         fn rgMode23(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const linediff1 = sorted.max1 - sorted.min1;
             const linediff2 = sorted.max2 - sorted.min2;
@@ -703,7 +677,7 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 23 but considerably more conservative and slightly slower. Preferred.
         fn rgMode24(grid: Grid) T {
-            const sorted = grid.minMaxOpposites();
+            const sorted = grid.minMaxOppositesWithoutCenter();
 
             const linediff1 = sorted.max1 - sorted.min1;
             const linediff2 = sorted.max2 - sorted.min2;

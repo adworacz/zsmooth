@@ -10,6 +10,12 @@ increase of 1.5x over RGVS, but ~2-4x over RGSF. All tests were done single thre
 compatible) version of glibc, 2.17 (released in 2012). This should ensure maximum compatibility with various
 distributions. There's no significant speed penalty here, as this plugin makes *very* little use of libc functions. We
 only allocate memory once for each filter instance to share filter data between the create->getFrame phase.
+* Refactor RemoveGrain to simplify code using my Grid helper, which leads to some surprisingly large performance improvements.
+Most RG modes are now ~4x faster than RGVS, and ~10-20x faster than RGSF. There are some exceptions, in particular modes 13-16. 
+Those modes, which deal with interlaced content and thus "skip lines" (and thus wreak some havoc on branch predictors) are
+either as fast or slower than RGVS. It's possible that an upgrade to newer versions of Zig (and thus the LLVM
+compiler/optimizer) will improve this, but right now performance is sub-par. However, these modes are rarely (if
+ever?) actually used in the wild, so I'm not sweating it right now.
 
 ## 0.6
 * Add DegrainMedian implementation.

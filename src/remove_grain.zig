@@ -6,6 +6,7 @@ const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
+const gridcmn = @import("common/grid.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -79,58 +80,57 @@ fn RemoveGrain(comptime T: type) type {
             else => unreachable,
         };
 
+        const Grid = gridcmn.Grid(T);
+
         /// Every pixel is clamped to the lowest and highest values in the pixel's
         /// 3x3 neighborhood, center pixel not included.
-        fn rgMode1(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            return @max(@min(a1, a2, a3, a4, a5, a6, a7, a8), @min(c, @max(a1, a2, a3, a4, a5, a6, a7, a8)));
+        fn rgMode1(grid: Grid) T {
+            const min = grid.minWithoutCenter();
+            const max = grid.maxWithoutCenter();
+
+            return @max(min, @min(grid.center_center, max));
         }
 
         /// Same as mode 1, except the second-lowest and second-highest values are used.
-        fn rgMode2(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) @TypeOf(c) {
-            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
+        fn rgMode2(grid: Grid) T {
+            const a = grid.sortWithoutCenter();
 
-            sort.sort(T, a.len, &a);
-
-            return math.clamp(c, a[1], a[6]);
+            return math.clamp(grid.center_center, a[1], a[6]);
         }
 
         /// Same as mode 1, except the third-lowest and third-highest values are used.
-        fn rgMode3(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
+        fn rgMode3(grid: Grid) T {
+            const a = grid.sortWithoutCenter();
 
-            sort.sort(T, a.len, &a);
-
-            return std.math.clamp(c, a[2], a[5]);
+            return std.math.clamp(grid.center_center, a[2], a[5]);
         }
 
         /// Same as mode 1, except the fourth-lowest and fourth-highest values are used.
         /// This is identical to std.Median.
-        fn rgMode4(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            var a = [_]T{ a1, a2, a3, a4, a5, a6, a7, a8 };
+        fn rgMode4(grid: Grid) T {
+            const a = grid.sortWithoutCenter();
 
-            sort.sort(T, a.len, &a);
-
-            return std.math.clamp(c, a[3], a[4]);
+            return std.math.clamp(grid.center_center, a[3], a[4]);
         }
 
         test "RG Mode 1-4" {
             // In range
-            try std.testing.expectEqual(5, rgMode1(5, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, rgMode2(5, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, rgMode3(5, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(5, rgMode4(5, 1, 2, 3, 4, 6, 7, 8, 9));
+            try std.testing.expectEqual(5, rgMode1(Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, rgMode2(Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, rgMode3(Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, rgMode4(Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
 
             // Out of range - high
-            try std.testing.expectEqual(9, rgMode1(10, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(8, rgMode2(10, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(7, rgMode3(10, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(6, rgMode4(10, 1, 2, 3, 4, 6, 7, 8, 9));
+            try std.testing.expectEqual(9, rgMode1(Grid.init(T, &.{ 1, 2, 3, 4, 10, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(8, rgMode2(Grid.init(T, &.{ 1, 2, 3, 4, 10, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(7, rgMode3(Grid.init(T, &.{ 1, 2, 3, 4, 10, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(6, rgMode4(Grid.init(T, &.{ 1, 2, 3, 4, 10, 6, 7, 8, 9 }, 3)));
 
             // Out of range - low
-            try std.testing.expectEqual(1, rgMode1(0, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(2, rgMode2(0, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(3, rgMode3(0, 1, 2, 3, 4, 6, 7, 8, 9));
-            try std.testing.expectEqual(4, rgMode4(0, 1, 2, 3, 4, 6, 7, 8, 9));
+            try std.testing.expectEqual(1, rgMode1(Grid.init(T, &.{ 1, 2, 3, 4, 0, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, rgMode2(Grid.init(T, &.{ 1, 2, 3, 4, 0, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(3, rgMode3(Grid.init(T, &.{ 1, 2, 3, 4, 0, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(4, rgMode4(Grid.init(T, &.{ 1, 2, 3, 4, 0, 6, 7, 8, 9 }, 3)));
         }
 
         fn sortPixels(a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
@@ -164,15 +164,15 @@ fn RemoveGrain(comptime T: type) type {
         /// Specifically, it clips the center pixel with four pairs
         /// of opposing pixels respectively, and the pair that results
         /// in the smallest change to the center pixel is used.
-        fn rgMode5(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode5(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
-            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
-            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
-            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
-            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
+            const clamp1 = std.math.clamp(grid.center_center, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(grid.center_center, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(grid.center_center, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(grid.center_center, sorted.min4, sorted.max4);
 
             const c1 = @abs(cT - clamp1);
             const c2 = @abs(cT - clamp2);
@@ -194,20 +194,20 @@ fn RemoveGrain(comptime T: type) type {
 
         test "RG Mode 5" {
             // a1 and a8 clipping.
-            try std.testing.expectEqual(2, rgMode5(1, 2, 6, 6, 6, 7, 7, 7, 3));
-            try std.testing.expectEqual(3, rgMode5(4, 2, 6, 6, 6, 7, 7, 7, 3));
+            try std.testing.expectEqual(2, rgMode5(Grid.init(T, &.{ 2, 6, 6, 6, 1, 7, 7, 7, 3 }, 3)));
+            try std.testing.expectEqual(3, rgMode5(Grid.init(T, &.{ 2, 6, 6, 6, 4, 7, 7, 7, 3 }, 3)));
 
             // a2 and a7 clipping.
-            try std.testing.expectEqual(2, rgMode5(1, 6, 2, 6, 6, 7, 7, 3, 7));
-            try std.testing.expectEqual(3, rgMode5(4, 6, 2, 6, 6, 7, 7, 3, 7));
+            try std.testing.expectEqual(2, rgMode5(Grid.init(T, &.{ 6, 2, 6, 6, 1, 7, 7, 3, 7 }, 3)));
+            try std.testing.expectEqual(3, rgMode5(Grid.init(T, &.{ 6, 2, 6, 6, 4, 7, 7, 3, 7 }, 3)));
 
             // a3 and a6 clipping.
-            try std.testing.expectEqual(2, rgMode5(1, 6, 6, 2, 6, 7, 3, 7, 7));
-            try std.testing.expectEqual(3, rgMode5(4, 6, 6, 2, 6, 7, 3, 7, 7));
+            try std.testing.expectEqual(2, rgMode5(Grid.init(T, &.{ 6, 6, 2, 6, 1, 7, 3, 7, 7 }, 3)));
+            try std.testing.expectEqual(3, rgMode5(Grid.init(T, &.{ 6, 6, 2, 6, 4, 7, 3, 7, 7 }, 3)));
 
             // a4 and a5 clipping.
-            try std.testing.expectEqual(2, rgMode5(1, 6, 6, 6, 2, 3, 7, 7, 7));
-            try std.testing.expectEqual(3, rgMode5(4, 6, 6, 6, 2, 3, 7, 7, 7));
+            try std.testing.expectEqual(2, rgMode5(Grid.init(T, &.{ 6, 6, 6, 2, 1, 3, 7, 7, 7 }, 3)));
+            try std.testing.expectEqual(3, rgMode5(Grid.init(T, &.{ 6, 6, 6, 2, 4, 3, 7, 7, 7 }, 3)));
         }
 
         /// Line-sensitive clipping, intermediate.
@@ -218,18 +218,18 @@ fn RemoveGrain(comptime T: type) type {
         ///
         /// The change applied to the center pixel is prioritized
         /// (ratio 2:1) in this mode.
-        fn rgMode6(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode6(grid: Grid, chroma: bool) T {
+            const sorted = grid.minMaxOpposites();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
             const d3 = sorted.max3 - sorted.min3;
             const d4 = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
-            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
-            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
-            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
+            const clamp1 = std.math.clamp(grid.center_center, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(grid.center_center, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(grid.center_center, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(grid.center_center, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
             // TODO: Pretty sure there's a bug here.
@@ -244,7 +244,7 @@ fn RemoveGrain(comptime T: type) type {
 
             const maximum = if (chroma) maxChroma else maxNoChroma;
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
             const c1 = @min((@abs(cT - clamp1) * 2) + d1, maximum);
             const c2 = @min((@abs(cT - clamp2) * 2) + d2, maximum);
@@ -268,20 +268,20 @@ fn RemoveGrain(comptime T: type) type {
         // TODO: Add tests for RG mode 6
 
         /// Same as mode 6, except the ratio is 1:1 in this mode.
-        fn rgMode7(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode7(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
             const d3 = sorted.max3 - sorted.min3;
             const d4 = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
-            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
-            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
-            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
+            const clamp1 = std.math.clamp(grid.center_center, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(grid.center_center, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(grid.center_center, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(grid.center_center, sorted.min4, sorted.max4);
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
             const c1 = @abs(cT - clamp1) + d1;
             const c2 = @abs(cT - clamp2) + d2;
@@ -304,18 +304,18 @@ fn RemoveGrain(comptime T: type) type {
 
         /// Same as mode 6, except the difference between the two opposing
         /// pixels is prioritized in this mode, again with a 2:1 ratio.
-        fn rgMode8(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T, chroma: bool) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode8(grid: Grid, chroma: bool) T {
+            const sorted = grid.minMaxOpposites();
 
             const d1: UAT = sorted.max1 - sorted.min1;
             const d2: UAT = sorted.max2 - sorted.min2;
             const d3: UAT = sorted.max3 - sorted.min3;
             const d4: UAT = sorted.max4 - sorted.min4;
 
-            const clamp1 = std.math.clamp(c, sorted.min1, sorted.max1);
-            const clamp2 = std.math.clamp(c, sorted.min2, sorted.max2);
-            const clamp3 = std.math.clamp(c, sorted.min3, sorted.max3);
-            const clamp4 = std.math.clamp(c, sorted.min4, sorted.max4);
+            const clamp1 = std.math.clamp(grid.center_center, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(grid.center_center, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(grid.center_center, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(grid.center_center, sorted.min4, sorted.max4);
 
             // Max / min Zig comptime + runtime shenanigans.
             const maxChroma = types.getTypeMaximum(T, true);
@@ -326,7 +326,7 @@ fn RemoveGrain(comptime T: type) type {
             const maximum = if (chroma) maxChroma else maxNoChroma;
             const minimum = if (chroma) minChroma else minNoChroma;
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
             const c1 = std.math.clamp(@abs(cT - clamp1) + (d1 * 2), minimum, maximum);
             const c2 = std.math.clamp(@abs(cT - clamp2) + (d2 * 2), minimum, maximum);
@@ -351,8 +351,8 @@ fn RemoveGrain(comptime T: type) type {
         /// Only the difference between the two opposing pixels is considered in this mode,
         /// and the pair with the smallest difference is used for cliping the center pixel.
         /// This can be useful to fix interrupted lines, as long as the length of the gap never exceeds one pixel.
-        fn rgMode9(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode9(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
 
             const d1 = sorted.max1 - sorted.min1;
             const d2 = sorted.max2 - sorted.min2;
@@ -364,47 +364,47 @@ fn RemoveGrain(comptime T: type) type {
             // This order matters in order to match the exact
             // same output of RGVS
             if (mindiff == d4) {
-                return std.math.clamp(c, sorted.min4, sorted.max4);
+                return std.math.clamp(grid.center_center, sorted.min4, sorted.max4);
             } else if (mindiff == d2) {
-                return std.math.clamp(c, sorted.min2, sorted.max2);
+                return std.math.clamp(grid.center_center, sorted.min2, sorted.max2);
             } else if (mindiff == d3) {
-                return std.math.clamp(c, sorted.min3, sorted.max3);
+                return std.math.clamp(grid.center_center, sorted.min3, sorted.max3);
             }
-            return std.math.clamp(c, sorted.min1, sorted.max1);
+            return std.math.clamp(grid.center_center, sorted.min1, sorted.max1);
         }
 
         test "RG Mode 9" {
             // TODO: Add testing based on the difference directions (d4, d2, d3, d1) to ensure that the proper order is followed.
 
             // a1 and a8 clipping.
-            try std.testing.expectEqual(2, rgMode9(1, 2, 0, 0, 0, 100, 100, 100, 3));
-            try std.testing.expectEqual(3, rgMode9(4, 2, 0, 0, 0, 100, 100, 100, 3));
+            try std.testing.expectEqual(2, rgMode9(Grid.init(T, &.{ 2, 0, 0, 0, 1, 100, 100, 100, 3 }, 3)));
+            try std.testing.expectEqual(3, rgMode9(Grid.init(T, &.{ 2, 0, 0, 0, 4, 100, 100, 100, 3 }, 3)));
 
             // a2 and a7 clipping.
-            try std.testing.expectEqual(2, rgMode9(1, 0, 2, 0, 0, 100, 100, 3, 100));
-            try std.testing.expectEqual(3, rgMode9(4, 0, 2, 0, 0, 100, 100, 3, 100));
+            try std.testing.expectEqual(2, rgMode9(Grid.init(T, &.{ 0, 2, 0, 0, 1, 100, 100, 3, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode9(Grid.init(T, &.{ 0, 2, 0, 0, 4, 100, 100, 3, 100 }, 3)));
 
             // a3 and a6 clipping.
-            try std.testing.expectEqual(2, rgMode9(1, 0, 0, 2, 0, 100, 3, 100, 100));
-            try std.testing.expectEqual(3, rgMode9(4, 0, 0, 2, 0, 100, 3, 100, 100));
+            try std.testing.expectEqual(2, rgMode9(Grid.init(T, &.{ 0, 0, 2, 0, 1, 100, 3, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode9(Grid.init(T, &.{ 0, 0, 2, 0, 4, 100, 3, 100, 100 }, 3)));
 
             // a4 and a5 clipping.
-            try std.testing.expectEqual(2, rgMode9(1, 0, 0, 0, 2, 3, 100, 100, 100));
-            try std.testing.expectEqual(3, rgMode9(4, 0, 0, 0, 2, 3, 100, 100, 100));
+            try std.testing.expectEqual(2, rgMode9(Grid.init(T, &.{ 0, 0, 0, 2, 1, 3, 100, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode9(Grid.init(T, &.{ 0, 0, 0, 2, 4, 3, 100, 100, 100 }, 3)));
         }
 
         /// Replaces the center pixel with the closest neighbour. "Very poor denoise sharpener"
-        fn rgMode10(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const cT: SAT = c;
+        fn rgMode10(grid: Grid) T {
+            const cT: SAT = grid.center_center;
 
-            const d1 = @abs(cT - a1);
-            const d2 = @abs(cT - a2);
-            const d3 = @abs(cT - a3);
-            const d4 = @abs(cT - a4);
-            const d5 = @abs(cT - a5);
-            const d6 = @abs(cT - a6);
-            const d7 = @abs(cT - a7);
-            const d8 = @abs(cT - a8);
+            const d1 = @abs(cT - grid.top_left);
+            const d2 = @abs(cT - grid.top_center);
+            const d3 = @abs(cT - grid.top_right);
+            const d4 = @abs(cT - grid.center_left);
+            const d5 = @abs(cT - grid.center_right);
+            const d6 = @abs(cT - grid.bottom_left);
+            const d7 = @abs(cT - grid.bottom_center);
+            const d8 = @abs(cT - grid.bottom_right);
 
             const mindiff = @min(d1, d2, d3, d4, d5, d6, d7, d8);
 
@@ -412,33 +412,34 @@ fn RemoveGrain(comptime T: type) type {
             // same output of RGVS
 
             return if (mindiff == d7)
-                a7
+                grid.bottom_center
             else if (mindiff == d8)
-                a8
+                grid.bottom_right
             else if (mindiff == d6)
-                a6
+                grid.bottom_left
             else if (mindiff == d2)
-                a2
+                grid.top_center
             else if (mindiff == d3)
-                a3
+                grid.top_right
             else if (mindiff == d1)
-                a1
+                grid.top_left
             else if (mindiff == d5)
-                a5
+                grid.center_right
             else
-                a4;
+                grid.center_left;
         }
 
         test "RG Mode 10" {
             // TODO: Add testing to ensure that order is respected (d7, d8, d6, ...)
-            try std.testing.expectEqual(2, rgMode10(1, 2, 3, 4, 5, 6, 7, 8, 9));
-            try std.testing.expectEqual(2, rgMode10(1, 9, 2, 3, 4, 5, 6, 7, 8));
-            try std.testing.expectEqual(2, rgMode10(1, 8, 9, 2, 3, 4, 5, 6, 7));
-            try std.testing.expectEqual(2, rgMode10(1, 7, 8, 9, 2, 3, 4, 5, 6));
-            try std.testing.expectEqual(2, rgMode10(1, 6, 7, 8, 9, 2, 3, 4, 5));
-            try std.testing.expectEqual(2, rgMode10(1, 5, 6, 7, 8, 9, 2, 3, 4));
-            try std.testing.expectEqual(2, rgMode10(1, 4, 5, 6, 7, 8, 9, 2, 3));
-            try std.testing.expectEqual(2, rgMode10(1, 3, 4, 5, 6, 7, 8, 9, 2));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 2, 3, 4, 5, 1, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 2, 3, 4, 5, 1, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 9, 2, 3, 4, 1, 5, 6, 7, 8 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 8, 9, 2, 3, 1, 4, 5, 6, 7 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 7, 8, 9, 2, 1, 3, 4, 5, 6 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 6, 7, 8, 9, 1, 2, 3, 4, 5 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 5, 6, 7, 8, 1, 9, 2, 3, 4 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 4, 5, 6, 7, 1, 8, 9, 2, 3 }, 3)));
+            try std.testing.expectEqual(2, rgMode10(Grid.init(T, &.{ 3, 4, 5, 6, 1, 7, 8, 9, 2 }, 3)));
         }
 
         /// Every pixel is replaced with a weighted arithmetic mean of its 3x3
@@ -448,8 +449,8 @@ fn RemoveGrain(comptime T: type) type {
         /// and the corner pixels each have a weight of 1.
         ///
         /// Identical to Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
-        fn rgMode1112(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sum = 4 * @as(UAT, c) + 2 * (@as(UAT, a2) + a4 + a5 + a7) + a1 + a3 + a6 + a8;
+        fn rgMode1112(grid: Grid) T {
+            const sum = 4 * @as(UAT, grid.center_center) + 2 * (@as(UAT, grid.top_center) + grid.center_left + grid.center_right + grid.bottom_center) + grid.top_left + grid.top_right + grid.bottom_left + grid.bottom_right;
             return if (types.isFloat(T))
                 sum / 16
             else
@@ -458,135 +459,125 @@ fn RemoveGrain(comptime T: type) type {
 
         test "RG Mode 11-12" {
             if (types.isInt(T)) {
-                try std.testing.expectEqual(5, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
+                try std.testing.expectEqual(5, rgMode1112(Grid.init(T, &.{ 1, 5, 1, 5, 10, 5, 1, 5, 1 }, 3)));
             } else {
-                try std.testing.expectEqual(5.25, rgMode1112(10, 1, 5, 1, 5, 5, 1, 5, 1));
+                try std.testing.expectEqual(5.25, rgMode1112(Grid.init(T, &.{ 1, 5, 1, 5, 10, 5, 1, 5, 1 }, 3)));
             }
         }
 
         /// RG 13 - Bob mode, interpolates top field from the line where the neighbours pixels are the closest.
         /// RG 14 - Bob mode, interpolates bottom field from the line where the neighbours pixels are the closest.
-        fn rgMode1314(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            // TODO: simply remove the function parameters for this function.
-            _ = c;
-            _ = a4;
-            _ = a5;
-
-            const d1 = @abs(@as(SAT, a1) - a8);
-            const d2 = @abs(@as(SAT, a2) - a7);
-            const d3 = @abs(@as(SAT, a3) - a6);
+        fn rgMode1314(grid: Grid) T {
+            const d1 = @abs(@as(SAT, grid.top_left) - grid.bottom_right);
+            const d2 = @abs(@as(SAT, grid.top_center) - grid.bottom_center);
+            const d3 = @abs(@as(SAT, grid.top_right) - grid.bottom_left);
 
             const mindiff = @min(d1, d2, d3);
 
             if (mindiff == d2) {
                 return if (types.isFloat(T))
-                    (@as(UAT, a2) + a7) / 2
+                    (@as(UAT, grid.top_center) + grid.bottom_center) / 2
                 else
-                    @intCast((@as(UAT, a2) + a7 + 1) / 2);
+                    @intCast((@as(UAT, grid.top_center) + grid.bottom_center + 1) / 2);
             } else if (mindiff == d3) {
                 return if (types.isFloat(T))
-                    (@as(UAT, a3) + a6) / 2
+                    (@as(UAT, grid.top_right) + grid.bottom_left) / 2
                 else
-                    @intCast((@as(UAT, a3) + a6 + 1) / 2);
+                    @intCast((@as(UAT, grid.top_right) + grid.bottom_left + 1) / 2);
             }
             return if (types.isFloat(T))
-                (@as(UAT, a1) + a8) / 2
+                (@as(UAT, grid.top_left) + grid.bottom_right) / 2
             else
-                @intCast((@as(UAT, a1) + a8 + 1) / 2);
+                @intCast((@as(UAT, grid.top_left) + grid.bottom_right + 1) / 2);
         }
 
         test "RG Mode 13-14" {
-            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 100, 100, 3));
-            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 100, 3, 100));
-            try std.testing.expectEqual(2, rgMode1314(0, 1, 1, 1, 0, 0, 3, 100, 100));
+            try std.testing.expectEqual(2, rgMode1314(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 100, 100, 3 }, 3)));
+            try std.testing.expectEqual(2, rgMode1314(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 100, 3, 100 }, 3)));
+            try std.testing.expectEqual(2, rgMode1314(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 3, 100, 100 }, 3)));
         }
 
         /// RG15 - Bob mode, interpolates top field. Same as mode 13 but with a more complicated interpolation formula.
         /// RG16 - Bob mode, interpolates bottom field. Same as mode 14 but with a more complicated interpolation formula.
-        fn rgMode1516(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            // TODO: simply remove the function parameters for this function.
-            _ = c;
-            _ = a4;
-            _ = a5;
-
-            const d1 = @abs(@as(SAT, a1) - a8);
-            const d2 = @abs(@as(SAT, a2) - a7);
-            const d3 = @abs(@as(SAT, a3) - a6);
+        fn rgMode1516(grid: Grid) T {
+            const d1 = @abs(@as(SAT, grid.top_left) - grid.bottom_right);
+            const d2 = @abs(@as(SAT, grid.top_center) - grid.bottom_center);
+            const d3 = @abs(@as(SAT, grid.top_right) - grid.bottom_left);
 
             const mindiff = @min(d1, d2, d3);
 
             const average = if (types.isFloat(T))
-                (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8) / 8
+                (2 * (@as(UAT, grid.top_center) + grid.bottom_center) + grid.top_left + grid.top_right + grid.bottom_left + grid.bottom_right) / 8
             else
-                (2 * (@as(UAT, a2) + a7) + a1 + a3 + a6 + a8 + 4) / 8;
+                (2 * (@as(UAT, grid.top_center) + grid.bottom_center) + grid.top_left + grid.top_right + grid.bottom_left + grid.bottom_right + 4) / 8;
 
             if (mindiff == d2) {
-                return math.lossyCast(T, std.math.clamp(average, @min(a2, a7), @max(a2, a7)));
+                return math.lossyCast(T, std.math.clamp(average, @min(grid.top_center, grid.bottom_center), @max(grid.top_center, grid.bottom_center)));
             } else if (mindiff == d3) {
-                return math.lossyCast(T, std.math.clamp(average, @min(a3, a6), @max(a3, a6)));
+                return math.lossyCast(T, std.math.clamp(average, @min(grid.top_right, grid.bottom_left), @max(grid.top_right, grid.bottom_left)));
             }
-            return math.lossyCast(T, std.math.clamp(average, @min(a1, a8), @max(a1, a8)));
+            return math.lossyCast(T, std.math.clamp(average, @min(grid.top_left, grid.bottom_right), @max(grid.top_left, grid.bottom_right)));
         }
 
         test "RG Mode 15-16" {
-            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 100, 100, 3));
-            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 100, 3, 100));
-            try std.testing.expectEqual(3, rgMode1516(0, 1, 1, 1, 0, 0, 3, 100, 100));
+            try std.testing.expectEqual(3, rgMode1516(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 100, 100, 3 }, 3)));
+            try std.testing.expectEqual(3, rgMode1516(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 100, 3, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode1516(Grid.init(T, &.{ 1, 1, 1, 0, 0, 0, 3, 100, 100 }, 3)));
         }
 
         /// Clips the pixel with the minimum and maximum of respectively the maximum and minimum of each pair of opposite neighbour pixels.
-        fn rgMode17(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode17(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
             const l = @max(sorted.min1, sorted.min2, sorted.min3, sorted.min4);
             const u = @min(sorted.max1, sorted.max2, sorted.max3, sorted.max4);
 
-            return std.math.clamp(c, @min(l, u), @max(l, u));
+            return std.math.clamp(grid.center_center, @min(l, u), @max(l, u));
         }
 
         test "RG Mode 17" {
             // Clip to the lowest maximum
-            try std.testing.expectEqual(5, rgMode17(10, 1, 1, 1, 1, 5, 6, 7, 8));
+            try std.testing.expectEqual(5, rgMode17(Grid.init(T, &.{ 1, 1, 1, 1, 10, 5, 6, 7, 8 }, 3)));
 
             // Clip to the highest minimum
-            try std.testing.expectEqual(4, rgMode17(0, 1, 2, 3, 4, 5, 5, 5, 5));
+            try std.testing.expectEqual(4, rgMode17(Grid.init(T, &.{ 1, 2, 3, 4, 0, 5, 5, 5, 5 }, 3)));
         }
 
         /// Line-sensitive clipping using opposite neighbours whose greatest distance from the current pixel is minimal.
-        fn rgMode18(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const cT = @as(SAT, c);
-            const d1 = @max(@abs(cT - a1), @abs(cT - a8));
-            const d2 = @max(@abs(cT - a2), @abs(cT - a7));
-            const d3 = @max(@abs(cT - a3), @abs(cT - a6));
-            const d4 = @max(@abs(cT - a4), @abs(cT - a5));
+        fn rgMode18(grid: Grid) T {
+            const cT = @as(SAT, grid.center_center);
+            const d1 = @max(@abs(cT - grid.top_left), @abs(cT - grid.bottom_right));
+            const d2 = @max(@abs(cT - grid.top_center), @abs(cT - grid.bottom_center));
+            const d3 = @max(@abs(cT - grid.top_right), @abs(cT - grid.bottom_left));
+            const d4 = @max(@abs(cT - grid.center_left), @abs(cT - grid.center_right));
 
             const mindiff = @min(d1, d2, d3, d4);
 
             return if (mindiff == d4)
-                std.math.clamp(c, @min(a4, a5), @max(a4, a5))
+                std.math.clamp(grid.center_center, @min(grid.center_left, grid.center_right), @max(grid.center_left, grid.center_right))
             else if (mindiff == d2)
-                std.math.clamp(c, @min(a2, a7), @max(a2, a7))
+                std.math.clamp(grid.center_center, @min(grid.top_center, grid.bottom_center), @max(grid.top_center, grid.bottom_center))
             else if (mindiff == d3)
-                std.math.clamp(c, @min(a3, a6), @max(a3, a6))
+                std.math.clamp(grid.center_center, @min(grid.top_right, grid.bottom_left), @max(grid.top_right, grid.bottom_left))
             else
-                std.math.clamp(c, @min(a1, a8), @max(a1, a8));
+                std.math.clamp(grid.center_center, @min(grid.top_left, grid.bottom_right), @max(grid.top_left, grid.bottom_right));
         }
 
         test "RG Mode 18" {
             // a1 and a8 clipping.
-            try std.testing.expectEqual(2, rgMode18(1, 2, 100, 100, 100, 100, 100, 100, 3));
-            try std.testing.expectEqual(3, rgMode18(4, 2, 100, 100, 100, 100, 100, 100, 3));
+            try std.testing.expectEqual(2, rgMode18(Grid.init(T, &.{ 2, 100, 100, 100, 1, 100, 100, 100, 3 }, 3)));
+            try std.testing.expectEqual(3, rgMode18(Grid.init(T, &.{ 2, 100, 100, 100, 4, 100, 100, 100, 3 }, 3)));
 
             // a2 and a7 clipping.
-            try std.testing.expectEqual(2, rgMode18(1, 100, 2, 100, 100, 100, 100, 3, 100));
-            try std.testing.expectEqual(3, rgMode18(4, 100, 2, 100, 100, 100, 100, 3, 100));
+            try std.testing.expectEqual(2, rgMode18(Grid.init(T, &.{ 100, 2, 100, 100, 1, 100, 100, 3, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode18(Grid.init(T, &.{ 100, 2, 100, 100, 4, 100, 100, 3, 100 }, 3)));
 
             // a3 and a6 clipping
-            try std.testing.expectEqual(2, rgMode18(1, 100, 100, 2, 100, 100, 3, 100, 100));
-            try std.testing.expectEqual(3, rgMode18(4, 100, 100, 2, 100, 100, 3, 100, 100));
+            try std.testing.expectEqual(2, rgMode18(Grid.init(T, &.{ 100, 100, 2, 100, 1, 100, 3, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode18(Grid.init(T, &.{ 100, 100, 2, 100, 4, 100, 3, 100, 100 }, 3)));
 
             // a4 and a5 clipping
-            try std.testing.expectEqual(2, rgMode18(1, 100, 100, 100, 2, 3, 100, 100, 100));
-            try std.testing.expectEqual(3, rgMode18(4, 100, 100, 100, 2, 3, 100, 100, 100));
+            try std.testing.expectEqual(2, rgMode18(Grid.init(T, &.{ 100, 100, 100, 2, 1, 3, 100, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, rgMode18(Grid.init(T, &.{ 100, 100, 100, 2, 4, 3, 100, 100, 100 }, 3)));
         }
 
         /// Every pixel is replaced with the arithmetic mean of its 3x3 neighborhood,
@@ -594,10 +585,8 @@ fn RemoveGrain(comptime T: type) type {
         /// and the sum is divided by 8.
         ///
         /// Identical to Convolution(matrix=[1, 1, 1, 1, 0, 1, 1, 1, 1])
-        fn rgMode19(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            // TODO: remove c arg.
-            _ = c;
-            const sum = @as(UAT, a1) + a2 + a3 + a4 + a5 + a6 + a7 + a8;
+        fn rgMode19(grid: Grid) T {
+            const sum = @as(UAT, grid.top_left) + grid.top_center + grid.top_right + grid.center_left + grid.center_right + grid.bottom_left + grid.bottom_center + grid.bottom_right;
 
             return if (types.isFloat(T))
                 sum / 8
@@ -607,9 +596,9 @@ fn RemoveGrain(comptime T: type) type {
 
         test "RG Mode 19" {
             if (types.isFloat(T)) {
-                try std.testing.expectEqual(4.5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
+                try std.testing.expectEqual(4.5, rgMode19(Grid.init(T, &.{ 1, 2, 3, 4, 0, 5, 6, 7, 8 }, 3)));
             } else {
-                try std.testing.expectEqual(5, rgMode19(0, 1, 2, 3, 4, 5, 6, 7, 8));
+                try std.testing.expectEqual(5, rgMode19(Grid.init(T, &.{ 1, 2, 3, 4, 0, 5, 6, 7, 8 }, 3)));
             }
         }
 
@@ -617,8 +606,8 @@ fn RemoveGrain(comptime T: type) type {
         /// In other words, all 9 pixels are summed up and the sum is divided by 9.
         ///
         /// Identical to Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
-        fn rgMode20(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sum = @as(UAT, a1) + a2 + a3 + c + a4 + a5 + a6 + a7 + a8;
+        fn rgMode20(grid: Grid) T {
+            const sum = @as(UAT, grid.top_left) + grid.top_center + grid.top_right + grid.center_center + grid.center_left + grid.center_right + grid.bottom_left + grid.bottom_center + grid.bottom_right;
 
             return if (types.isFloat(T))
                 sum / 9
@@ -627,21 +616,21 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         test "RG Mode 20" {
-            try std.testing.expectEqual(5, rgMode20(9, 1, 2, 3, 4, 5, 6, 7, 8));
+            try std.testing.expectEqual(5, rgMode20(Grid.init(T, &.{ 1, 2, 3, 4, 9, 5, 6, 7, 8 }, 3)));
         }
 
         /// The center pixel is clipped to the smallest and the biggest average of the four surrounding pairs.
-        fn rgMode21(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const l1l = (@as(UAT, a1) + a8) / 2;
-            const l2l = (@as(UAT, a2) + a7) / 2;
-            const l3l = (@as(UAT, a3) + a6) / 2;
-            const l4l = (@as(UAT, a4) + a5) / 2;
+        fn rgMode21(grid: Grid) T {
+            const l1l = (@as(UAT, grid.top_left) + grid.bottom_right) / 2;
+            const l2l = (@as(UAT, grid.top_center) + grid.bottom_center) / 2;
+            const l3l = (@as(UAT, grid.top_right) + grid.bottom_left) / 2;
+            const l4l = (@as(UAT, grid.center_left) + grid.center_right) / 2;
 
             // Unused for integer
-            const l1h = (@as(UAT, a1) + a8 + 1) / 2;
-            const l2h = (@as(UAT, a2) + a7 + 1) / 2;
-            const l3h = (@as(UAT, a3) + a6 + 1) / 2;
-            const l4h = (@as(UAT, a4) + a5 + 1) / 2;
+            const l1h = (@as(UAT, grid.top_left) + grid.bottom_right + 1) / 2;
+            const l2h = (@as(UAT, grid.top_center) + grid.bottom_center + 1) / 2;
+            const l3h = (@as(UAT, grid.top_right) + grid.bottom_left + 1) / 2;
+            const l4h = (@as(UAT, grid.center_left) + grid.center_right + 1) / 2;
 
             const min = @min(l1l, l2l, l3l, l4l);
             const max = if (types.isInt(T))
@@ -649,45 +638,45 @@ fn RemoveGrain(comptime T: type) type {
             else
                 @max(l1l, l2l, l3l, l4l);
 
-            return math.lossyCast(T, std.math.clamp(c, min, max));
+            return math.lossyCast(T, std.math.clamp(grid.center_center, min, max));
         }
 
         /// Same as mode 21 but simpler and faster. (rounding handled differently)
         /// Identical for floating point.
-        fn rgMode22(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
+        fn rgMode22(grid: Grid) T {
             if (types.isFloat(T)) {
-                return rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8);
+                return rgMode21(grid);
             }
 
-            const l1 = (@as(UAT, a1) + a8 + 1) / 2;
-            const l2 = (@as(UAT, a2) + a7 + 1) / 2;
-            const l3 = (@as(UAT, a3) + a6 + 1) / 2;
-            const l4 = (@as(UAT, a4) + a5 + 1) / 2;
+            const l1 = (@as(UAT, grid.top_left) + grid.bottom_right + 1) / 2;
+            const l2 = (@as(UAT, grid.top_center) + grid.bottom_center + 1) / 2;
+            const l3 = (@as(UAT, grid.top_right) + grid.bottom_left + 1) / 2;
+            const l4 = (@as(UAT, grid.center_left) + grid.center_right + 1) / 2;
 
             const min = @min(l1, l2, l3, l4);
             const max = @max(l1, l2, l3, l4);
 
-            return math.lossyCast(T, std.math.clamp(c, min, max));
+            return math.lossyCast(T, std.math.clamp(grid.center_center, min, max));
         }
 
         test "RG Mode 21-22" {
-            try std.testing.expectEqual(1, rgMode21(0, 1, 2, 3, 4, 4, 3, 2, 1));
-            try std.testing.expectEqual(4, rgMode21(5, 1, 2, 3, 4, 4, 3, 2, 1));
+            try std.testing.expectEqual(1, rgMode21(Grid.init(T, &.{ 1, 2, 3, 4, 0, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(4, rgMode21(Grid.init(T, &.{ 1, 2, 3, 4, 5, 4, 3, 2, 1 }, 3)));
 
-            try std.testing.expectEqual(1, rgMode22(0, 1, 2, 3, 4, 4, 3, 2, 1));
-            try std.testing.expectEqual(4, rgMode22(5, 1, 2, 3, 4, 4, 3, 2, 1));
+            try std.testing.expectEqual(1, rgMode22(Grid.init(T, &.{ 1, 2, 3, 4, 0, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(4, rgMode22(Grid.init(T, &.{ 1, 2, 3, 4, 5, 4, 3, 2, 1 }, 3)));
         }
 
         /// Small edge and halo removal, but reportedly useless.
-        fn rgMode23(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode23(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
 
             const linediff1 = sorted.max1 - sorted.min1;
             const linediff2 = sorted.max2 - sorted.min2;
             const linediff3 = sorted.max3 - sorted.min3;
             const linediff4 = sorted.max4 - sorted.min4;
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
             const h1 = @min(cT - sorted.max1, linediff1);
             const h2 = @min(cT - sorted.max2, linediff2);
@@ -709,19 +698,19 @@ fn RemoveGrain(comptime T: type) type {
             const l4 = @min(sorted.min4 - cT, linediff4);
             const l = @max(0, l1, l2, l3, l4);
 
-            return math.lossyCast(T, c - h + l);
+            return math.lossyCast(T, grid.center_center - h + l);
         }
 
         /// Same as mode 23 but considerably more conservative and slightly slower. Preferred.
-        fn rgMode24(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) T {
-            const sorted = sortPixels(a1, a2, a3, a4, a5, a6, a7, a8);
+        fn rgMode24(grid: Grid) T {
+            const sorted = grid.minMaxOpposites();
 
             const linediff1 = sorted.max1 - sorted.min1;
             const linediff2 = sorted.max2 - sorted.min2;
             const linediff3 = sorted.max3 - sorted.min3;
             const linediff4 = sorted.max4 - sorted.min4;
 
-            const cT = @as(SAT, c);
+            const cT = @as(SAT, grid.center_center);
 
             const th1 = cT - sorted.max1;
             const th2 = cT - sorted.max2;
@@ -753,7 +742,7 @@ fn RemoveGrain(comptime T: type) type {
             const l4 = @min(tl4, linediff4 - tl4);
             const l = @max(0, l1, l2, l3, l4);
 
-            return math.lossyCast(T, c - h + l);
+            return math.lossyCast(T, grid.center_center - h + l);
         }
 
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
@@ -762,6 +751,14 @@ fn RemoveGrain(comptime T: type) type {
 
             for (1..height - 1) |row| {
                 // Handle interlacing (top field/bottom field) modes
+                //
+                // TODO: Skipping lines like this trashes performance, so modes 13, 14, 15, and 16 performance pretty poorly.
+                // By comparison, RGVS is about 3-4x faster than this version, and its essentially doing the same thing.
+                //
+                // Example numbers on my 9950x: RGVS = ~500+fps, Zsmooth = ~120fps.
+                //
+                // So there's the potential for optimization here, even if it simply means upgrading to newer versions of Zig
+                // that compile this into better code...
                 if (shouldSkipLine(mode, row)) {
                     const currentLine = (row * stride);
                     @memcpy(dstp[currentLine..], srcp[currentLine..(currentLine + width)]);
@@ -771,51 +768,33 @@ fn RemoveGrain(comptime T: type) type {
                 // Copy the pixel at the beginning of the line.
                 dstp[(row * stride)] = srcp[(row * stride)];
                 for (1..width - 1) |w| {
-                    // Retrieve pixels from the 3x3 grid surrounding the current pixel
-                    //
-                    // a1 a2 a3
-                    // a4  c a5
-                    // a6 a7 a8
-
-                    // Build c and a1-a8 pixels.
-                    const rowPrev = ((row - 1) * stride);
                     const rowCurr = ((row) * stride);
-                    const rowNext = ((row + 1) * stride);
+                    const top_left = ((row - 1) * stride) + w - 1;
 
-                    const a1 = srcp[rowPrev + w - 1];
-                    const a2 = srcp[rowPrev + w];
-                    const a3 = srcp[rowPrev + w + 1];
-
-                    const a4 = srcp[rowCurr + w - 1];
-                    const c = srcp[rowCurr + w];
-                    const a5 = srcp[rowCurr + w + 1];
-
-                    const a6 = srcp[rowNext + w - 1];
-                    const a7 = srcp[rowNext + w];
-                    const a8 = srcp[rowNext + w + 1];
+                    const grid = Grid.init(T, srcp[top_left..], math.lossyCast(u32, stride));
 
                     dstp[rowCurr + w] = switch (mode) {
-                        1 => rgMode1(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        2 => rgMode2(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        3 => rgMode3(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        4 => rgMode4(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        5 => rgMode5(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        6 => rgMode6(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
-                        7 => rgMode7(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        8 => rgMode8(c, a1, a2, a3, a4, a5, a6, a7, a8, chroma),
-                        9 => rgMode9(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        10 => rgMode10(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        11, 12 => rgMode1112(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        13, 14 => rgMode1314(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        15, 16 => rgMode1516(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        17 => rgMode17(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        18 => rgMode18(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        19 => rgMode19(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        20 => rgMode20(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        21 => rgMode21(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        22 => rgMode22(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        23 => rgMode23(c, a1, a2, a3, a4, a5, a6, a7, a8),
-                        24 => rgMode24(c, a1, a2, a3, a4, a5, a6, a7, a8),
+                        1 => rgMode1(grid),
+                        2 => rgMode2(grid),
+                        3 => rgMode3(grid),
+                        4 => rgMode4(grid),
+                        5 => rgMode5(grid),
+                        6 => rgMode6(grid, chroma),
+                        7 => rgMode7(grid),
+                        8 => rgMode8(grid, chroma),
+                        9 => rgMode9(grid),
+                        10 => rgMode10(grid),
+                        11, 12 => rgMode1112(grid),
+                        13, 14 => rgMode1314(grid),
+                        15, 16 => rgMode1516(grid),
+                        17 => rgMode17(grid),
+                        18 => rgMode18(grid),
+                        19 => rgMode19(grid),
+                        20 => rgMode20(grid),
+                        21 => rgMode21(grid),
+                        22 => rgMode22(grid),
+                        23 => rgMode23(grid),
+                        24 => rgMode24(grid),
                         else => unreachable,
                     };
                 }

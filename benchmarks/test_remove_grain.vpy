@@ -1,5 +1,5 @@
 import vapoursynth as vs
-from vstools import depth
+from vstools import depth, get_sample_type
 from vspreview.api import is_preview
 
 core = vs.core
@@ -37,7 +37,7 @@ match format:
 
 clip.set_output(0)
 
-if (format not in ['f16', 'f32']):
+if (get_sample_type(clip) == vs.INTEGER):
     rg = clip.rgvs.RemoveGrain(mode)
 else:
     # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.

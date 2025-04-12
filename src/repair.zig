@@ -128,43 +128,6 @@ fn Repair(comptime T: type) type {
             try std.testing.expectEqual(4, repairMode4(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
         }
 
-        fn sortPixels(c: T, a1: T, a2: T, a3: T, a4: T, a5: T, a6: T, a7: T, a8: T) struct { max1: T, min1: T, max2: T, min2: T, max3: T, min3: T, max4: T, min4: T } {
-            return .{
-                .max1 = @max(a1, a8, c),
-                .min1 = @min(a1, a8, c),
-                .max2 = @max(a2, a7, c),
-                .min2 = @min(a2, a7, c),
-                .max3 = @max(a3, a6, c),
-                .min3 = @min(a3, a6, c),
-                .max4 = @max(a4, a5, c),
-                .min4 = @min(a4, a5, c),
-            };
-        }
-
-        test sortPixels {
-            const sortedMinSrc = sortPixels(0, 2, 4, 6, 8, 7, 5, 3, 1);
-
-            try std.testing.expectEqual(2, sortedMinSrc.max1);
-            try std.testing.expectEqual(0, sortedMinSrc.min1);
-            try std.testing.expectEqual(4, sortedMinSrc.max2);
-            try std.testing.expectEqual(0, sortedMinSrc.min2);
-            try std.testing.expectEqual(6, sortedMinSrc.max3);
-            try std.testing.expectEqual(0, sortedMinSrc.min3);
-            try std.testing.expectEqual(8, sortedMinSrc.max4);
-            try std.testing.expectEqual(0, sortedMinSrc.min4);
-
-            const sortedMaxSrc = sortPixels(10, 2, 4, 6, 8, 7, 5, 3, 1);
-
-            try std.testing.expectEqual(10, sortedMaxSrc.max1);
-            try std.testing.expectEqual(1, sortedMaxSrc.min1);
-            try std.testing.expectEqual(10, sortedMaxSrc.max2);
-            try std.testing.expectEqual(3, sortedMaxSrc.min2);
-            try std.testing.expectEqual(10, sortedMaxSrc.max3);
-            try std.testing.expectEqual(5, sortedMaxSrc.min3);
-            try std.testing.expectEqual(10, sortedMaxSrc.max4);
-            try std.testing.expectEqual(7, sortedMaxSrc.min4);
-        }
-
         /// Line-sensitive clipping giving the minimal change.
         ///
         /// Specifically, it clips the center pixel with four pairs
@@ -535,6 +498,49 @@ fn Repair(comptime T: type) type {
             return std.math.clamp(src, min, max);
         }
 
+        /// Clips the source pixels using a clipping pair from the RemoveGrain modes 6
+        pub fn repairMode16(src: T, grid: Grid, chroma: bool) T {
+            const sorted = grid.minMaxOppositesWithoutCenter();
+
+            const maximum = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
+
+            const c: SAT = grid.center_center;
+
+            const c1 = std.math.clamp((@abs(c - std.math.clamp(c, sorted.min1, sorted.max1)) * 2) + d1, minimum, maximum);
+            const c2 = std.math.clamp((@abs(c - std.math.clamp(c, sorted.min2, sorted.max2)) * 2) + d2, minimum, maximum);
+            const c3 = std.math.clamp((@abs(c - std.math.clamp(c, sorted.min3, sorted.max3)) * 2) + d3, minimum, maximum);
+            const c4 = std.math.clamp((@abs(c - std.math.clamp(c, sorted.min4, sorted.max4)) * 2) + d4, minimum, maximum);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            var min: T = 0;
+            var max: T = 0;
+            if (mindiff == c4) {
+                min = sorted.min4;
+                max = sorted.max4;
+            } else if (mindiff == c2) {
+                min = sorted.min2;
+                max = sorted.max2;
+            } else if (mindiff == c3) {
+                min = sorted.min3;
+                max = sorted.max3;
+            } else {
+                min = sorted.min1;
+                max = sorted.max1;
+            }
+
+            min = @min(min, grid.center_center);
+            max = @max(max, grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -567,6 +573,7 @@ fn Repair(comptime T: type) type {
                         13 => repairMode13(src, grid),
                         14 => repairMode14(src, grid),
                         15 => repairMode15(src, grid),
+                        16 => repairMode16(src, grid, chroma),
                         else => unreachable,
                     };
                 }

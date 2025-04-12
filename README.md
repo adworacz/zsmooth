@@ -15,19 +15,7 @@ The Zig compiler should really be handling this FP16->FP32 processing on its own
 issue.
 
 ## Implemented Features/Functions
-- [x] TemporalMedian
-- [x] TemporalSoften
-- [x] RemoveGrain
-- [x] FluxSmooth
-- [x] DegrainMedian
-- [ ] Repair (RG)
-- [ ] Clense (RG)
-- [ ] VerticalCleaner (RG)
-- [ ] MiniDeen
-- [ ] TTempSmooth
-- [ ] CCD
-- [ ] Dogway's IQM/IQM5/IQMV/IQMST/IQMS functions
-- [ ] Avisynth support
+Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for the current list, and up vote accordingly.
 
 ## Function Documentation
 ### Temporal Median

@@ -541,6 +541,26 @@ fn Repair(comptime T: type) type {
             return std.math.clamp(src, min, max);
         }
 
+        /// Clips the pixel with the minimum and maximum of respectively the maximum and minimum of each pair of opposite neighbour pixels.
+        fn repairMode17(src: T, grid: Grid) T {
+            const sorted = grid.minMaxOppositesWithoutCenter();
+
+            const l = @max(sorted.min1, sorted.min2, sorted.min3, sorted.min4);
+            const u = @min(sorted.max1, sorted.max2, sorted.max3, sorted.max4);
+
+            return std.math.clamp(src, @min(l, u, grid.center_center), @max(l, u, grid.center_center));
+        }
+
+        test "Repair Mode 17" {
+            // Clip to the lowest maximum
+            try std.testing.expectEqual(10, repairMode17(11, Grid.init(T, &.{ 1, 1, 1, 1, 10, 5, 6, 7, 8 }, 3)));
+            try std.testing.expectEqual(5, repairMode17(11, Grid.init(T, &.{ 1, 1, 1, 1, 4, 5, 6, 7, 8 }, 3)));
+
+            // Clip to the highest minimum
+            try std.testing.expectEqual(1, repairMode17(0, Grid.init(T, &.{ 1, 2, 3, 4, 1, 5, 5, 5, 5 }, 3)));
+            try std.testing.expectEqual(4, repairMode17(0, Grid.init(T, &.{ 1, 2, 3, 4, 5, 5, 5, 5, 5 }, 3)));
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -574,6 +594,7 @@ fn Repair(comptime T: type) type {
                         14 => repairMode14(src, grid),
                         15 => repairMode15(src, grid),
                         16 => repairMode16(src, grid, chroma),
+                        17 => repairMode17(src, grid),
                         else => unreachable,
                     };
                 }

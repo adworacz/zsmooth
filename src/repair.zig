@@ -453,6 +453,88 @@ fn Repair(comptime T: type) type {
             try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 3, 4, 5, 6, 10, 7, 8, 9, 2 }, 3)));
         }
 
+        /// Repair Modes 11-14
+        /// Same as modes 1–4 but uses min(Nth_min, c) and max(Nth_max, c) for the clipping,
+        /// where c is the value of the center pixel of the reference clip.
+        pub fn repairMode12(src: T, grid: Grid) T {
+            const sorted = grid.sortWithoutCenter();
+
+            const min = @min(sorted[1], grid.center_center);
+            const max = @max(sorted[6], grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
+        pub fn repairMode13(src: T, grid: Grid) T {
+            const sorted = grid.sortWithoutCenter();
+
+            const min = @min(sorted[2], grid.center_center);
+            const max = @max(sorted[5], grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
+        pub fn repairMode14(src: T, grid: Grid) T {
+            const sorted = grid.sortWithoutCenter();
+
+            const min = @min(sorted[3], grid.center_center);
+            const max = @max(sorted[4], grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
+        test "Repair Mode 12-14" {
+            // In range
+            try std.testing.expectEqual(5, repairMode12(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, repairMode13(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(5, repairMode14(5, Grid.init(T, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, 3)));
+
+            // Out of range - high
+            try std.testing.expectEqual(8, repairMode12(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(7, repairMode13(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(6, repairMode14(10, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+
+            // Out of range - low
+            try std.testing.expectEqual(2, repairMode12(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(3, repairMode13(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+            try std.testing.expectEqual(4, repairMode14(0, Grid.init(T, &.{ 9, 8, 7, 6, 5, 4, 3, 2, 1 }, 3)));
+        }
+
+        /// Clips the source pixels using a clipping pair from the RemoveGrain modes 5
+        pub fn repairMode15(src: T, grid: Grid) T {
+            const sorted = grid.minMaxOppositesWithoutCenter();
+
+            const c: SAT = grid.center_center;
+
+            const c1 = @abs(c - std.math.clamp(c, sorted.min1, sorted.max1));
+            const c2 = @abs(c - std.math.clamp(c, sorted.min2, sorted.max2));
+            const c3 = @abs(c - std.math.clamp(c, sorted.min3, sorted.max3));
+            const c4 = @abs(c - std.math.clamp(c, sorted.min4, sorted.max4));
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            var min: T = 0;
+            var max: T = 0;
+            if (mindiff == c4) {
+                min = sorted.min4;
+                max = sorted.max4;
+            } else if (mindiff == c2) {
+                min = sorted.min2;
+                max = sorted.max2;
+            } else if (mindiff == c3) {
+                min = sorted.min3;
+                max = sorted.max3;
+            } else {
+                min = sorted.min1;
+                max = sorted.max1;
+            }
+
+            min = @min(min, grid.center_center);
+            max = @max(max, grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -480,6 +562,11 @@ fn Repair(comptime T: type) type {
                         8 => repairMode8(src, grid, chroma),
                         9 => repairMode9(src, grid),
                         10 => repairMode10(src, grid),
+                        11 => repairMode1(src, grid), // Same as mode 1
+                        12 => repairMode12(src, grid),
+                        13 => repairMode13(src, grid),
+                        14 => repairMode14(src, grid),
+                        15 => repairMode15(src, grid),
                         else => unreachable,
                     };
                 }

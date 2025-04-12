@@ -198,7 +198,7 @@ fn Repair(comptime T: type) type {
             return clamp1;
         }
 
-        test "RG Mode 5" {
+        test "Repair Mode 5" {
             // a1 and a8 clipping.
             try std.testing.expectEqual(2, repairMode5(1, Grid.init(T, &.{ 2, 6, 6, 6, 2, 7, 7, 7, 3 }, 3)));
             try std.testing.expectEqual(3, repairMode5(3, Grid.init(T, &.{ 2, 6, 6, 6, 2, 7, 7, 7, 3 }, 3)));
@@ -278,6 +278,7 @@ fn Repair(comptime T: type) type {
             return clamp1;
         }
 
+        /// Same as mode 6, except the ratio is 1:1 in this mode.
         fn repairMode7(src: T, grid: Grid) T {
             const sorted = grid.minMaxOppositesWithCenter();
 
@@ -312,6 +313,146 @@ fn Repair(comptime T: type) type {
             return clamp1;
         }
 
+        /// Same as mode 6, except the difference between the two opposing
+        /// pixels is prioritized in this mode, again with a 2:1 ratio.
+        fn repairMode8(src: T, grid: Grid, chroma: bool) T {
+            const sorted = grid.minMaxOppositesWithCenter();
+
+            const d1: UAT = sorted.max1 - sorted.min1;
+            const d2: UAT = sorted.max2 - sorted.min2;
+            const d3: UAT = sorted.max3 - sorted.min3;
+            const d4: UAT = sorted.max4 - sorted.min4;
+
+            const clamp1 = std.math.clamp(src, sorted.min1, sorted.max1);
+            const clamp2 = std.math.clamp(src, sorted.min2, sorted.max2);
+            const clamp3 = std.math.clamp(src, sorted.min3, sorted.max3);
+            const clamp4 = std.math.clamp(src, sorted.min4, sorted.max4);
+
+            // Max / min Zig comptime + runtime shenanigans.
+            const maxChroma = types.getTypeMaximum(T, true);
+            const maxNoChroma = types.getTypeMaximum(T, false);
+            const minChroma = types.getTypeMinimum(T, true);
+            const minNoChroma = types.getTypeMinimum(T, false);
+
+            const maximum = if (chroma) maxChroma else maxNoChroma;
+            const minimum = if (chroma) minChroma else minNoChroma;
+
+            const srcT = @as(SAT, src);
+
+            const c1 = std.math.clamp(@abs(srcT - clamp1) + (d1 * 2), minimum, maximum);
+            const c2 = std.math.clamp(@abs(srcT - clamp2) + (d2 * 2), minimum, maximum);
+            const c3 = std.math.clamp(@abs(srcT - clamp3) + (d3 * 2), minimum, maximum);
+            const c4 = std.math.clamp(@abs(srcT - clamp4) + (d4 * 2), minimum, maximum);
+
+            const mindiff = @min(c1, c2, c3, c4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == c4) {
+                return clamp4;
+            } else if (mindiff == c2) {
+                return clamp2;
+            } else if (mindiff == c3) {
+                return clamp3;
+            }
+            return clamp1;
+        }
+
+        /// Line-sensitive clipping on a line where the neighbor pixels are the closest.
+        fn repairMode9(src: T, grid: Grid) T {
+            const sorted = grid.minMaxOppositesWithCenter();
+
+            const d1 = sorted.max1 - sorted.min1;
+            const d2 = sorted.max2 - sorted.min2;
+            const d3 = sorted.max3 - sorted.min3;
+            const d4 = sorted.max4 - sorted.min4;
+
+            const mindiff = @min(d1, d2, d3, d4);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+            if (mindiff == d4) {
+                return std.math.clamp(src, sorted.min4, sorted.max4);
+            } else if (mindiff == d2) {
+                return std.math.clamp(src, sorted.min2, sorted.max2);
+            } else if (mindiff == d3) {
+                return std.math.clamp(src, sorted.min3, sorted.max3);
+            }
+            return std.math.clamp(src, sorted.min1, sorted.max1);
+        }
+
+        test "Repair Mode 9" {
+            // TODO: Add testing based on the difference directions (d4, d2, d3, d1) to ensure that the proper order is followed.
+
+            // a1 and a8 clipping.
+            try std.testing.expectEqual(2, repairMode9(1, Grid.init(T, &.{ 2, 0, 0, 0, 2, 100, 100, 100, 3 }, 3)));
+            try std.testing.expectEqual(3, repairMode9(4, Grid.init(T, &.{ 2, 0, 0, 0, 2, 100, 100, 100, 3 }, 3)));
+
+            // a2 and a7 clipping.
+            try std.testing.expectEqual(2, repairMode9(1, Grid.init(T, &.{ 0, 2, 0, 0, 2, 100, 100, 3, 100 }, 3)));
+            try std.testing.expectEqual(3, repairMode9(4, Grid.init(T, &.{ 0, 2, 0, 0, 2, 100, 100, 3, 100 }, 3)));
+
+            // a3 and a6 clipping.
+            try std.testing.expectEqual(2, repairMode9(1, Grid.init(T, &.{ 0, 0, 2, 0, 2, 100, 3, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, repairMode9(4, Grid.init(T, &.{ 0, 0, 2, 0, 2, 100, 3, 100, 100 }, 3)));
+
+            // a4 and a5 clipping.
+            try std.testing.expectEqual(2, repairMode9(1, Grid.init(T, &.{ 0, 0, 0, 2, 2, 3, 100, 100, 100 }, 3)));
+            try std.testing.expectEqual(3, repairMode9(4, Grid.init(T, &.{ 0, 0, 0, 2, 2, 3, 100, 100, 100 }, 3)));
+        }
+
+        /// Replaces the target pixel with the closest pixel from the 3×3-pixel reference square.
+        fn repairMode10(src: T, grid: Grid) T {
+            const srcT: SAT = src;
+
+            const d1 = @abs(srcT - grid.top_left);
+            const d2 = @abs(srcT - grid.top_center);
+            const d3 = @abs(srcT - grid.top_right);
+            const d4 = @abs(srcT - grid.center_left);
+            const d5 = @abs(srcT - grid.center_right);
+            const d6 = @abs(srcT - grid.bottom_left);
+            const d7 = @abs(srcT - grid.bottom_center);
+            const d8 = @abs(srcT - grid.bottom_right);
+            const dc = @abs(srcT - grid.center_center);
+
+            const mindiff = @min(d1, d2, d3, d4, d5, d6, d7, d8, dc);
+
+            // This order matters in order to match the exact
+            // same output of RGVS
+
+            return if (mindiff == d7)
+                grid.bottom_center
+            else if (mindiff == d8)
+                grid.bottom_right
+            else if (mindiff == d6)
+                grid.bottom_left
+            else if (mindiff == d2)
+                grid.top_center
+            else if (mindiff == d3)
+                grid.top_right
+            else if (mindiff == d1)
+                grid.top_left
+            else if (mindiff == d5)
+                grid.center_right
+            else if (mindiff == dc)
+                grid.center_center
+            else
+                grid.center_left;
+        }
+
+        test "Repair Mode 10" {
+            // TODO: Add testing to ensure that order is respected (d7, d8, d6, ...)
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 2, 3, 4, 5, 10, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 2, 3, 4, 5, 10, 6, 7, 8, 9 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 9, 2, 3, 4, 10, 5, 6, 7, 8 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 8, 9, 2, 3, 10, 4, 5, 6, 7 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 7, 8, 9, 2, 10, 3, 4, 5, 6 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 6, 7, 8, 9, 10, 2, 3, 4, 5 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 5, 6, 7, 8, 10, 9, 2, 3, 4 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 4, 5, 6, 7, 10, 8, 9, 2, 3 }, 3)));
+            try std.testing.expectEqual(2, repairMode10(1, Grid.init(T, &.{ 3, 4, 5, 6, 10, 7, 8, 9, 2 }, 3)));
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -336,6 +477,9 @@ fn Repair(comptime T: type) type {
                         5 => repairMode5(src, grid),
                         6 => repairMode6(src, grid, chroma),
                         7 => repairMode7(src, grid),
+                        8 => repairMode8(src, grid, chroma),
+                        9 => repairMode9(src, grid),
+                        10 => repairMode10(src, grid),
                         else => unreachable,
                     };
                 }

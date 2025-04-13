@@ -628,6 +628,8 @@ fn Repair(comptime T: type) type {
                     const src = srcp[rowCurr + w];
 
                     const grid = Grid.init(T, repairp[top_left..], math.lossyCast(u32, stride));
+                    // const grid = Grid.initFromCenter(T, math.lossyCast(u32, row), math.lossyCast(u32, w), repairp, math.lossyCast(u32, stride));
+                    // const grid = Grid.initFromCenterMirrored(T, math.lossyCast(u32, row), math.lossyCast(u32, w), math.lossyCast(u32, width), math.lossyCast(u32, height), repairp, math.lossyCast(u32, stride));
 
                     dstp[rowCurr + w] = switch (mode) {
                         1 => repairMode1(src, grid),

@@ -59,6 +59,63 @@ pub fn Grid(comptime T: type) type {
             };
         }
 
+        // So far, this is significantly slower that `initFromCenter`, which is *slightly* slower than `init`
+        // Even making it branchless still results in crap performance...
+        // I suspect this is due to something about this code causing auto-vectorization to fail.
+        // Might be worth trying again with later versions of Zig (and thus better LLVM optimizer).
+        // https://github.com/adworacz/zsmooth/issues/6
+        // TODO: Experiment with this in Zig 0.13 and 0.14, and consider using @branchHint from 0.14 to see if that makes a difference.
+        pub fn initFromCenterMirrored(comptime R: type, row: u32, column: u32, width: u32, height: u32, slice: []const R, stride: u32) Self {
+            const rowT: i32 = @intCast(row);
+            const columnT: i32 = @intCast(column);
+
+            // Cheap mirroring
+            // const rowAbove = if (rowT - 1 < 0) @abs(rowT - 1) else row - 1;
+            // const rowBelow = if (row + 1 >= height) 2 * (height - 1) - (row + 1) else row + 1;
+            const rowAbove = @abs(rowT - 1);
+            const rowBelow = @min(2 * (height - 1) - (row + 1), row + 1);
+
+            // const columnLeft = if (columnT - 1 < 0) @abs(columnT - 1) else column - 1;
+            // const columnRight = if (column + 1 >= width) 2 * (width - 1) - (column + 1) else column + 1;
+            const columnLeft = @abs(columnT - 1);
+            const columnRight = @min(2 * (width - 1) - (column + 1), column + 1);
+
+            // Scalar
+            return Self{
+                .top_left = slice[(rowAbove * stride) + columnLeft],
+                .top_center = slice[(rowAbove * stride) + column],
+                .top_right = slice[(rowAbove * stride) + columnRight],
+
+                .center_left = slice[(row * stride) + columnLeft],
+                .center_center = slice[(row * stride) + column],
+                .center_right = slice[(row * stride) + columnRight],
+
+                .bottom_left = slice[(rowBelow * stride) + columnLeft],
+                .bottom_center = slice[(rowBelow * stride) + column],
+                .bottom_right = slice[(rowBelow * stride) + columnRight],
+            };
+        }
+
+        //TODO: Add tests
+        //This seems *slightly* slower than `init` for some reason, at least on 0.12.1.
+        //I'm seeing ~900fps (+/- 10fps) from `init`, while ~850fps from this function.
+        pub fn initFromCenter(comptime R: type, row: u32, column: u32, slice: []const R, stride: u32) Self {
+            // Scalar
+            return Self{
+                .top_left = slice[((row - 1) * stride) + column - 1],
+                .top_center = slice[((row - 1) * stride) + column],
+                .top_right = slice[((row - 1) * stride) + column + 1],
+
+                .center_left = slice[(row * stride) + column - 1],
+                .center_center = slice[(row * stride) + column],
+                .center_right = slice[(row * stride) + column + 1],
+
+                .bottom_left = slice[((row + 1) * stride) + column - 1],
+                .bottom_center = slice[((row + 1) * stride) + column],
+                .bottom_right = slice[((row + 1) * stride) + column + 1],
+            };
+        }
+
         /// Just like `init`, only it loads data from two rows (lines) away instead of one,
         /// so as to ensure we're loading data from the same field instead of blending two fields together.
         pub fn initInterlaced(comptime R: type, slice: []const R, stride: u32) Self {
@@ -193,6 +250,71 @@ test "Grid init" {
     try std.testing.expectEqual(6, grid.bottom_left);
     try std.testing.expectEqual(7, grid.bottom_center);
     try std.testing.expectEqual(8, grid.bottom_right);
+}
+
+test "Grid init from center mirrored" {
+    const T = u8;
+    const data = [9]T{
+        0, 1, 2, //
+        3, 4, 5, //
+        6, 7, 8, //
+    };
+
+    const gridTopLeft = Grid(T).initFromCenterMirrored(T, 0, 0, 3, 3, &data, 3);
+
+    try std.testing.expectEqual(4, gridTopLeft.top_left);
+    try std.testing.expectEqual(3, gridTopLeft.top_center);
+    try std.testing.expectEqual(4, gridTopLeft.top_right);
+
+    try std.testing.expectEqual(1, gridTopLeft.center_left);
+    try std.testing.expectEqual(0, gridTopLeft.center_center);
+    try std.testing.expectEqual(1, gridTopLeft.center_right);
+
+    try std.testing.expectEqual(4, gridTopLeft.bottom_left);
+    try std.testing.expectEqual(3, gridTopLeft.bottom_center);
+    try std.testing.expectEqual(4, gridTopLeft.bottom_right);
+
+    const gridTopRight = Grid(T).initFromCenterMirrored(T, 0, 2, 3, 3, &data, 3);
+
+    try std.testing.expectEqual(4, gridTopRight.top_left);
+    try std.testing.expectEqual(5, gridTopRight.top_center);
+    try std.testing.expectEqual(4, gridTopRight.top_right);
+
+    try std.testing.expectEqual(1, gridTopRight.center_left);
+    try std.testing.expectEqual(2, gridTopRight.center_center);
+    try std.testing.expectEqual(1, gridTopRight.center_right);
+
+    try std.testing.expectEqual(4, gridTopRight.bottom_left);
+    try std.testing.expectEqual(5, gridTopRight.bottom_center);
+    try std.testing.expectEqual(4, gridTopRight.bottom_right);
+
+    const gridBottomLeft = Grid(T).initFromCenterMirrored(T, 2, 0, 3, 3, &data, 3);
+
+    try std.testing.expectEqual(4, gridBottomLeft.top_left);
+    try std.testing.expectEqual(3, gridBottomLeft.top_center);
+    try std.testing.expectEqual(4, gridBottomLeft.top_right);
+
+    try std.testing.expectEqual(7, gridBottomLeft.center_left);
+    try std.testing.expectEqual(6, gridBottomLeft.center_center);
+    try std.testing.expectEqual(7, gridBottomLeft.center_right);
+
+    try std.testing.expectEqual(4, gridBottomLeft.bottom_left);
+    try std.testing.expectEqual(3, gridBottomLeft.bottom_center);
+    try std.testing.expectEqual(4, gridBottomLeft.bottom_right);
+
+    const gridBottomRight = Grid(T).initFromCenterMirrored(T, 2, 2, 3, 3, &data, 3);
+
+    try std.testing.expectEqual(4, gridBottomRight.top_left);
+    try std.testing.expectEqual(5, gridBottomRight.top_center);
+    try std.testing.expectEqual(4, gridBottomRight.top_right);
+
+    try std.testing.expectEqual(7, gridBottomRight.center_left);
+    try std.testing.expectEqual(8, gridBottomRight.center_center);
+    try std.testing.expectEqual(7, gridBottomRight.center_right);
+
+    try std.testing.expectEqual(4, gridBottomRight.bottom_left);
+    try std.testing.expectEqual(5, gridBottomRight.bottom_center);
+    try std.testing.expectEqual(4, gridBottomRight.bottom_right);
 }
 
 test "Grid min" {

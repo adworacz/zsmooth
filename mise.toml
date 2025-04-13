@@ -3,3 +3,4 @@ _.python.venv = { path = ".mise/venv", create = true }
 
 [tools]
 python = "3.13"
+zls = "0.12.0"

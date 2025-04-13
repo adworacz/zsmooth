@@ -723,6 +723,7 @@ fn RemoveGrain(comptime T: type) type {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
 
+            // TODO: Unify naming around row/column/w/x/y, etc for all filters...
             for (1..height - 1) |row| {
                 // Handle interlacing (top field/bottom field) modes
                 //

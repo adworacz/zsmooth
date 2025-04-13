@@ -561,6 +561,58 @@ fn Repair(comptime T: type) type {
             try std.testing.expectEqual(4, repairMode17(0, Grid.init(T, &.{ 1, 2, 3, 4, 5, 5, 5, 5, 5 }, 3)));
         }
 
+        /// Line-sensitive clipping using opposite neighbours whose greatest distance from the current pixel is minimal.
+        fn repairMode18(src: T, grid: Grid) T {
+            const cT = @as(SAT, grid.center_center);
+            const d1 = @max(@abs(cT - grid.top_left), @abs(cT - grid.bottom_right));
+            const d2 = @max(@abs(cT - grid.top_center), @abs(cT - grid.bottom_center));
+            const d3 = @max(@abs(cT - grid.top_right), @abs(cT - grid.bottom_left));
+            const d4 = @max(@abs(cT - grid.center_left), @abs(cT - grid.center_right));
+
+            const mindiff = @min(d1, d2, d3, d4);
+
+            var min: T = 0;
+            var max: T = 0;
+            if (mindiff == d4) {
+                min = @min(grid.center_left, grid.center_right);
+                max = @max(grid.center_left, grid.center_right);
+            } else if (mindiff == d2) {
+                min = @min(grid.top_center, grid.bottom_center);
+                max = @max(grid.top_center, grid.bottom_center);
+            } else if (mindiff == d3) {
+                min = @min(grid.top_right, grid.bottom_left);
+                max = @max(grid.top_right, grid.bottom_left);
+            } else {
+                min = @min(grid.top_left, grid.bottom_right);
+                max = @max(grid.top_left, grid.bottom_right);
+            }
+
+            min = @min(min, grid.center_center);
+            max = @max(max, grid.center_center);
+
+            return std.math.clamp(src, min, max);
+        }
+
+        fn repairMode19(src: T, grid: Grid, chroma: bool) T {
+            const cT = @as(SAT, grid.center_center);
+
+            const d1 = math.lossyCast(T, @abs(cT - grid.top_left));
+            const d2 = math.lossyCast(T, @abs(cT - grid.top_center));
+            const d3 = math.lossyCast(T, @abs(cT - grid.top_right));
+            const d4 = math.lossyCast(T, @abs(cT - grid.center_left));
+            const d5 = math.lossyCast(T, @abs(cT - grid.center_right));
+            const d6 = math.lossyCast(T, @abs(cT - grid.bottom_left));
+            const d7 = math.lossyCast(T, @abs(cT - grid.bottom_center));
+            const d8 = math.lossyCast(T, @abs(cT - grid.bottom_right));
+
+            const mindiff = @min(d1, d2, d3, d4, d5, d6, d7, d8);
+
+            const maximum = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            return math.lossyCast(T, std.math.clamp(src, std.math.clamp(cT - mindiff, minimum, maximum), std.math.clamp(cT + mindiff, minimum, maximum)));
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
             // Copy the first line.
             @memcpy(dstp[0..width], srcp[0..width]);
@@ -595,6 +647,8 @@ fn Repair(comptime T: type) type {
                         15 => repairMode15(src, grid),
                         16 => repairMode16(src, grid, chroma),
                         17 => repairMode17(src, grid),
+                        18 => repairMode18(src, grid),
+                        19 => repairMode19(src, grid, chroma),
                         else => unreachable,
                     };
                 }

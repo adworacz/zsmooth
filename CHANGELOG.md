@@ -19,6 +19,7 @@ ever?) actually used in the wild, so I'm not sweating it right now.
 * Updated Repair to process all edge pixels using a "mirror" based algorithm. This is different than other
 RemoveGrain/Repair implementations which simply skip (copy) edge pixels. This came out of a direct request from the
 community: https://github.com/adworacz/zsmooth/issues/6
+* Update RemoveGrain to process all edge pixels using a "mirror" based algorithm, just like Repair.
 
 ## 0.6
 * Add DegrainMedian implementation.

@@ -719,9 +719,39 @@ fn RemoveGrain(comptime T: type) type {
             return math.lossyCast(T, grid.center_center - h + l);
         }
 
+        fn removegrain(mode: comptime_int, grid: Grid, chroma: bool) T {
+            return switch (mode) {
+                1 => rgMode1(grid),
+                2 => rgMode2(grid),
+                3 => rgMode3(grid),
+                4 => rgMode4(grid),
+                5 => rgMode5(grid),
+                6 => rgMode6(grid, chroma),
+                7 => rgMode7(grid),
+                8 => rgMode8(grid, chroma),
+                9 => rgMode9(grid),
+                10 => rgMode10(grid),
+                11, 12 => rgMode1112(grid),
+                13, 14 => rgMode1314(grid),
+                15, 16 => rgMode1516(grid),
+                17 => rgMode17(grid),
+                18 => rgMode18(grid),
+                19 => rgMode19(grid),
+                20 => rgMode20(grid),
+                21 => rgMode21(grid),
+                22 => rgMode22(grid),
+                23 => rgMode23(grid),
+                24 => rgMode24(grid),
+                else => unreachable,
+            };
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
-            // Copy the first line.
-            @memcpy(dstp[0..width], srcp[0..width]);
+            // Process top row with mirrored grid.
+            for (0..width) |column| {
+                const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
+                dstp[(0 * stride) + column] = removegrain(mode, grid, chroma);
+            }
 
             // TODO: Unify naming around row/column/w/x/y, etc for all filters...
             for (1..height - 1) |row| {
@@ -740,46 +770,29 @@ fn RemoveGrain(comptime T: type) type {
                     continue;
                 }
 
-                // Copy the pixel at the beginning of the line.
-                dstp[(row * stride)] = srcp[(row * stride)];
+                // Process first pixel of the row with mirrored grid.
+                const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
+                dstp[(row * stride)] = removegrain(mode, gridFirst, chroma);
+
                 for (1..width - 1) |w| {
                     const rowCurr = ((row) * stride);
                     const top_left = ((row - 1) * stride) + w - 1;
 
                     const grid = Grid.init(T, srcp[top_left..], math.lossyCast(u32, stride));
 
-                    dstp[rowCurr + w] = switch (mode) {
-                        1 => rgMode1(grid),
-                        2 => rgMode2(grid),
-                        3 => rgMode3(grid),
-                        4 => rgMode4(grid),
-                        5 => rgMode5(grid),
-                        6 => rgMode6(grid, chroma),
-                        7 => rgMode7(grid),
-                        8 => rgMode8(grid, chroma),
-                        9 => rgMode9(grid),
-                        10 => rgMode10(grid),
-                        11, 12 => rgMode1112(grid),
-                        13, 14 => rgMode1314(grid),
-                        15, 16 => rgMode1516(grid),
-                        17 => rgMode17(grid),
-                        18 => rgMode18(grid),
-                        19 => rgMode19(grid),
-                        20 => rgMode20(grid),
-                        21 => rgMode21(grid),
-                        22 => rgMode22(grid),
-                        23 => rgMode23(grid),
-                        24 => rgMode24(grid),
-                        else => unreachable,
-                    };
+                    dstp[rowCurr + w] = removegrain(mode, grid, chroma);
                 }
-                // Copy the pixel at the end of the line.
-                dstp[(row * stride) + (width - 1)] = srcp[(row * stride) + (width - 1)];
+
+                // Process last pixel of the row with mirrored grid.
+                const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
+                dstp[(row * stride) + (width - 1)] = removegrain(mode, gridLast, chroma);
             }
 
-            // Copy the last line.
-            const lastLine = ((height - 1) * stride);
-            @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
+            // Process bottom row with mirrored grid.
+            for (0..width) |column| {
+                const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
+                dstp[((height - 1) * stride) + column] = removegrain(mode, grid, chroma);
+            }
         }
 
         /// Based on the RG mode, we want to skip certain lines,

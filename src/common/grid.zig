@@ -23,9 +23,8 @@ pub fn Grid(comptime T: type) type {
         ///
         /// Note that types R and T are not identical. We can create a grid of vectors,
         /// where the vector type is T, but from a slice of pixels which have type R.
-        ///
-        /// TODO: Support loading a grid from a center pixel instead of the top left pixel.
-        pub fn init(comptime R: type, slice: []const R, stride: u32) Self {
+        // TODO: Rename to `initFromTopLeft`
+        pub fn init(comptime R: type, slice: []const R, stride: usize) Self {
             // Vector
             if (@typeInfo(T) == .Vector) {
                 return Self{
@@ -59,13 +58,10 @@ pub fn Grid(comptime T: type) type {
             };
         }
 
-        // So far, this is significantly slower that `initFromCenter`, which is *slightly* slower than `init`
-        // Even making it branchless still results in crap performance...
-        // I suspect this is due to something about this code causing auto-vectorization to fail.
-        // Might be worth trying again with later versions of Zig (and thus better LLVM optimizer).
-        // https://github.com/adworacz/zsmooth/issues/6
-        // TODO: Experiment with this in Zig 0.13 and 0.14, and consider using @branchHint from 0.14 to see if that makes a difference.
-        pub fn initFromCenterMirrored(comptime R: type, row: u32, column: u32, width: u32, height: u32, slice: []const R, stride: u32) Self {
+        /// Loads data around a center pixel, using mirroring to fill in all missing pixels.
+        /// Note tha for maximum performance, this function should *ONLY* be used on edge pixels.
+        /// Using it on pixels that actually have pertinent data leads to crap performance and is completely unnecessary.
+        pub fn initFromCenterMirrored(comptime R: type, row: usize, column: usize, width: usize, height: usize, slice: []const R, stride: usize) Self {
             const rowT: i32 = @intCast(row);
             const columnT: i32 = @intCast(column);
 
@@ -96,7 +92,7 @@ pub fn Grid(comptime T: type) type {
             };
         }
 
-        //TODO: Add tests
+        /// Loads data around a center pixel.
         //This seems *slightly* slower than `init` for some reason, at least on 0.12.1.
         //I'm seeing ~900fps (+/- 10fps) from `init`, while ~850fps from this function.
         pub fn initFromCenter(comptime R: type, row: u32, column: u32, slice: []const R, stride: u32) Self {
@@ -238,6 +234,29 @@ test "Grid init" {
     };
 
     const grid = Grid(T).init(T, &data, 3);
+
+    try std.testing.expectEqual(0, grid.top_left);
+    try std.testing.expectEqual(1, grid.top_center);
+    try std.testing.expectEqual(2, grid.top_right);
+
+    try std.testing.expectEqual(3, grid.center_left);
+    try std.testing.expectEqual(4, grid.center_center);
+    try std.testing.expectEqual(5, grid.center_right);
+
+    try std.testing.expectEqual(6, grid.bottom_left);
+    try std.testing.expectEqual(7, grid.bottom_center);
+    try std.testing.expectEqual(8, grid.bottom_right);
+}
+
+test "Grid initFromCenter" {
+    const T = u8;
+    const data = [9]T{
+        0, 1, 2, //
+        3, 4, 5, //
+        6, 7, 8, //
+    };
+
+    const grid = Grid(T).initFromCenter(T, 1, 1, &data, 3);
 
     try std.testing.expectEqual(0, grid.top_left);
     try std.testing.expectEqual(1, grid.top_center);

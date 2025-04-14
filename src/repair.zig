@@ -613,13 +613,44 @@ fn Repair(comptime T: type) type {
             return math.lossyCast(T, std.math.clamp(src, std.math.clamp(cT - mindiff, minimum, maximum), std.math.clamp(cT + mindiff, minimum, maximum)));
         }
 
+        fn repair(mode: comptime_int, src: T, grid: Grid, chroma: bool) T {
+            return switch (mode) {
+                1 => repairMode1(src, grid),
+                2 => repairMode2(src, grid),
+                3 => repairMode3(src, grid),
+                4 => repairMode4(src, grid),
+                5 => repairMode5(src, grid),
+                6 => repairMode6(src, grid, chroma),
+                7 => repairMode7(src, grid),
+                8 => repairMode8(src, grid, chroma),
+                9 => repairMode9(src, grid),
+                10 => repairMode10(src, grid),
+                11 => repairMode1(src, grid), // Same as mode 1
+                12 => repairMode12(src, grid),
+                13 => repairMode13(src, grid),
+                14 => repairMode14(src, grid),
+                15 => repairMode15(src, grid),
+                16 => repairMode16(src, grid, chroma),
+                17 => repairMode17(src, grid),
+                18 => repairMode18(src, grid),
+                19 => repairMode19(src, grid, chroma),
+                else => unreachable,
+            };
+        }
+
         pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, chroma: bool) void {
-            // Copy the first line.
-            @memcpy(dstp[0..width], srcp[0..width]);
+            // Process top row with mirrored grid.
+            for (0..width) |column| {
+                const src = srcp[(0 * stride) + column];
+                const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, repairp, stride);
+                dstp[(0 * stride) + column] = repair(mode, src, grid, chroma);
+            }
 
             for (1..height - 1) |row| {
-                // Copy the pixel at the beginning of the line.
-                dstp[(row * stride)] = srcp[(row * stride)];
+                // Process first pixel of the row with mirrored grid.
+                const srcFirst = srcp[(row * stride)];
+                const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, repairp, stride);
+                dstp[(row * stride)] = repair(mode, srcFirst, gridFirst, chroma);
 
                 for (1..width - 1) |w| {
                     const rowCurr = ((row) * stride);
@@ -627,41 +658,25 @@ fn Repair(comptime T: type) type {
 
                     const src = srcp[rowCurr + w];
 
-                    const grid = Grid.init(T, repairp[top_left..], math.lossyCast(u32, stride));
-                    // const grid = Grid.initFromCenter(T, math.lossyCast(u32, row), math.lossyCast(u32, w), repairp, math.lossyCast(u32, stride));
-                    // const grid = Grid.initFromCenterMirrored(T, math.lossyCast(u32, row), math.lossyCast(u32, w), math.lossyCast(u32, width), math.lossyCast(u32, height), repairp, math.lossyCast(u32, stride));
+                    // Use a non-mirrored grid everywhere else for maximum performance.
+                    // We don't need the mirror effect anyways, as all pixels contain valid data.
+                    const grid = Grid.init(T, repairp[top_left..], stride);
 
-                    dstp[rowCurr + w] = switch (mode) {
-                        1 => repairMode1(src, grid),
-                        2 => repairMode2(src, grid),
-                        3 => repairMode3(src, grid),
-                        4 => repairMode4(src, grid),
-                        5 => repairMode5(src, grid),
-                        6 => repairMode6(src, grid, chroma),
-                        7 => repairMode7(src, grid),
-                        8 => repairMode8(src, grid, chroma),
-                        9 => repairMode9(src, grid),
-                        10 => repairMode10(src, grid),
-                        11 => repairMode1(src, grid), // Same as mode 1
-                        12 => repairMode12(src, grid),
-                        13 => repairMode13(src, grid),
-                        14 => repairMode14(src, grid),
-                        15 => repairMode15(src, grid),
-                        16 => repairMode16(src, grid, chroma),
-                        17 => repairMode17(src, grid),
-                        18 => repairMode18(src, grid),
-                        19 => repairMode19(src, grid, chroma),
-                        else => unreachable,
-                    };
+                    dstp[rowCurr + w] = repair(mode, src, grid, chroma);
                 }
 
-                // Copy the pixel at the end of the line.
-                dstp[(row * stride) + (width - 1)] = srcp[(row * stride) + (width - 1)];
+                // Process last pixel of the row with mirrored grid.
+                const srcLast = srcp[(row * stride) + (width - 1)];
+                const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, repairp, stride);
+                dstp[(row * stride) + (width - 1)] = repair(mode, srcLast, gridLast, chroma);
             }
 
-            // Copy the last line.
-            const lastLine = ((height - 1) * stride);
-            @memcpy(dstp[lastLine..], srcp[lastLine..(lastLine + width)]);
+            // Process bottom row with mirrored grid.
+            for (0..width) |column| {
+                const src = srcp[((height - 1) * stride) + column];
+                const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, repairp, stride);
+                dstp[((height - 1) * stride) + column] = repair(mode, src, grid, chroma);
+            }
         }
 
         fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

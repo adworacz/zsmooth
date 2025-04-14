@@ -85,6 +85,32 @@ Parameters:
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | mode | int | 1-24 | For a description of each mode, see the docs from the original Vapoursynth documentation here: https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst |
 
+### Repair
+Repairs unwanted artifacts from (but not limited to) RemoveGrain.
+
+Modes 0-24 are implemented. Different modes can be
+specified for each plane. If there are fewer modes than planes, the last
+mode specified will be used for the remaining planes.
+
+**Notes on differences**: 
+This implementation of Repair is different than others in 2 key ways:
+1. Edge pixels are properly processed using a "mirror"-based algorithm. Meaning that any pixel values that are absent at
+   an edge are filled in by mirroring the data from the opposite side. Other implementations simply skip (copy) edge
+   pixels verbatim.
+2. Unlike RGSF, all calculations are done in single precision floating point. See the note on `RemoveGrain` for more
+   information.
+
+```py
+core.zsmooth.Repair(clip clip, clip repairclip, int[] mode)
+```
+
+Parameters:
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| repairclip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Reference clip, often is (but not required to be) the original unprocesed clip |
+| mode | int | 1-24 | For a description of each mode, see the docs from the original Vapoursynth documentation here: https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst |
+
 ### FluxSmooth(S|ST)
 ```py
 core.zsmooth.FluxSmoothT(clip clip[, float[] temporal_threshold = 7, bool scalep=False])

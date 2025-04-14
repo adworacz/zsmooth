@@ -16,6 +16,9 @@ Those modes, which deal with interlaced content and thus "skip lines" (and thus 
 either as fast or slower than RGVS. It's possible that an upgrade to newer versions of Zig (and thus the LLVM
 compiler/optimizer) will improve this, but right now performance is sub-par. However, these modes are rarely (if
 ever?) actually used in the wild, so I'm not sweating it right now.
+* Updated Repair to process all edge pixels using a "mirror" based algorithm. This is different than other
+RemoveGrain/Repair implementations which simply skip (copy) edge pixels. This came out of a direct request from the
+community: https://github.com/adworacz/zsmooth/issues/6
 
 ## 0.6
 * Add DegrainMedian implementation.

@@ -691,6 +691,8 @@ fn Repair(comptime T: type) type {
             return math.lossyCast(T, std.math.clamp(src, std.math.clamp(cT - u, minimum, maximum), std.math.clamp(cT + u, minimum, maximum)));
         }
 
+        // Same as mode 19, only it clamps the repair clip center pixel based on calculations involving
+        // the source clip center pixel
         fn repairMode22(src: T, grid: Grid, chroma: bool) T {
             const srcT = @as(SAT, src);
 
@@ -709,6 +711,84 @@ fn Repair(comptime T: type) type {
             const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
 
             return math.lossyCast(T, std.math.clamp(grid.center_center, std.math.clamp(srcT - mindiff, minimum, maximum), std.math.clamp(srcT + mindiff, minimum, maximum)));
+        }
+
+        // Same as mode 20, only it clamps the repair clip center pixel based on calculations involving
+        // the source clip center pixel
+        fn repairMode23(src: T, grid: Grid, chroma: bool) T {
+            const srcT = @as(SAT, src);
+
+            const d1 = math.lossyCast(T, @abs(srcT - grid.top_left));
+            const d2 = math.lossyCast(T, @abs(srcT - grid.top_center));
+            const d3 = math.lossyCast(T, @abs(srcT - grid.top_right));
+            const d4 = math.lossyCast(T, @abs(srcT - grid.center_left));
+            const d5 = math.lossyCast(T, @abs(srcT - grid.center_right));
+            const d6 = math.lossyCast(T, @abs(srcT - grid.bottom_left));
+            const d7 = math.lossyCast(T, @abs(srcT - grid.bottom_center));
+            const d8 = math.lossyCast(T, @abs(srcT - grid.bottom_right));
+
+            var maxdiff = @max(d1, d2);
+            var mindiff = @min(d1, d2);
+
+            // This code differs slightly from RGVS/RGSF (and yet strangely
+            // produces identical output for RGVS) but is actually correct. We
+            // forceably use @min(mindiff, d3) and @max(mindiff, d3) to get the
+            // order of the arguments to std.math.clamp correct. Without these,
+            // the debug build (properly) catches cases where we feed values in
+            // the wrong order. We see a pretty small performance hit due to
+            // the extra @min/@maxes, but I'm leaning into proper code first
+            // and foremost.
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d3), @max(mindiff, d3));
+            mindiff = @min(mindiff, d3);
+
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d4), @max(mindiff, d4));
+            mindiff = @min(mindiff, d4);
+
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d5), @max(mindiff, d5));
+            mindiff = @min(mindiff, d5);
+
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d6), @max(mindiff, d6));
+            mindiff = @min(mindiff, d6);
+
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d7), @max(mindiff, d7));
+            mindiff = @min(mindiff, d7);
+
+            maxdiff = std.math.clamp(maxdiff, @min(mindiff, d8), @max(mindiff, d8));
+
+            const maximum = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            return math.lossyCast(T, std.math.clamp(grid.center_center, std.math.clamp(srcT - maxdiff, minimum, maximum), std.math.clamp(srcT + maxdiff, minimum, maximum)));
+        }
+
+        // Same as mode 21, only it clamps the repair clip center pixel based on calculations involving
+        // the source clip center pixel
+        fn repairMode24(src: T, grid: Grid, chroma: bool) T {
+            const srcT = @as(SAT, src);
+
+            const maximum = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            const sorted = grid.minMaxOppositesWithoutCenter();
+
+            const d1 = std.math.clamp(sorted.max1 - srcT, minimum, maximum);
+            const d2 = std.math.clamp(sorted.max2 - srcT, minimum, maximum);
+            const d3 = std.math.clamp(sorted.max3 - srcT, minimum, maximum);
+            const d4 = std.math.clamp(sorted.max4 - srcT, minimum, maximum);
+
+            const rd1 = std.math.clamp(srcT - sorted.min1, minimum, maximum);
+            const rd2 = std.math.clamp(srcT - sorted.min2, minimum, maximum);
+            const rd3 = std.math.clamp(srcT - sorted.min3, minimum, maximum);
+            const rd4 = std.math.clamp(srcT - sorted.min4, minimum, maximum);
+
+            const @"u1" = @max(d1, rd1);
+            const @"u2" = @max(d2, rd2);
+            const @"u3" = @max(d3, rd3);
+            const @"u4" = @max(d4, rd4);
+
+            const u = @min(@"u1", @"u2", @"u3", @"u4");
+
+            return math.lossyCast(T, std.math.clamp(grid.center_center, std.math.clamp(srcT - u, minimum, maximum), std.math.clamp(srcT + u, minimum, maximum)));
         }
 
         fn repair(mode: comptime_int, src: T, grid: Grid, chroma: bool) T {
@@ -735,6 +815,8 @@ fn Repair(comptime T: type) type {
                 20 => repairMode20(src, grid, chroma),
                 21 => repairMode21(src, grid, chroma),
                 22 => repairMode22(src, grid, chroma),
+                23 => repairMode23(src, grid, chroma),
+                24 => repairMode24(src, grid, chroma),
                 else => unreachable,
             };
         }

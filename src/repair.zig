@@ -691,6 +691,26 @@ fn Repair(comptime T: type) type {
             return math.lossyCast(T, std.math.clamp(src, std.math.clamp(cT - u, minimum, maximum), std.math.clamp(cT + u, minimum, maximum)));
         }
 
+        fn repairMode22(src: T, grid: Grid, chroma: bool) T {
+            const srcT = @as(SAT, src);
+
+            const d1 = math.lossyCast(T, @abs(srcT - grid.top_left));
+            const d2 = math.lossyCast(T, @abs(srcT - grid.top_center));
+            const d3 = math.lossyCast(T, @abs(srcT - grid.top_right));
+            const d4 = math.lossyCast(T, @abs(srcT - grid.center_left));
+            const d5 = math.lossyCast(T, @abs(srcT - grid.center_right));
+            const d6 = math.lossyCast(T, @abs(srcT - grid.bottom_left));
+            const d7 = math.lossyCast(T, @abs(srcT - grid.bottom_center));
+            const d8 = math.lossyCast(T, @abs(srcT - grid.bottom_right));
+
+            const mindiff = @min(d1, d2, d3, d4, d5, d6, d7, d8);
+
+            const maximum = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const minimum = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            return math.lossyCast(T, std.math.clamp(grid.center_center, std.math.clamp(srcT - mindiff, minimum, maximum), std.math.clamp(srcT + mindiff, minimum, maximum)));
+        }
+
         fn repair(mode: comptime_int, src: T, grid: Grid, chroma: bool) T {
             return switch (mode) {
                 1 => repairMode1(src, grid),
@@ -714,6 +734,7 @@ fn Repair(comptime T: type) type {
                 19 => repairMode19(src, grid, chroma),
                 20 => repairMode20(src, grid, chroma),
                 21 => repairMode21(src, grid, chroma),
+                22 => repairMode22(src, grid, chroma),
                 else => unreachable,
             };
         }

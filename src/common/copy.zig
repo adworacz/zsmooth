@@ -34,7 +34,7 @@ test copyFirstNLines {
     }, dstp);
 }
 
-pub fn copyLastNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, height: usize, width: usize, stride: usize, num_lines: u32) void {
+pub fn copyLastNLines(comptime T: type, noalias dstp: []T, noalias srcp: []const T, width: usize, height: usize, stride: usize, num_lines: u32) void {
     var row = (height - num_lines);
     while (row < height) : (row += 1) {
         const line = row * stride;

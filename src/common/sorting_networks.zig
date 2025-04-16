@@ -203,6 +203,21 @@ test "Sorting Networks - Median" {
     try std.testing.expectEqual(11, median(u8, input21.len, &input21));
 }
 
+/// Computes the median of any 3 values.
+/// Essentially just an inline sorting network.
+pub fn median3(a: anytype, b: anytype, c: anytype) @TypeOf(a, b, c) {
+    return @min(@max(@min(a, c), b), @max(a, c));
+}
+
+test median3 {
+    try std.testing.expectEqual(3, median3(1, 3, 5));
+    try std.testing.expectEqual(3, median3(3, 1, 5));
+    try std.testing.expectEqual(3, median3(5, 3, 1));
+    try std.testing.expectEqual(3, median3(1, 5, 3));
+    try std.testing.expectEqual(3, median3(3, 5, 1));
+    try std.testing.expectEqual(3, median3(5, 1, 3));
+}
+
 // Sorts input array in place using sorting networks.
 //
 // Wouldn't have been possible without the wonderful work of SorterHunter:

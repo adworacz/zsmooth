@@ -556,7 +556,7 @@ fn DegrainMedian(comptime T: type) type {
             }
 
             // Copy the last lines, second to last and last if interlaced, just last if not interlaced
-            copy.copyLastNLines(T, dstp, srcp[1], height, width, stride, skip_rows);
+            copy.copyLastNLines(T, dstp, srcp[1], width, height, stride, skip_rows);
         }
 
         pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {

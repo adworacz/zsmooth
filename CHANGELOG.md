@@ -20,11 +20,13 @@ ever?) actually used in the wild, so I'm not sweating it right now.
 RemoveGrain/Repair implementations which simply skip (copy) edge pixels. This came out of a direct request from the
 community: https://github.com/adworacz/zsmooth/issues/6
 * Update RemoveGrain to process all edge pixels using a "mirror" based algorithm, just like Repair.
-* Implement VerticalCleaner (from RemoveGrain). As always, a bit of a speed boost over RGVS/RGSF. For Mode 1, 8-bit RGB content 
+* Implement VerticalCleaner (from RemoveGrain). As always, a bit of a speed boost over RGVS/RGSF. For Mode 1, 8-bit RGB single-threaded content 
 on my 9950X, I'm seeing ~7000fps (Zsmooth) vs ~4100 (RGVS). For 32-bit RGB content, I'm seeing \~680 fps (Zsmooth) vs
 \~588 fps (RGSF), so less of a perf boost but still a boost. Mode 2 sees a *significant* speed boost - for 8-bit RGB
 content, I'm seeing \~4000fps (Zsmooth) and \~88 fps (RGVS). No that's not a typo. For 32-bit content I'm seeing
 \~333 fps (Zsmooth) and \~33 fps (RGSF). So about 10x over RGSF.
+* Implement Clense. For 8-bit RGB, single threaded, \~2600fps (Zsmooth) vs \~243fps (RGVS). For 32-bit, \~393 fps (Zsmooth) vs \~370
+fps (RGSF). So about 10x faster than RGVS, but about the same for RGSF.
 
 ## 0.6
 * Add DegrainMedian implementation.

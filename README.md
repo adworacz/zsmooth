@@ -154,7 +154,27 @@ Parameters:
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
-| mode | int | 0-2 | Mode 0 is passthrough, Mode 1 is a vertical median, Mode 2 is a relaxed vertical median that preserves more detail|
+| mode | int | 0-2 | Mode 0 is passthrough, Mode 1 is a vertical median, Mode 2 is a relaxed vertical median that preserves more detail |
+
+### Clense / ForwardClense / BackwardClense
+
+Clense is a temporal median of three frames. (previous, current and next)
+ForwardClense is a modified version of Clense that works on current and next 2 frames. 
+BackwardClense is a modified version of Clense that works on current and previous 2 frames. 
+
+```py
+core.zsmooth.Clense(clip clip, [clip previous, clip next, int[] planes])
+core.zsmooth.ForwardClense(clip clip,[ int[] planes])
+core.zsmooth.BackwardClense(clip clip,[ int[] planes])
+```
+
+Parameters:
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| previous | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | (main clip) | Optional alternate clip from which to retrieve previous frames |
+| next | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | (main clip) | Optional alternate clip from which to retrieve next frames |
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
 ### FluxSmooth(S|ST)
 ```py

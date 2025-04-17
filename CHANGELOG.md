@@ -1,8 +1,7 @@
 # Changelog
 
 ## 0.7
-* Implement Repair (from RemoveGrain).
-* Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and
+* Implement Repair (from RemoveGrain). Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and
 10-20x over the RGSF output for many modes. Mode 2-4 and 5 show the most gains. Other modes (like Mode 1) "only" show an
 increase of 1.5x over RGVS, but ~2-4x over RGSF. All tests were done single threaded, which provides the most consistent benchmarks.
 * Add Linux binary buids for GNU (Glibc) and Musl, in both x86_64 and aarch64 variants. Similar to the
@@ -12,7 +11,7 @@ distributions. There's no significant speed penalty here, as this plugin makes *
 only allocate memory once for each filter instance to share filter data between the create->getFrame phase.
 * Refactor RemoveGrain to simplify code using my Grid helper, which leads to some surprisingly large performance improvements.
 Most RG modes are now ~4x faster than RGVS, and ~10-20x faster than RGSF. There are some exceptions, in particular modes 13-16. 
-Those modes, which deal with interlaced content and thus "skip lines" (and thus wreak some havoc on branch predictors) are
+Those modes, which deal with interlaced content and thus "skip lines" (and thus wreak havoc on branch predictors) are
 either as fast or slower than RGVS. It's possible that an upgrade to newer versions of Zig (and thus the LLVM
 compiler/optimizer) will improve this, but right now performance is sub-par. However, these modes are rarely (if
 ever?) actually used in the wild, so I'm not sweating it right now.
@@ -25,8 +24,10 @@ on my 9950X, I'm seeing ~7000fps (Zsmooth) vs ~4100 (RGVS). For 32-bit RGB conte
 \~588 fps (RGSF), so less of a perf boost but still a boost. Mode 2 sees a *significant* speed boost - for 8-bit RGB
 content, I'm seeing \~4000fps (Zsmooth) and \~88 fps (RGVS). No that's not a typo. For 32-bit content I'm seeing
 \~333 fps (Zsmooth) and \~33 fps (RGSF). So about 10x over RGSF.
-* Implement Clense. For 8-bit RGB, single threaded, \~2600fps (Zsmooth) vs \~243fps (RGVS). For 32-bit, \~393 fps (Zsmooth) vs \~370
+* Implement Clense. For 8-bit RGB, single threaded, \~2800 fps (Zsmooth) vs \~243 fps (RGVS). For 32-bit, \~393 fps (Zsmooth) vs \~370
 fps (RGSF). So about 10x faster than RGVS, but about the same for RGSF.
+* Implement Forward/BackwardClense. For 8-bit RGB, single-threaded, \~2800 fps (Zsmooth) vs \~177 fps (RGVS). For
+32-bit, \~400 fps (Zsmooth) vs \~128 fps (RGSF). So ~20x faster than RGVS, and ~3x faster than RGSF.
 
 ## 0.6
 * Add DegrainMedian implementation.

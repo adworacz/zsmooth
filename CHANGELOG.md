@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.8 - TBD
+
 ## 0.7
 * Implement Repair (from RemoveGrain). Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and
 10-20x over the RGSF output for many modes. Mode 2-4 and 5 show the most gains. Other modes (like Mode 1) "only" show an

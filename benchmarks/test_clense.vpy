@@ -42,12 +42,28 @@ clip.set_output(0)
 
 # if (format not in ['f16', 'f32']):
 if (get_sample_type(clip) == vs.INTEGER):
-    rg = clip.rgvs.Clense()
+    if mode == 1: 
+        rg = clip.rgvs.Clense()
+    elif mode == 2:
+        rg = clip.rgvs.ForwardClense()
+    else:
+        rg = clip.rgvs.BackwardClense()
+
 else:
     # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-    rg = clip.rgsf.Clense()
+    if mode == 1: 
+        rg = clip.rgsf.Clense()
+    elif mode == 2:
+        rg = clip.rgsf.ForwardClense()
+    else:
+        rg = clip.rgsf.BackwardClense()
 
-zsmooth = clip.zsmooth.Clense()
+if mode == 1: 
+    zsmooth = clip.zsmooth.Clense()
+elif mode == 2:
+    zsmooth = clip.zsmooth.ForwardClense()
+else:
+    zsmooth = clip.zsmooth.BackwardClense()
 
 match output:
     case 'zsmooth':

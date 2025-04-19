@@ -420,8 +420,8 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
             if (vsapi.?.mapGetNode.?(ret, "clip", 0, &err)) |node| {
                 d.node = node;
-                d.scenechange_prop_prev = "_SceneChange_Prev";
-                d.scenechange_prop_next = "_SceneChange_Next";
+                d.scenechange_prop_prev = "_SceneChangePrev";
+                d.scenechange_prop_next = "_SceneChangeNext";
                 vsapi.?.freeMap.?(ret);
             } else {
                 vsapi.?.mapSetError.?(out, vsapi.?.mapGetError.?(ret) orelse "TemporalSoften: Unexpected error while invoking SCDetect.");

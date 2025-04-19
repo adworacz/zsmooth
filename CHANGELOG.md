@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.8 - TBD
+* Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 
+scene change handling was effectively broken.
 
 ## 0.7
 * Implement Repair (from RemoveGrain). Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and

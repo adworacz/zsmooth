@@ -2,18 +2,40 @@ const std = @import("std");
 const vec = @import("vector.zig");
 const sort = @import("sorting_networks.zig");
 
-/// Encapsulates data for a 3x3 grid of pixels.
-pub fn Grid(comptime T: type) type {
+/// Encapsulates data for a 3x3 or 5x5 grid of pixels.
+pub fn Grid(comptime T: type, comptime grid_width: comptime_int) type {
+    std.debug.assert(grid_width == 3 or grid_width == 5);
+
     return struct {
+        far_top_far_left: T = undefined,
+        far_top_left: T = undefined,
+        far_top_center: T = undefined,
+        far_top_right: T = undefined,
+        far_top_far_right: T = undefined,
+
+        top_far_left: T = undefined,
         top_left: T,
         top_center: T,
         top_right: T,
+        top_far_right: T = undefined,
+
+        center_far_left: T = undefined,
         center_left: T,
         center_center: T,
         center_right: T,
+        center_far_right: T = undefined,
+
+        bottom_far_left: T = undefined,
         bottom_left: T,
         bottom_center: T,
         bottom_right: T,
+        bottom_far_right: T = undefined,
+
+        far_bottom_far_left: T = undefined,
+        far_bottom_left: T = undefined,
+        far_bottom_center: T = undefined,
+        far_bottom_right: T = undefined,
+        far_bottom_far_right: T = undefined,
 
         const Self = @This();
 
@@ -150,17 +172,23 @@ pub fn Grid(comptime T: type) type {
 
         /// Finds the min value of all pixels, including the center.
         pub fn minWithCenter(self: Self) T {
-            return @min(self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
+            return @min(self.top_left, self.top_center, self.top_right, //
+                self.center_left, self.center_center, self.center_right, //
+                self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
         /// Finds the min value of all pixels, *not* including the center.
         pub fn minWithoutCenter(self: Self) T {
-            return @min(self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
+            return @min(self.top_left, self.top_center, self.top_right, //
+                self.center_left, self.center_right, //
+                self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
         /// Finds the max value of all pixels, including the center.
         pub fn maxWithCenter(self: Self) T {
-            return @max(self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right);
+            return @max(self.top_left, self.top_center, self.top_right, //
+                self.center_left, self.center_center, self.center_right, //
+                self.bottom_left, self.bottom_center, self.bottom_right);
         }
 
         /// Finds the max value of all pixels, *not* including the center.
@@ -179,7 +207,7 @@ pub fn Grid(comptime T: type) type {
         }
 
         /// Sorts all pixels, excluding the center.
-        pub fn sortWithoutCenter(self: Self) [8]T {
+        pub fn sortWithoutCenter(self: Self) [(grid_width * grid_width) - 1]T {
             var a = self.toArrayWithoutCenter();
 
             sort.sort(T, a.len, &a);
@@ -188,7 +216,7 @@ pub fn Grid(comptime T: type) type {
         }
 
         /// Sorts all pixels, including the center.
-        pub fn sortWithCenter(self: Self) [9]T {
+        pub fn sortWithCenter(self: Self) [grid_width * grid_width]T {
             var a = self.toArrayWithCenter();
 
             sort.sort(T, a.len, &a);
@@ -233,7 +261,7 @@ test "Grid init" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(T, &data, 3);
+    const grid = Grid(T, 3).init(T, &data, 3);
 
     try std.testing.expectEqual(0, grid.top_left);
     try std.testing.expectEqual(1, grid.top_center);
@@ -256,7 +284,7 @@ test "Grid initFromCenter" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).initFromCenter(T, 1, 1, &data, 3);
+    const grid = Grid(T, 3).initFromCenter(T, 1, 1, &data, 3);
 
     try std.testing.expectEqual(0, grid.top_left);
     try std.testing.expectEqual(1, grid.top_center);
@@ -279,7 +307,7 @@ test "Grid init from center mirrored" {
         6, 7, 8, //
     };
 
-    const gridTopLeft = Grid(T).initFromCenterMirrored(T, 0, 0, 3, 3, &data, 3);
+    const gridTopLeft = Grid(T, 3).initFromCenterMirrored(T, 0, 0, 3, 3, &data, 3);
 
     try std.testing.expectEqual(4, gridTopLeft.top_left);
     try std.testing.expectEqual(3, gridTopLeft.top_center);
@@ -293,7 +321,7 @@ test "Grid init from center mirrored" {
     try std.testing.expectEqual(3, gridTopLeft.bottom_center);
     try std.testing.expectEqual(4, gridTopLeft.bottom_right);
 
-    const gridTopRight = Grid(T).initFromCenterMirrored(T, 0, 2, 3, 3, &data, 3);
+    const gridTopRight = Grid(T, 3).initFromCenterMirrored(T, 0, 2, 3, 3, &data, 3);
 
     try std.testing.expectEqual(4, gridTopRight.top_left);
     try std.testing.expectEqual(5, gridTopRight.top_center);
@@ -307,7 +335,7 @@ test "Grid init from center mirrored" {
     try std.testing.expectEqual(5, gridTopRight.bottom_center);
     try std.testing.expectEqual(4, gridTopRight.bottom_right);
 
-    const gridBottomLeft = Grid(T).initFromCenterMirrored(T, 2, 0, 3, 3, &data, 3);
+    const gridBottomLeft = Grid(T, 3).initFromCenterMirrored(T, 2, 0, 3, 3, &data, 3);
 
     try std.testing.expectEqual(4, gridBottomLeft.top_left);
     try std.testing.expectEqual(3, gridBottomLeft.top_center);
@@ -321,7 +349,7 @@ test "Grid init from center mirrored" {
     try std.testing.expectEqual(3, gridBottomLeft.bottom_center);
     try std.testing.expectEqual(4, gridBottomLeft.bottom_right);
 
-    const gridBottomRight = Grid(T).initFromCenterMirrored(T, 2, 2, 3, 3, &data, 3);
+    const gridBottomRight = Grid(T, 3).initFromCenterMirrored(T, 2, 2, 3, 3, &data, 3);
 
     try std.testing.expectEqual(4, gridBottomRight.top_left);
     try std.testing.expectEqual(5, gridBottomRight.top_center);
@@ -344,7 +372,7 @@ test "Grid min" {
         7, 8, 9, //
     };
 
-    var grid = Grid(T).init(T, &data, 3);
+    var grid = Grid(T, 3).init(T, &data, 3);
 
     try std.testing.expectEqual(0, grid.minWithCenter());
     try std.testing.expectEqual(1, grid.minWithoutCenter());
@@ -358,7 +386,7 @@ test "Grid max" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(T, &data, 3);
+    const grid = Grid(T, 3).init(T, &data, 3);
 
     try std.testing.expectEqual(9, grid.maxWithCenter());
     try std.testing.expectEqual(8, grid.maxWithoutCenter());
@@ -372,7 +400,7 @@ test "Grid toArray" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(T, &data, 3);
+    const grid = Grid(T, 3).init(T, &data, 3);
 
     try std.testing.expectEqualDeep(data, grid.toArrayWithCenter());
     try std.testing.expectEqualDeep(.{ 0, 1, 2, 3, 5, 6, 7, 8 }, grid.toArrayWithoutCenter());
@@ -386,7 +414,7 @@ test "Grid minMaxOpposites" {
         6, 7, 8, //
     };
 
-    const grid = Grid(T).init(T, &data, 3);
+    const grid = Grid(T, 3).init(T, &data, 3);
     const minMax = grid.minMaxOppositesWithoutCenter();
 
     try std.testing.expectEqual(0, minMax.min1);
@@ -410,7 +438,7 @@ test "Grid minMaxOppositesWithCenter" {
         6, 7, 8, //
     };
 
-    const gridLow = Grid(T).init(T, &dataLow, 3);
+    const gridLow = Grid(T, 3).init(T, &dataLow, 3);
     const minMaxLow = gridLow.minMaxOppositesWithCenter();
 
     try std.testing.expectEqual(0, minMaxLow.min1);
@@ -431,7 +459,7 @@ test "Grid minMaxOppositesWithCenter" {
         6, 7, 8, //
     };
 
-    const gridHigh = Grid(T).init(T, &dataHigh, 3);
+    const gridHigh = Grid(T, 3).init(T, &dataHigh, 3);
     const minMaxHigh = gridHigh.minMaxOppositesWithCenter();
 
     try std.testing.expectEqual(1, minMaxHigh.min1);

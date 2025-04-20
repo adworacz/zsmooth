@@ -9,10 +9,13 @@
 * Support x86_64 and aarch64 CPU architectures, with all architectures supported by the Zig compiler being possible in theory.
 * (Eventually) Vapoursynth and Avisynth support. (Whenever I get the spare time and motivation.)
 
-Note: FP16 support is a work in progress. All functions support it but some are much slower than they need to be. I'm
-currently suspecting that this is a bug in Zig's compiler, as explicitly processing FP16 data with FP32 operations is much faster.
-The Zig compiler should really be handling this FP16->FP32 processing on its own, so I'm currently investigating the
-issue.
+**Note on FP16:** FP16 support is a work in progress. All functions support it but some are much slower than they need to be.
+Future Zig versions should make this easier, see [this Zig issue](https://github.com/ziglang/zig/issues/19550) for more
+details.
+
+**Note on AVX2:** AVX2 is the assumed baseline for all pre-built x86_64 binaries. AVX2 has been out available since 2013, so
+there's very little hardware left that doesn't support it. If there's demand for pre-AVX2 builds, please open an issue
+and explain (in detail) your needs and reasoning.
 
 ## Implemented Features/Functions
 Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for the current list, and up vote accordingly.

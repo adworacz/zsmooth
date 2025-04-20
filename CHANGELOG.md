@@ -3,6 +3,9 @@
 ## 0.8 - TBD
 * Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 
 scene change handling was effectively broken.
+* Cleaned up / unified build artifact names. The new names for the zips make a lot more sense (to me at least), and
+should simplify the lives of package managers. I'm open to feedback / suggestions on a better naming scheme, but this
+was the best I could think of on short notice.
 
 ## 0.7
 * Implement Repair (from RemoveGrain). Performance lift is pretty impressive. On my 9950X, I'm seeing ~2-3x performance uplift over the RGVS package, and

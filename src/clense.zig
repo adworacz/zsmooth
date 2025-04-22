@@ -306,12 +306,8 @@ export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const
     _ = core;
     const d: *ClenseData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.cnode);
-    if (d.pnode != null) {
-        vsapi.?.freeNode.?(d.pnode);
-    }
-    if (d.nnode != null) {
-        vsapi.?.freeNode.?(d.nnode);
-    }
+    vsapi.?.freeNode.?(d.pnode);
+    vsapi.?.freeNode.?(d.nnode);
     allocator.destroy(d);
 }
 

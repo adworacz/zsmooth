@@ -9,6 +9,7 @@ const verticalCleaner = @import("vertical_cleaner.zig");
 const clense = @import("clense.zig");
 const fluxSmooth = @import("fluxsmooth.zig");
 const degrainMedian = @import("degrain_median.zig");
+const interQuartileMean = @import("inter_quartile_mean.zig");
 
 const version = @import("version.zig").version;
 
@@ -23,4 +24,5 @@ export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI)
     clense.registerFunction(plugin, vsapi);
     fluxSmooth.registerFunction(plugin, vsapi);
     degrainMedian.registerFunction(plugin, vsapi);
+    interQuartileMean.registerFunction(plugin, vsapi);
 }

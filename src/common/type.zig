@@ -94,3 +94,7 @@ test "Type max / min" {
     try std.testing.expectEqual(-0.5, getTypeMinimum(f16, true));
     try std.testing.expectEqual(-0.5, getTypeMinimum(f32, true));
 }
+
+pub fn floatFromInt(comptime T: type, val: anytype) T {
+    return @as(T, @floatFromInt(val));
+}

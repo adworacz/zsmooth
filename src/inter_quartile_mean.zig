@@ -1,0 +1,234 @@
+const std = @import("std");
+const vapoursynth = @import("vapoursynth");
+const testing = @import("std").testing;
+
+const types = @import("common/type.zig");
+const math = @import("common/math.zig");
+const vscmn = @import("common/vapoursynth.zig");
+const sort = @import("common/sorting_networks.zig");
+const gridcmn = @import("common/grid.zig");
+
+const vs = vapoursynth.vapoursynth4;
+const vsh = vapoursynth.vshelper;
+
+const ar = vs.ActivationReason;
+const rp = vs.RequestPattern;
+const fm = vs.FilterMode;
+const st = vs.SampleType;
+
+// https://ziglang.org/documentation/master/#Choosing-an-Allocator
+//
+// Using the C allocator since we're passing pointers to allocated memory between Zig and C code,
+// specifically the filter data between the Create and GetFrame functions.
+const allocator = std.heap.c_allocator;
+
+const InterQuartileMeanData = struct {
+    // The clip on which we are operating.
+    node: ?*vs.Node,
+
+    vi: *const vs.VideoInfo,
+
+    // The modes for each plane we will process.
+    modes: [3]u5,
+};
+
+fn InterQuartileMean(comptime T: type) type {
+    return struct {
+        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
+        /// the values (particularly integers) without overflowing when doing
+        /// signed arithmetic.
+        const SAT = switch (T) {
+            u8 => i16,
+            u16 => i32,
+            f16 => f16,
+            f32 => f32,
+            else => unreachable,
+        };
+
+        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
+        /// hold values (particularly integers) without overflowing when doing
+        /// unsigned arithmetic.
+        const UAT = switch (T) {
+            u8 => u16,
+            u16 => u32,
+            f16 => f16,
+            f32 => f32,
+            else => unreachable,
+        };
+
+        const Grid = gridcmn.Grid(T);
+
+        // Interquartile mean of 3x3 grid, including the center.
+        fn iqm(grid: Grid) T {
+            const sorted = grid.sortWithCenter();
+
+            // Trim the first and last quartile, then average the inner quartiles
+            // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
+
+            const floatFromInt = types.floatFromInt;
+
+            const result: f32 = if (types.isInt(T))
+                ((floatFromInt(f32, sorted[3]) + floatFromInt(f32, sorted[4]) + floatFromInt(f32, sorted[5])) +
+                    ((floatFromInt(f32, sorted[2]) + floatFromInt(f32, sorted[6])) * 0.75)) / 4.5
+            else
+                ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
+
+            // Round result for integers, take float as is.
+            return math.lossyCast(T, if (types.isInt(T)) result + 0.5 else result);
+        }
+
+        fn interQuartileMean(mode: comptime_int, grid: Grid) T {
+            return switch (mode) {
+                1 => iqm(grid),
+                else => unreachable,
+            };
+        }
+
+        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            // Process top row with mirrored grid.
+            for (0..width) |column| {
+                const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
+                dstp[(0 * stride) + column] = interQuartileMean(mode, grid);
+            }
+
+            for (1..height - 1) |row| {
+                // Process first pixel of the row with mirrored grid.
+                const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
+                dstp[(row * stride)] = interQuartileMean(mode, gridFirst);
+
+                for (1..width - 1) |w| {
+                    const rowCurr = ((row) * stride);
+                    const top_left = ((row - 1) * stride) + w - 1;
+
+                    // Use a non-mirrored grid everywhere else for maximum performance.
+                    // We don't need the mirror effect anyways, as all pixels contain valid data.
+                    const grid = Grid.init(T, srcp[top_left..], stride);
+
+                    dstp[rowCurr + w] = interQuartileMean(mode, grid);
+                }
+
+                // Process last pixel of the row with mirrored grid.
+                const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
+                dstp[(row * stride) + (width - 1)] = interQuartileMean(mode, gridLast);
+            }
+
+            // Process bottom row with mirrored grid.
+            for (0..width) |column| {
+                const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
+                dstp[((height - 1) * stride) + column] = interQuartileMean(mode, grid);
+            }
+        }
+
+        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+            // Assign frame_data to nothing to stop compiler complaints
+            _ = frame_data;
+
+            const d: *InterQuartileMeanData = @ptrCast(@alignCast(instance_data));
+
+            if (activation_reason == ar.Initial) {
+                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+            } else if (activation_reason == ar.AllFramesReady) {
+                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+
+                defer vsapi.?.freeFrame.?(src_frame);
+
+                const process = [_]bool{
+                    d.modes[0] > 0,
+                    d.modes[1] > 0,
+                    d.modes[2] > 0,
+                };
+
+                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
+
+                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
+                    const plane: c_int = @intCast(_plane);
+                    // Skip planes we aren't supposed to process
+                    if (d.modes[_plane] == 0) {
+                        continue;
+                    }
+
+                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
+                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
+                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
+                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    // const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+
+                    // See note in remove_grain about the use of "double switch" optimization.
+                    switch (d.modes[_plane]) {
+                        inline 1 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride),
+                        else => unreachable,
+                    }
+                }
+
+                return dst;
+            }
+
+            return null;
+        }
+    };
+}
+
+export fn interQuartileMeanFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+    _ = core;
+    const d: *InterQuartileMeanData = @ptrCast(@alignCast(instance_data));
+    vsapi.?.freeNode.?(d.node);
+    allocator.destroy(d);
+}
+
+export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+    _ = user_data;
+    var d: InterQuartileMeanData = undefined;
+
+    // TODO: Add error handling.
+    var err: vs.MapPropertyError = undefined;
+
+    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
+
+    d.vi = vsapi.?.getVideoInfo.?(d.node);
+
+    const numModes = vsapi.?.mapNumElements.?(in, "mode");
+    if (numModes > d.vi.format.numPlanes) {
+        vsapi.?.mapSetError.?(out, "InterQuartileMean: Number of modes must be equal or fewer than the number of input planes.");
+        vsapi.?.freeNode.?(d.node);
+        return;
+    }
+
+    for (0..3) |i| {
+        if (i < numModes) {
+            if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+                if (mode < 0 or mode > 24) {
+                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid mode specified, only modes 0-1 supported.");
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                }
+                d.modes[i] = @intCast(mode);
+            }
+        } else {
+            d.modes[i] = d.modes[i - 1];
+        }
+    }
+
+    const data: *InterQuartileMeanData = allocator.create(InterQuartileMeanData) catch unreachable;
+    data.* = d;
+
+    var deps = [_]vs.FilterDependency{
+        vs.FilterDependency{
+            .source = d.node,
+            .requestPattern = rp.StrictSpatial,
+        },
+    };
+
+    const getFrame = switch (d.vi.format.bytesPerSample) {
+        1 => &InterQuartileMean(u8).getFrame,
+        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &InterQuartileMean(u16).getFrame else &InterQuartileMean(f16).getFrame,
+        4 => &InterQuartileMean(f32).getFrame,
+        else => unreachable,
+    };
+
+    vsapi.?.createVideoFilter.?(out, "InterQuartileMean", d.vi, getFrame, interQuartileMeanFree, fm.Parallel, &deps, deps.len, data, core);
+}
+
+pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
+    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;mode:int[]", "clip:vnode;", interQuartileMeanCreate, null, plugin);
+}

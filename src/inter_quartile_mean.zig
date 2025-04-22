@@ -66,15 +66,41 @@ fn InterQuartileMean(comptime T: type) type {
             // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
 
             const floatFromInt = types.floatFromInt;
+            const R = if (types.isInt(T)) f32 else T;
 
-            const result: f32 = if (types.isInt(T))
-                ((floatFromInt(f32, sorted[3]) + floatFromInt(f32, sorted[4]) + floatFromInt(f32, sorted[5])) +
-                    ((floatFromInt(f32, sorted[2]) + floatFromInt(f32, sorted[6])) * 0.75)) / 4.5
+            const result: R = if (types.isInt(T))
+                // ~922 fps
+                // ((floatFromInt(R, sorted[3]) + floatFromInt(R, sorted[4]) + floatFromInt(R, sorted[5])) +
+                //     ((floatFromInt(R, sorted[2]) + floatFromInt(R, sorted[6])) * 0.75)) / 4.5
+                // ~1000 fps
+                floatFromInt(R, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
+                    ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5
             else
                 ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
 
             // Round result for integers, take float as is.
             return math.lossyCast(T, if (types.isInt(T)) result + 0.5 else result);
+        }
+
+        test iqm {
+            var data = [9]T{
+                9, 8, 7,
+                6, 5, 4,
+                3, 2, 1,
+            };
+
+            var grid = Grid.init(T, &data, 3);
+
+            try testing.expectEqual(5, iqm(grid));
+
+            data = [9]T{
+                1, 1,  3,
+                3, 7,  8,
+                9, 99, 99,
+            };
+            grid = Grid.init(T, &data, 3);
+
+            try testing.expectEqual(6, iqm(grid));
         }
 
         fn interQuartileMean(mode: comptime_int, grid: Grid) T {

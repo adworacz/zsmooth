@@ -7,6 +7,7 @@ const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
 const gridcmn = @import("common/grid.zig");
+const string = @import("common/string.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -30,6 +31,7 @@ const InterQuartileMeanData = struct {
 
     // The modes for each plane we will process.
     modes: [3]u5,
+    threshold: [3]f32,
 };
 
 fn InterQuartileMean(comptime T: type) type {
@@ -59,7 +61,7 @@ fn InterQuartileMean(comptime T: type) type {
         const Grid = gridcmn.Grid(T);
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm(grid: Grid) T {
+        fn iqm(grid: Grid, threshold: T) T {
             const sorted = grid.sortWithCenter();
 
             // Trim the first and last quartile, then average the inner quartiles
@@ -87,7 +89,11 @@ fn InterQuartileMean(comptime T: type) type {
                 ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
 
             // Round result for integers, take float as is.
-            return result;
+            // return result;
+            // Thresholding appears to have a minimal effect on preformance (rather shockingly...). I'm seeing
+            // a decrease from ~1090fps -> ~1055fps on my 9950x. So just a ~3.6% performance hit for the added flexibility.
+            // The autovectorizer is doing is surprisingly good job with this code...
+            return if (math.absDiff(result, grid.center_center) <= threshold) result else grid.center_center;
         }
 
         test iqm {
@@ -111,24 +117,24 @@ fn InterQuartileMean(comptime T: type) type {
             try testing.expectEqual(6, iqm(grid));
         }
 
-        fn interQuartileMean(mode: comptime_int, grid: Grid) T {
+        fn interQuartileMean(mode: comptime_int, grid: Grid, threshold: T) T {
             return switch (mode) {
-                1 => iqm(grid),
+                1 => iqm(grid, threshold),
                 else => unreachable,
             };
         }
 
-        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             // Process top row with mirrored grid.
             for (0..width) |column| {
                 const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
-                dstp[(0 * stride) + column] = interQuartileMean(mode, grid);
+                dstp[(0 * stride) + column] = interQuartileMean(mode, grid, threshold);
             }
 
             for (1..height - 1) |row| {
                 // Process first pixel of the row with mirrored grid.
                 const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
-                dstp[(row * stride)] = interQuartileMean(mode, gridFirst);
+                dstp[(row * stride)] = interQuartileMean(mode, gridFirst, threshold);
 
                 for (1..width - 1) |w| {
                     const rowCurr = ((row) * stride);
@@ -138,18 +144,18 @@ fn InterQuartileMean(comptime T: type) type {
                     // We don't need the mirror effect anyways, as all pixels contain valid data.
                     const grid = Grid.init(T, srcp[top_left..], stride);
 
-                    dstp[rowCurr + w] = interQuartileMean(mode, grid);
+                    dstp[rowCurr + w] = interQuartileMean(mode, grid, threshold);
                 }
 
                 // Process last pixel of the row with mirrored grid.
                 const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
-                dstp[(row * stride) + (width - 1)] = interQuartileMean(mode, gridLast);
+                dstp[(row * stride) + (width - 1)] = interQuartileMean(mode, gridLast, threshold);
             }
 
             // Process bottom row with mirrored grid.
             for (0..width) |column| {
                 const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
-                dstp[((height - 1) * stride) + column] = interQuartileMean(mode, grid);
+                dstp[((height - 1) * stride) + column] = interQuartileMean(mode, grid, threshold);
             }
         }
 
@@ -188,9 +194,8 @@ fn InterQuartileMean(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
                     // const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
-                    // See note in remove_grain about the use of "double switch" optimization.
                     switch (d.modes[_plane]) {
-                        inline 1 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride),
+                        inline 1 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride, math.lossyCast(T, d.threshold[_plane])),
                         else => unreachable,
                     }
                 }
@@ -218,8 +223,10 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
     var err: vs.MapPropertyError = undefined;
 
     d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-
     d.vi = vsapi.?.getVideoInfo.?(d.node);
+
+    var threshold = [3]f32{ 255, 255, 255 };
+    const scalep = true;
 
     const numModes = vsapi.?.mapNumElements.?(in, "mode");
     if (numModes > d.vi.format.numPlanes) {
@@ -241,7 +248,25 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
         } else {
             d.modes[i] = d.modes[i - 1];
         }
+
+        if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |thr| {
+            threshold[i] = if (scalep and thr >= 0) thresh: {
+                if (thr < 0 or thr > 255) {
+                    vsapi.?.mapSetError.?(out, string.printf(allocator, "InterQuartileMean: Using parameter scaling (scalep), but threshold of {d} is outside the range of 0-255", .{thr}).ptr);
+                    vsapi.?.freeNode.?(d.node);
+                    return;
+                }
+                break :thresh vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(thr), 0);
+            } else thr;
+        } else {
+            threshold[i] = if (i == 0)
+                vscmn.scaleToFormat(f32, d.vi.format, 255, 0)
+            else
+                threshold[i - 1];
+        }
     }
+
+    d.threshold = threshold;
 
     const data: *InterQuartileMeanData = allocator.create(InterQuartileMeanData) catch unreachable;
     data.* = d;
@@ -264,5 +289,5 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;mode:int[]", "clip:vnode;", interQuartileMeanCreate, null, plugin);
+    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;mode:int[];threshold:float[]:opt;", "clip:vnode;", interQuartileMeanCreate, null, plugin);
 }

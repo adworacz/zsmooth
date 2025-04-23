@@ -65,21 +65,29 @@ fn InterQuartileMean(comptime T: type) type {
             // Trim the first and last quartile, then average the inner quartiles
             // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
 
-            const floatFromInt = types.floatFromInt;
-            const R = if (types.isInt(T)) f32 else T;
+            // const floatFromInt = types.floatFromInt;
+            // const R = if (types.isInt(T)) f32 else T;
 
-            const result: R = if (types.isInt(T))
+            const result: T = if (types.isInt(T))
                 // ~922 fps
                 // ((floatFromInt(R, sorted[3]) + floatFromInt(R, sorted[4]) + floatFromInt(R, sorted[5])) +
                 //     ((floatFromInt(R, sorted[2]) + floatFromInt(R, sorted[6])) * 0.75)) / 4.5
+                // ~990 fps
+                // @intFromFloat(@round(floatFromInt(f32, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
+                //     ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5))
                 // ~1000 fps
-                floatFromInt(R, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
-                    ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5
+                // @intFromFloat(@round(floatFromInt(f32, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
+                //     ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5))
+                //
+                // ~1091 fps
+                // Note that the use of ".. + 2) / 4" and ".. + 4) / 9" is to ensure proper rounding in integer division.
+                @intCast((((@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
+                    ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) * 2 + 4) / 9)
             else
                 ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
 
             // Round result for integers, take float as is.
-            return math.lossyCast(T, if (types.isInt(T)) result + 0.5 else result);
+            return result;
         }
 
         test iqm {

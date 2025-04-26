@@ -1,6 +1,7 @@
 # Changelog
 
-## 0.9 - TBD
+## 0.9
+* Add implementation of InterQuartileMean, as made popular by Dogway.
 
 ## 0.8
 * Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 

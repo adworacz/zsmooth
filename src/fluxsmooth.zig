@@ -41,27 +41,8 @@ const FluxSmoothData = struct {
 
 fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
     return struct {
-        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
-        /// the values (particularly integers) without overflowing when doing
-        /// signed arithmetic.
-        const SAT = switch (T) {
-            u8 => i16,
-            u16 => i32,
-            f16 => f16, //TODO: This might be more performant as f32 on some systems.
-            f32 => f32,
-            else => unreachable,
-        };
-
-        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
-        /// hold values (particularly integers) without overflowing when doing
-        /// unsigned arithmetic.
-        const UAT = switch (T) {
-            u8 => u16,
-            u16 => u32,
-            f16 => f16, //TODO: This might be more performant as f32 on some systems.
-            f32 => f32,
-            else => unreachable,
-        };
+        const SAT = types.SignedArithmeticType(T);
+        const UAT = types.UnsignedArithmeticType(T);
 
         fn processPlaneTemporalScalar(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             for (0..height) |row| {

@@ -46,27 +46,8 @@ fn TemporalSoften(comptime T: type) type {
     const VecType = @Vector(vec_size, T);
 
     return struct {
-        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
-        /// the values (particularly integers) without overflowing when doing
-        /// signed arithmetic.
-        const SAT = switch (T) {
-            u8 => i16,
-            u16 => i32,
-            f16 => f32,
-            f32 => f32,
-            else => unreachable,
-        };
-
-        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
-        /// hold values (particularly integers) without overflowing when doing
-        /// unsigned arithmetic.
-        const UAT = switch (T) {
-            u8 => u16,
-            u16 => u32,
-            f16 => f32,
-            f32 => f32,
-            else => unreachable,
-        };
+        const SAT = types.SignedArithmeticType(T);
+        const UAT = types.UnsignedArithmeticType(T);
 
         fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const half_frames: u8 = @divTrunc(frames, 2);

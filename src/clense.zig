@@ -61,34 +61,8 @@ const ClenseData = struct {
 /// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn Clense(comptime T: type, comptime mode: ClenseMode) type {
     return struct {
-        /// Signed Arithmetic Type - used in signed arithmetic to safely hold
-        /// the values (particularly integers) without overflowing when doing
-        /// signed arithmetic.
-        const SAT = switch (T) {
-            u8 => i16,
-            u16 => i32,
-            // RGSF uses double values for its computations,
-            // while Avisynth uses single precision float for its computations.
-            // I'm using single (and half) precision just like Avisynth since
-            // double is unnecessary in most cases and twice as slow than single precision.
-            // And I mean literally unnecessary - RGSF uses double on operations that are completely
-            // safe for f32 calculations without any loss in precision, so it's *unnecessarily* slow.
-            f16 => f16, //TODO: This might be more performant as f32 on some systems.
-            f32 => f32,
-            else => unreachable,
-        };
-
-        /// Unsigned Arithmetic Type - used in unsigned arithmetic to safely
-        /// hold values (particularly integers) without overflowing when doing
-        /// unsigned arithmetic.
-        const UAT = switch (T) {
-            u8 => u16,
-            u16 => u32,
-            // See note on floating point precision above.
-            f16 => f16, //TODO: This might be more performant as f32 on some systems.
-            f32 => f32,
-            else => unreachable,
-        };
+        const SAT = types.SignedArithmeticType(T);
+        const UAT = types.UnsignedArithmeticType(T);
 
         /// Find the median of the previous, current, and next frames.
         fn clense(noalias dstp: []T, noalias srcp: []const T, noalias prev: []const T, noalias next: []const T, width: usize, height: usize, stride: usize) void {

@@ -397,3 +397,241 @@ pub fn reportError(msg: []const u8, vsapi: ?*const vs.API, out: ?*vs.Map, node: 
     vsapi.?.freeNode.?(node);
     return;
 }
+
+const SoftThresholdParams = struct { bias: f32, threshold_lower: f32, threshold_upper: f32, threshold_scale: f32 };
+
+/// Calculates a set of parameters that can be used to soft-threshold specific pixel values.
+/// Note that this is not the full calculation of the soft-threshold, just the parameters used in its calculation.
+pub fn calculateSoftThresholdParams(format: vs.VideoFormat, threshold: f32, scalep: bool) SoftThresholdParams {
+    // const chroma = format.colorFamily == vs.ColorFamily.YUV and i > 0;
+    const format_max = getFormatMaximum(f32, format, false);
+    // const format_min = getFormatMinimum(f32, format, chroma);
+    const th = if (scalep) scaleToFormat(f32, format, threshold, 0) else threshold;
+    const mult = if (scalep) threshold / 255 else threshold / format_max;
+    const bias = @min(2 * @cos(std.math.pi + (2 * std.math.pi * mult)) + 2, 1) * 20;
+    const bias_scaled = scaleToFormat(f32, format, bias, 0);
+    const thr_lower = @max(th - scaleToFormat(f32, format, 10, 0) - bias_scaled, 0); // lower threshold
+    const thr_upper = @min(th + scaleToFormat(f32, format, 10, 0) + bias_scaled, format_max); // higher threshold
+    const thr_scale = format_max / (thr_upper - thr_lower);
+
+    return .{
+        .bias = bias,
+        .threshold_lower = thr_lower,
+        .threshold_upper = thr_upper,
+        .threshold_scale = thr_scale,
+    };
+}
+
+test calculateSoftThresholdParams {
+    const u8_format = vs.VideoFormat{
+        .bytesPerSample = 1,
+        .sampleType = vs.SampleType.Integer,
+
+        .colorFamily = vs.ColorFamily.YUV,
+        .bitsPerSample = 8,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    const u16_format = vs.VideoFormat{
+        .bytesPerSample = 2,
+        .sampleType = vs.SampleType.Integer,
+
+        .colorFamily = vs.ColorFamily.YUV,
+        .bitsPerSample = 16,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+    //
+    // const f16_format = vs.VideoFormat{
+    //     .bytesPerSample = 2,
+    //     .sampleType = vs.SampleType.Float,
+    //
+    //     .colorFamily = vs.ColorFamily.YUV,
+    //     .bitsPerSample = 16,
+    //     .numPlanes = 3,
+    //     .subSamplingW = 2,
+    //     .subSamplingH = 2,
+    // };
+    //
+    const f32_format = vs.VideoFormat{
+        .bytesPerSample = 4,
+        .sampleType = vs.SampleType.Float,
+
+        .colorFamily = vs.ColorFamily.YUV,
+        .bitsPerSample = 32,
+        .numPlanes = 3,
+        .subSamplingW = 2,
+        .subSamplingH = 2,
+    };
+
+    // Lower bound
+
+    // 8 bit - scalep = true (no-op)
+    var params = calculateSoftThresholdParams(u8_format, 0, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 10,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // 8 bit - scalep = false (no-op)
+    params = calculateSoftThresholdParams(u8_format, 0, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 10,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // 16 bit - scalep = true
+    params = calculateSoftThresholdParams(u16_format, 0, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 2560,
+        .threshold_scale = 25.59961,
+    }, params);
+
+    // 16 bit - scalep = false
+    params = calculateSoftThresholdParams(u16_format, 0, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 2560,
+        .threshold_scale = 25.59961,
+    }, params);
+
+    // 32 bit - scalep = true
+    params = calculateSoftThresholdParams(f32_format, 0, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 0.039215688,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // 32 bit - scalep = false
+    params = calculateSoftThresholdParams(f32_format, 0, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 0,
+        .threshold_upper = 0.039215688,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // Somewhere in the middle.
+
+    // 8 bit - scalep = true (no-op)
+    params = calculateSoftThresholdParams(u8_format, 30, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.439644,
+        .threshold_lower = 9.560356,
+        .threshold_upper = 50.439644,
+        .threshold_scale = 6.237878,
+    }, params);
+
+    // 8 bit - scalep = false (no-op)
+    params = calculateSoftThresholdParams(u8_format, 30, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.439644,
+        .threshold_lower = 9.560356,
+        .threshold_upper = 50.439644,
+        .threshold_scale = 6.237878,
+    }, params);
+
+    // 16 bit - scalep = true
+    params = calculateSoftThresholdParams(u16_format, 30, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.439644,
+        .threshold_lower = 2447.4512,
+        .threshold_upper = 12912.549,
+        .threshold_scale = 6.2622447,
+    }, params);
+
+    // 16 bit - scalep = false
+    params = calculateSoftThresholdParams(u16_format, 30 << 8, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.362263,
+        .threshold_lower = 2467.2607,
+        .threshold_upper = 12892.739,
+        .threshold_scale = 6.286042,
+    }, params);
+
+    // 32 bit - scalep = true
+    params = calculateSoftThresholdParams(f32_format, 30, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.439644,
+        .threshold_lower = 0.03749159,
+        .threshold_upper = 0.19780253,
+        .threshold_scale = 6.2378774,
+    }, params);
+
+    // 32 bit - scalep = false
+    params = calculateSoftThresholdParams(f32_format, 30.0 / 255.0, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 10.439644,
+        .threshold_lower = 0.03749159,
+        .threshold_upper = 0.19780253,
+        .threshold_scale = 6.2378774,
+    }, params);
+
+    // Upper bound
+
+    // 8 bit - scalep = true (no-op)
+    params = calculateSoftThresholdParams(u8_format, 255, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 245,
+        .threshold_upper = 255,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // 8 bit - scalep = false (no-op)
+    params = calculateSoftThresholdParams(u8_format, 255, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 245,
+        .threshold_upper = 255,
+        .threshold_scale = 25.5,
+    }, params);
+
+    // 16 bit - scalep = true
+    params = calculateSoftThresholdParams(u16_format, 255, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0,
+        .threshold_lower = 62720,
+        .threshold_upper = 65535,
+        .threshold_scale = 23.28064,
+    }, params);
+
+    // 16 bit - scalep = false
+    params = calculateSoftThresholdParams(u16_format, 255 << 8, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0.011954308,
+        .threshold_lower = 62716.94,
+        .threshold_upper = 65535,
+        .threshold_scale = 23.255371,
+    }, params);
+
+    // 32 bit - scalep = true
+    params = calculateSoftThresholdParams(f32_format, 255, true);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0.0,
+        .threshold_lower = 0.9607843,
+        .threshold_upper = 1.0,
+        .threshold_scale = 25.500002,
+    }, params);
+
+    // 32 bit - scalep = false
+    params = calculateSoftThresholdParams(f32_format, 255.0 / 255.0, false);
+    try std.testing.expectEqualDeep(SoftThresholdParams{
+        .bias = 0.0,
+        .threshold_lower = 0.9607843,
+        .threshold_upper = 1.0,
+        .threshold_scale = 25.500002,
+    }, params);
+}

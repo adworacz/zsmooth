@@ -286,3 +286,4 @@ without the hard work of their authors.
 * Vapoursynth TemporalMedian: https://github.com/dubhater/vapoursynth-temporalmedian
 * Neo Temporal Median: https://github.com/HomeOfAviSynthPlusEvolution/neo_TMedian
 * Vapoursynth FluxSmooth: https://github.com/dubhater/vapoursynth-fluxsmooth/
+* Dogway's `ex_median` functions: https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L2456

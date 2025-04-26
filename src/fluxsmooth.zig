@@ -672,7 +672,7 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }
-                break :thresh vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
+                break :thresh vscmn.scaleToFormat(f32, d.vi.format, threshold, 0);
             } else threshold;
         } else {
             temporal_threshold[i] = if (i == 0)
@@ -689,7 +689,7 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
                         vsapi.?.freeNode.?(d.node);
                         return;
                     }
-                    break :thresh vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(threshold), 0);
+                    break :thresh vscmn.scaleToFormat(f32, d.vi.format, threshold, 0);
                 } else threshold;
             } else {
                 spatial_threshold[i] = if (i == 0) vscmn.scaleToFormat(f32, d.vi.format, 7, 0) else spatial_threshold[i - 1];

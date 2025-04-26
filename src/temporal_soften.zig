@@ -361,7 +361,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
             }
 
             const threshold = if (scalep)
-                vscmn.scaleToFormat(f32, d.vi.format, @intFromFloat(_threshold), 0)
+                vscmn.scaleToFormat(f32, d.vi.format, _threshold, 0)
             else
                 _threshold;
 

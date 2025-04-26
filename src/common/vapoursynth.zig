@@ -3,6 +3,8 @@ const vapoursynth = @import("vapoursynth");
 
 const lossyCast = @import("math.zig").lossyCast;
 const getVecSize = @import("vector.zig").getVecSize;
+const types = @import("type.zig");
+const math = @import("math.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -13,10 +15,11 @@ const vsh = vapoursynth.vshelper;
 
 /// Scales an 8 bit value match the pertinent bit depth, sample
 /// type, and plane (is/is not chroma).
-pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: u8, plane: anytype) T {
+pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: anytype, plane: anytype) T {
+    // const V = @TypeOf(value);
     // Float support, 16-32 bit.
     if (vf.sampleType == vs.SampleType.Float) {
-        var out: f32 = @as(f32, @floatFromInt(value)) / 255.0;
+        var out: f32 = lossyCast(f32, value) / 255.0;
 
         if (vf.colorFamily == vs.ColorFamily.YUV and plane > 0) {
             // YUV floating point chroma planes range from -0.5 to 0.5
@@ -28,7 +31,10 @@ pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: u8, plane: any
 
     // Integer support, 9-16 bit.
     if (vf.bitsPerSample > 8) {
-        return lossyCast(T, std.math.shl(u32, value, vf.bitsPerSample - 8));
+        return if (types.isFloat(T))
+            value * std.math.pow(T, 2.0, @floatFromInt(vf.bitsPerSample - 8))
+        else
+            lossyCast(T, std.math.shl(u32, lossyCast(u32, value), vf.bitsPerSample - 8));
     }
 
     // Integer support, 8 bit.
@@ -36,121 +42,39 @@ pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: u8, plane: any
 }
 
 test scaleToFormat {
-    // Zig, please let me partially initialize a struct.
-
     for (0..3) |plane| {
         // 8 bit gray int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(u8, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.Gray,
-            .bitsPerSample = 8,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(128, scaleToFormat(u8, U8_GRAY_FORMAT, 128, plane));
 
         // Check that a different output type still produces the same
         // inherent value.
-        try std.testing.expectEqual(128, scaleToFormat(f32, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.Gray,
-            .bitsPerSample = 8,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(128, scaleToFormat(f32, U8_GRAY_FORMAT, 128, plane));
 
         // 8 bit RGB int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(u8, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.RGB,
-            .bitsPerSample = 8,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(128, scaleToFormat(u8, U8_RGB_FORMAT, 128, plane));
 
         // 8 bit YUV int - should be the same
-        try std.testing.expectEqual(128, scaleToFormat(u8, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.YUV,
-            .bitsPerSample = 8,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(128, scaleToFormat(u8, U8_YUV_FORMAT, 128, plane));
 
         // 10 bit gray int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(u16, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.Gray,
-            .bitsPerSample = 10,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(512, scaleToFormat(u16, U10_GRAY_FORMAT, 128, plane));
 
         // 10 bit RGB int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(u16, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.RGB,
-            .bitsPerSample = 10,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(512, scaleToFormat(u16, U10_RGB_FORMAT, 128, plane));
 
         // 10 bit YUV int - should be shifted.
-        try std.testing.expectEqual(512, scaleToFormat(u16, .{
-            .sampleType = vs.SampleType.Integer,
-            .colorFamily = vs.ColorFamily.YUV,
-            .bitsPerSample = 10,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane));
+        try std.testing.expectEqual(512, scaleToFormat(u16, U10_YUV_FORMAT, 128, plane));
 
         // 32 bit gray float - should be divided
-        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, .{
-            .sampleType = vs.SampleType.Float,
-            .colorFamily = vs.ColorFamily.Gray,
-            .bitsPerSample = 32,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane), 0.01);
+        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, F32_GRAY_FORMAT, 128, plane), 0.01);
 
         // 32 bit RGB int - should be divided
-        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, .{
-            .sampleType = vs.SampleType.Float,
-            .colorFamily = vs.ColorFamily.RGB,
-            .bitsPerSample = 32,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane), 0.01);
+        try std.testing.expectApproxEqAbs(0.5, scaleToFormat(f32, F32_RGB_FORMAT, 128, plane), 0.01);
 
         // 32 bit YUV int - should be divided.
         // Float should scale for YUV
         const expected: f32 = if (plane == 0) 0.5 else 0;
-        try std.testing.expectApproxEqAbs(expected, scaleToFormat(f32, .{
-            .sampleType = vs.SampleType.Float,
-            .colorFamily = vs.ColorFamily.YUV,
-            .bitsPerSample = 32,
-            .bytesPerSample = 1,
-            .numPlanes = 3,
-            .subSamplingW = 0,
-            .subSamplingH = 0,
-        }, 128, plane), 0.01);
+        try std.testing.expectApproxEqAbs(expected, scaleToFormat(f32, F32_YUV_FORMAT, 128, plane), 0.01);
     }
 }
 
@@ -282,54 +206,10 @@ pub fn formatVectorLength(format: vs.VideoFormat) u8 {
 }
 
 test formatVectorLength {
-    const u8_format = vs.VideoFormat{
-        .bytesPerSample = 1,
-        .sampleType = vs.SampleType.Integer,
-
-        .colorFamily = vs.ColorFamily.RGB,
-        .bitsPerSample = 8,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-
-    const u16_format = vs.VideoFormat{
-        .bytesPerSample = 2,
-        .sampleType = vs.SampleType.Integer,
-
-        .colorFamily = vs.ColorFamily.RGB,
-        .bitsPerSample = 16,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-
-    const f16_format = vs.VideoFormat{
-        .bytesPerSample = 2,
-        .sampleType = vs.SampleType.Float,
-
-        .colorFamily = vs.ColorFamily.RGB,
-        .bitsPerSample = 16,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-
-    const f32_format = vs.VideoFormat{
-        .bytesPerSample = 4,
-        .sampleType = vs.SampleType.Float,
-
-        .colorFamily = vs.ColorFamily.RGB,
-        .bitsPerSample = 32,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-
-    try std.testing.expectEqual(getVecSize(u8), formatVectorLength(u8_format));
-    try std.testing.expectEqual(getVecSize(u16), formatVectorLength(u16_format));
-    try std.testing.expectEqual(getVecSize(f16), formatVectorLength(f16_format));
-    try std.testing.expectEqual(getVecSize(f32), formatVectorLength(f32_format));
+    try std.testing.expectEqual(getVecSize(u8), formatVectorLength(U8_RGB_FORMAT));
+    try std.testing.expectEqual(getVecSize(u16), formatVectorLength(U16_RGB_FORMAT));
+    try std.testing.expectEqual(getVecSize(f16), formatVectorLength(F16_RGB_FORMAT));
+    try std.testing.expectEqual(getVecSize(f32), formatVectorLength(F32_RGB_FORMAT));
 }
 
 /// Creates a new video frame with optional copying of source planes from a src
@@ -423,54 +303,11 @@ pub fn calculateSoftThresholdParams(format: vs.VideoFormat, threshold: f32, scal
 }
 
 test calculateSoftThresholdParams {
-    const u8_format = vs.VideoFormat{
-        .bytesPerSample = 1,
-        .sampleType = vs.SampleType.Integer,
-
-        .colorFamily = vs.ColorFamily.YUV,
-        .bitsPerSample = 8,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-
-    const u16_format = vs.VideoFormat{
-        .bytesPerSample = 2,
-        .sampleType = vs.SampleType.Integer,
-
-        .colorFamily = vs.ColorFamily.YUV,
-        .bitsPerSample = 16,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
-    //
-    // const f16_format = vs.VideoFormat{
-    //     .bytesPerSample = 2,
-    //     .sampleType = vs.SampleType.Float,
-    //
-    //     .colorFamily = vs.ColorFamily.YUV,
-    //     .bitsPerSample = 16,
-    //     .numPlanes = 3,
-    //     .subSamplingW = 2,
-    //     .subSamplingH = 2,
-    // };
-    //
-    const f32_format = vs.VideoFormat{
-        .bytesPerSample = 4,
-        .sampleType = vs.SampleType.Float,
-
-        .colorFamily = vs.ColorFamily.YUV,
-        .bitsPerSample = 32,
-        .numPlanes = 3,
-        .subSamplingW = 2,
-        .subSamplingH = 2,
-    };
 
     // Lower bound
 
     // 8 bit - scalep = true (no-op)
-    var params = calculateSoftThresholdParams(u8_format, 0, true);
+    var params = calculateSoftThresholdParams(U8_YUV_FORMAT, 0, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -479,7 +316,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 8 bit - scalep = false (no-op)
-    params = calculateSoftThresholdParams(u8_format, 0, false);
+    params = calculateSoftThresholdParams(U8_YUV_FORMAT, 0, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -488,7 +325,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = true
-    params = calculateSoftThresholdParams(u16_format, 0, true);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 0, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -497,7 +334,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = false
-    params = calculateSoftThresholdParams(u16_format, 0, false);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 0, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -506,7 +343,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = true
-    params = calculateSoftThresholdParams(f32_format, 0, true);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 0, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -515,7 +352,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = false
-    params = calculateSoftThresholdParams(f32_format, 0, false);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 0, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 0,
@@ -526,7 +363,7 @@ test calculateSoftThresholdParams {
     // Somewhere in the middle.
 
     // 8 bit - scalep = true (no-op)
-    params = calculateSoftThresholdParams(u8_format, 30, true);
+    params = calculateSoftThresholdParams(U8_YUV_FORMAT, 30, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.439644,
         .threshold_lower = 9.560356,
@@ -535,7 +372,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 8 bit - scalep = false (no-op)
-    params = calculateSoftThresholdParams(u8_format, 30, false);
+    params = calculateSoftThresholdParams(U8_YUV_FORMAT, 30, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.439644,
         .threshold_lower = 9.560356,
@@ -544,7 +381,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = true
-    params = calculateSoftThresholdParams(u16_format, 30, true);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 30, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.439644,
         .threshold_lower = 2447.4512,
@@ -553,7 +390,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = false
-    params = calculateSoftThresholdParams(u16_format, 30 << 8, false);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 30 << 8, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.362263,
         .threshold_lower = 2467.2607,
@@ -562,7 +399,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = true
-    params = calculateSoftThresholdParams(f32_format, 30, true);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 30, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.439644,
         .threshold_lower = 0.03749159,
@@ -571,7 +408,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = false
-    params = calculateSoftThresholdParams(f32_format, 30.0 / 255.0, false);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 30.0 / 255.0, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 10.439644,
         .threshold_lower = 0.03749159,
@@ -582,7 +419,7 @@ test calculateSoftThresholdParams {
     // Upper bound
 
     // 8 bit - scalep = true (no-op)
-    params = calculateSoftThresholdParams(u8_format, 255, true);
+    params = calculateSoftThresholdParams(U8_YUV_FORMAT, 255, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 245,
@@ -591,7 +428,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 8 bit - scalep = false (no-op)
-    params = calculateSoftThresholdParams(u8_format, 255, false);
+    params = calculateSoftThresholdParams(U8_YUV_FORMAT, 255, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 245,
@@ -600,7 +437,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = true
-    params = calculateSoftThresholdParams(u16_format, 255, true);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 255, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0,
         .threshold_lower = 62720,
@@ -609,7 +446,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 16 bit - scalep = false
-    params = calculateSoftThresholdParams(u16_format, 255 << 8, false);
+    params = calculateSoftThresholdParams(U16_YUV_FORMAT, 255 << 8, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0.011954308,
         .threshold_lower = 62716.94,
@@ -618,7 +455,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = true
-    params = calculateSoftThresholdParams(f32_format, 255, true);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 255, true);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0.0,
         .threshold_lower = 0.9607843,
@@ -627,7 +464,7 @@ test calculateSoftThresholdParams {
     }, params);
 
     // 32 bit - scalep = false
-    params = calculateSoftThresholdParams(f32_format, 255.0 / 255.0, false);
+    params = calculateSoftThresholdParams(F32_YUV_FORMAT, 255.0 / 255.0, false);
     try std.testing.expectEqualDeep(SoftThresholdParams{
         .bias = 0.0,
         .threshold_lower = 0.9607843,
@@ -635,3 +472,196 @@ test calculateSoftThresholdParams {
         .threshold_scale = 25.500002,
     }, params);
 }
+
+/// Treats a difference between `current` and `result` to a soft threshold.
+/// Meant to be used on concert with params calculated by calculateSoftThresholdParams().
+pub fn softThresholdDifference(comptime T: type, current: T, result: T, threshold_lower: f32, threshold_scale: f32, maximum: T) T {
+    const SAT = types.SignedArithmeticType(T);
+    const floatFromInt = types.floatFromInt;
+
+    const thresholded_result = if (types.isFloat(T)) blk: {
+        const weight = std.math.clamp(maximum - ((@abs(current - result) - threshold_lower) * threshold_scale), 0.0, 1.0);
+        break :blk current - ((current - result) * weight);
+    } else blk: {
+        const diff: SAT = @as(SAT, current) - result;
+        const absdiff: f32 = floatFromInt(f32, math.absDiff(result, current));
+        const maximumf: f32 = floatFromInt(f32, maximum);
+        const clamped_numerator = std.math.clamp(maximumf - ((absdiff - threshold_lower) * threshold_scale), 0.0, maximumf);
+        const weight = clamped_numerator / maximumf;
+        const weighted_diff: SAT = @intFromFloat(@round(floatFromInt(f32, diff) * weight));
+        break :blk current - weighted_diff;
+    };
+
+    return math.lossyCast(T, thresholded_result);
+}
+
+// TODO: Finish adding tests.
+// test softThresholdDifference {
+//     const params = calculateSoftThresholdParams(U8_YUV_FORMAT, 30, false);
+//
+//     // try std.testing.expectEqual(25, softThresholdDifference(u8, 10, 40, params.threshold_lower, params.threshold_scale, getFormatMaximum(u8, U8_YUV_FORMAT, false)));
+// }
+
+const U8_YUV_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 1,
+    .bitsPerSample = 8,
+
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.YUV,
+
+    .numPlanes = 3,
+    .subSamplingW = 2,
+    .subSamplingH = 2,
+};
+
+const U8_RGB_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 1,
+    .bitsPerSample = 8,
+
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.RGB,
+
+    .numPlanes = 3,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const U8_GRAY_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 1,
+    .bitsPerSample = 8,
+    .sampleType = vs.SampleType.Integer,
+    .colorFamily = vs.ColorFamily.Gray,
+    .numPlanes = 1,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const U10_YUV_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.YUV,
+    .bitsPerSample = 10,
+    .numPlanes = 3,
+    .subSamplingW = 2,
+    .subSamplingH = 2,
+};
+
+const U10_RGB_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.RGB,
+    .bitsPerSample = 10,
+    .numPlanes = 3,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const U10_GRAY_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .bitsPerSample = 10,
+    .sampleType = vs.SampleType.Integer,
+    .colorFamily = vs.ColorFamily.Gray,
+    .numPlanes = 1,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const U16_YUV_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.YUV,
+    .bitsPerSample = 16,
+    .numPlanes = 3,
+    .subSamplingW = 2,
+    .subSamplingH = 2,
+};
+
+const U16_RGB_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Integer,
+
+    .colorFamily = vs.ColorFamily.RGB,
+    .bitsPerSample = 16,
+    .numPlanes = 3,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const U16_GRAY_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .bitsPerSample = 16,
+    .sampleType = vs.SampleType.Integer,
+    .colorFamily = vs.ColorFamily.Gray,
+    .numPlanes = 1,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const F16_YUV_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Float,
+
+    .colorFamily = vs.ColorFamily.YUV,
+    .bitsPerSample = 16,
+    .numPlanes = 3,
+    .subSamplingW = 2,
+    .subSamplingH = 2,
+};
+
+const F16_RGB_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .sampleType = vs.SampleType.Float,
+
+    .colorFamily = vs.ColorFamily.RGB,
+    .bitsPerSample = 16,
+    .numPlanes = 3,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const F16_GRAY_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 2,
+    .bitsPerSample = 16,
+    .sampleType = vs.SampleType.Float,
+    .colorFamily = vs.ColorFamily.Gray,
+    .numPlanes = 1,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const F32_YUV_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 4,
+    .sampleType = vs.SampleType.Float,
+
+    .colorFamily = vs.ColorFamily.YUV,
+    .bitsPerSample = 32,
+    .numPlanes = 3,
+    .subSamplingW = 2,
+    .subSamplingH = 2,
+};
+
+const F32_RGB_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 4,
+    .sampleType = vs.SampleType.Float,
+
+    .colorFamily = vs.ColorFamily.RGB,
+    .bitsPerSample = 32,
+    .numPlanes = 3,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};
+
+const F32_GRAY_FORMAT = vs.VideoFormat{
+    .bytesPerSample = 4,
+    .bitsPerSample = 32,
+    .sampleType = vs.SampleType.Float,
+    .colorFamily = vs.ColorFamily.Gray,
+    .numPlanes = 1,
+    .subSamplingW = 0,
+    .subSamplingH = 0,
+};

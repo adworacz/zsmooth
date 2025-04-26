@@ -20,6 +20,21 @@ and explain (in detail) your needs and reasoning.
 ## Implemented Features/Functions
 Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for the current list, and up vote accordingly.
 
+## Table of Contents
+* [Function Documentation](#function-documentation)
+  * [Temporal Median](#temporal-median)
+  * [Temporal Soften](#temporal-soften)
+  * [RemoveGrain](#removegrain)
+  * [Repair](#repair)
+  * [VerticalCleaner](#verticalcleaner)
+  * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
+  * [FluxSmooth(S|ST)](#fluxsmoothsst)
+  * [DegrainMedian](#degrainmedian)
+* [Building](#building)
+   * [Native Builds](#native-builds)
+   * [Cross Compiling](#cross-compiling)
+* [References](#references)
+
 ## Function Documentation
 ### Temporal Median
 TemporalMedian is a temporal denoising filter. It replaces every pixel with the median of its temporal neighbourhood.

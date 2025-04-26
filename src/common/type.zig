@@ -98,3 +98,43 @@ test "Type max / min" {
 pub fn floatFromInt(comptime T: type, val: anytype) T {
     return @as(T, @floatFromInt(val));
 }
+
+/// Determines the minimal type that can be used to store
+/// the full value of T (which is expected to be unsigned for integers)
+/// without overflowing in signed arithmetic.
+pub fn SignedArithmeticType(comptime T: type) type {
+    return switch (T) {
+        u8 => i16,
+        u16 => i32,
+        f16 => f16,
+        f32 => f32,
+        else => unreachable,
+    };
+}
+
+/// Determines the minimal type to store unsigned values (particularly integers)
+/// without overflowing when doing most arithmetic.
+///
+/// Note that sometimes this type is not big enough, and thus wider types may be required.
+pub fn UnsignedArithmeticType(comptime T: type) type {
+    return switch (T) {
+        u8 => u16,
+        u16 => u32,
+        f16 => f16,
+        f32 => f32,
+        else => unreachable,
+    };
+}
+
+/// Similar to UnsignedArithmeticType, only bigger. Meant to handle
+/// operations where the original unsigned value may be multiplied muliple times
+/// over (and thus overflow on smaller types).
+pub fn BigUnsignedArithmeticType(comptime T: type) type {
+    return switch (T) {
+        u8 => u16,
+        u16 => u32,
+        f16 => f16,
+        f32 => f32,
+        else => unreachable,
+    };
+}

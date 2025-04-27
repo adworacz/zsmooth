@@ -54,9 +54,9 @@ fn DegrainMedian(comptime T: type) type {
 
     return struct {
         // Grid of scalar values
-        const GridS = Grid(T);
+        const GridS = Grid(T, 3);
         // Grid of vector values
-        const GridV = Grid(VT);
+        const GridV = Grid(VT, 3);
 
         // Note that `interlaced` is intentionally absent from this options
         // list. In my testing, having `interlaced` as a comptime known option

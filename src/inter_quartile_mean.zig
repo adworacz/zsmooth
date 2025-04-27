@@ -37,7 +37,7 @@ fn InterQuartileMean(comptime T: type) type {
     return struct {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
-        const Grid = gridcmn.Grid(T);
+        const Grid = gridcmn.Grid(T, 3);
 
         // Interquartile mean of 3x3 grid, including the center.
         fn iqm(grid: Grid) T {

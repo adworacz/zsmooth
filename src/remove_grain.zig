@@ -54,7 +54,7 @@ fn RemoveGrain(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        const Grid = gridcmn.Grid(T);
+        const Grid = gridcmn.Grid(T, 3);
 
         /// Every pixel is clamped to the lowest and highest values in the pixel's
         /// 3x3 neighborhood, center pixel not included.

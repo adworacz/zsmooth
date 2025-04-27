@@ -54,7 +54,7 @@ fn Repair(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        const Grid = gridcmn.Grid(T);
+        const Grid = gridcmn.Grid(T, 3);
 
         // Clamp the source pixel to the min/max of the repair pixels.
         fn repairMode1(src: T, grid: Grid) T {

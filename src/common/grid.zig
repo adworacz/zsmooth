@@ -276,13 +276,33 @@ pub fn Grid(comptime T: type, comptime side_length: comptime_int) type {
         }
 
         /// Creates an array of all pixels, including the center.
-        pub fn toArrayWithCenter(self: Self) [9]T {
-            return [9]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right };
+        pub fn toArrayWithCenter(self: Self) [side_length * side_length]T {
+            return switch (side_length) {
+                3 => [9]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_center, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right },
+                5 => [25]T{
+                    self.far_top_far_left,    self.far_top_left,    self.far_top_center,    self.far_top_right,    self.far_top_far_right,
+                    self.top_far_left,        self.top_left,        self.top_center,        self.top_right,        self.top_far_right,
+                    self.center_far_left,     self.center_left,     self.center_center,     self.center_right,     self.center_far_right,
+                    self.bottom_far_left,     self.bottom_left,     self.bottom_center,     self.bottom_right,     self.bottom_far_right,
+                    self.far_bottom_far_left, self.far_bottom_left, self.far_bottom_center, self.far_bottom_right, self.far_bottom_far_right,
+                },
+                else => unreachable,
+            };
         }
 
         /// Creates an array of all pixels, excluding the center.
-        pub fn toArrayWithoutCenter(self: Self) [8]T {
-            return [8]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right };
+        pub fn toArrayWithoutCenter(self: Self) [(side_length * side_length) - 1]T {
+            return switch (side_length) {
+                3 => [8]T{ self.top_left, self.top_center, self.top_right, self.center_left, self.center_right, self.bottom_left, self.bottom_center, self.bottom_right },
+                5 => [24]T{
+                    self.far_top_far_left, self.far_top_left,      self.far_top_center,   self.far_top_right,        self.far_top_far_right,
+                    self.top_far_left,     self.top_left,          self.top_center,       self.top_right,            self.top_far_right,
+                    self.center_far_left,  self.center_left,       self.center_right,     self.center_far_right,     self.bottom_far_left,
+                    self.bottom_left,      self.bottom_center,     self.bottom_right,     self.bottom_far_right,     self.far_bottom_far_left,
+                    self.far_bottom_left,  self.far_bottom_center, self.far_bottom_right, self.far_bottom_far_right,
+                },
+                else => unreachable,
+            };
         }
 
         /// Sorts all pixels, excluding the center.

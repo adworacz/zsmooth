@@ -7,7 +7,7 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-mode = 1
+mode = 2
 length = 30000
 
 if is_preview():
@@ -38,25 +38,6 @@ match format:
 # clip = clip.resize.Lanczos(720, 480)
 
 clip.set_output(0)
-
-
-# if (format not in ['f16', 'f32']):
-# if (get_sample_type(clip) == vs.INTEGER):
-#     if mode == 1: 
-#         rg = clip.rgvs.Clense()
-#     elif mode == 2:
-#         rg = clip.rgvs.ForwardClense()
-#     else:
-#         rg = clip.rgvs.BackwardClense()
-#
-# else:
-#     # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-#     if mode == 1: 
-#         rg = clip.rgsf.Clense()
-#     elif mode == 2:
-#         rg = clip.rgsf.ForwardClense()
-#     else:
-#         rg = clip.rgsf.BackwardClense()
 
 zsmooth = clip.zsmooth.InterQuartileMean(mode)
 

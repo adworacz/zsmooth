@@ -47,40 +47,110 @@ pub fn Grid(comptime T: type, comptime side_length: comptime_int) type {
         /// where the vector type is T, but from a slice of pixels which have type R.
         // TODO: Rename to `initFromTopLeft`
         pub fn init(comptime R: type, slice: []const R, stride: usize) Self {
-            if (side_length != 3) {
-                @compileError("Grid.init is currently only implemented for side length 3");
-            }
+            return switch (comptime side_length) {
+                3 => {
+                    // Vector
+                    if (@typeInfo(T) == .Vector) {
+                        return Self{
+                            .top_left = vec.load(T, slice, 0),
+                            .top_center = vec.load(T, slice, 1),
+                            .top_right = vec.load(T, slice, 2),
 
-            // Vector
-            if (@typeInfo(T) == .Vector) {
-                return Self{
-                    .top_left = vec.load(T, slice, 0),
-                    .top_center = vec.load(T, slice, 1),
-                    .top_right = vec.load(T, slice, 2),
+                            .center_left = vec.load(T, slice, stride),
+                            .center_center = vec.load(T, slice, stride + 1),
+                            .center_right = vec.load(T, slice, stride + 2),
 
-                    .center_left = vec.load(T, slice, stride),
-                    .center_center = vec.load(T, slice, stride + 1),
-                    .center_right = vec.load(T, slice, stride + 2),
+                            .bottom_left = vec.load(T, slice, (stride * 2)),
+                            .bottom_center = vec.load(T, slice, (stride * 2) + 1),
+                            .bottom_right = vec.load(T, slice, (stride * 2) + 2),
+                        };
+                    }
 
-                    .bottom_left = vec.load(T, slice, (stride * 2)),
-                    .bottom_center = vec.load(T, slice, (stride * 2) + 1),
-                    .bottom_right = vec.load(T, slice, (stride * 2) + 2),
-                };
-            }
+                    // Scalar
+                    return Self{
+                        .top_left = slice[0],
+                        .top_center = slice[1],
+                        .top_right = slice[2],
 
-            // Scalar
-            return Self{
-                .top_left = slice[0],
-                .top_center = slice[1],
-                .top_right = slice[2],
+                        .center_left = slice[stride..][0],
+                        .center_center = slice[stride..][1],
+                        .center_right = slice[stride..][2],
 
-                .center_left = slice[stride..][0],
-                .center_center = slice[stride..][1],
-                .center_right = slice[stride..][2],
+                        .bottom_left = slice[stride * 2 ..][0],
+                        .bottom_center = slice[stride * 2 ..][1],
+                        .bottom_right = slice[stride * 2 ..][2],
+                    };
+                },
+                5 => {
+                    // Vector
+                    if (@typeInfo(T) == .Vector) {
+                        return Self{
+                            .far_top_far_left = vec.load(T, slice, 0),
+                            .far_top_left = vec.load(T, slice, 1),
+                            .far_top_center = vec.load(T, slice, 2),
+                            .far_top_right = vec.load(T, slice, 3),
+                            .far_top_far_right = vec.load(T, slice, 4),
 
-                .bottom_left = slice[stride * 2 ..][0],
-                .bottom_center = slice[stride * 2 ..][1],
-                .bottom_right = slice[stride * 2 ..][2],
+                            .top_far_left = vec.load(T, slice, stride),
+                            .top_left = vec.load(T, slice, stride + 1),
+                            .top_center = vec.load(T, slice, stride + 2),
+                            .top_right = vec.load(T, slice, stride + 3),
+                            .top_far_right = vec.load(T, slice, stride + 4),
+
+                            .center_far_left = vec.load(T, slice, stride * 2),
+                            .center_left = vec.load(T, slice, stride * 2 + 1),
+                            .center_center = vec.load(T, slice, stride * 2 + 2),
+                            .center_right = vec.load(T, slice, stride * 2 + 3),
+                            .center_far_right = vec.load(T, slice, stride * 2 + 4),
+
+                            .bottom_far_left = vec.load(T, slice, (stride * 3)),
+                            .bottom_left = vec.load(T, slice, (stride * 3) + 1),
+                            .bottom_center = vec.load(T, slice, (stride * 3) + 2),
+                            .bottom_right = vec.load(T, slice, (stride * 3) + 3),
+                            .bottom_far_right = vec.load(T, slice, (stride * 3) + 4),
+
+                            .far_bottom_far_left = vec.load(T, slice, (stride * 4)),
+                            .far_bottom_left = vec.load(T, slice, (stride * 4) + 1),
+                            .far_bottom_center = vec.load(T, slice, (stride * 4) + 2),
+                            .far_bottom_right = vec.load(T, slice, (stride * 4) + 3),
+                            .far_bottom_far_right = vec.load(T, slice, (stride * 4) + 4),
+                        };
+                    }
+
+                    // Scalar
+                    return Self{
+                        .far_top_far_left = slice[0],
+                        .far_top_left = slice[1],
+                        .far_top_center = slice[2],
+                        .far_top_right = slice[3],
+                        .far_top_far_right = slice[4],
+
+                        .top_far_left = slice[stride..][0],
+                        .top_left = slice[stride..][1],
+                        .top_center = slice[stride..][2],
+                        .top_right = slice[stride..][3],
+                        .top_far_right = slice[stride..][4],
+
+                        .center_far_left = slice[stride * 2 ..][0],
+                        .center_left = slice[stride * 2 ..][1],
+                        .center_center = slice[stride * 2 ..][2],
+                        .center_right = slice[stride * 2 ..][3],
+                        .center_far_right = slice[stride * 2 ..][4],
+
+                        .bottom_far_left = slice[stride * 3 ..][0],
+                        .bottom_left = slice[stride * 3 ..][1],
+                        .bottom_center = slice[stride * 3 ..][2],
+                        .bottom_right = slice[stride * 3 ..][3],
+                        .bottom_far_right = slice[stride * 3 ..][4],
+
+                        .far_bottom_far_left = slice[stride * 4 ..][0],
+                        .far_bottom_left = slice[stride * 4 ..][1],
+                        .far_bottom_center = slice[stride * 4 ..][2],
+                        .far_bottom_right = slice[stride * 4 ..][3],
+                        .far_bottom_far_right = slice[stride * 4 ..][4],
+                    };
+                },
+                else => unreachable,
             };
         }
 
@@ -360,7 +430,7 @@ pub fn Grid(comptime T: type, comptime side_length: comptime_int) type {
     };
 }
 
-test "Grid init" {
+test "Grid3 init" {
     const T = u8;
     const data = [9]T{
         0, 1, 2, //
@@ -381,6 +451,49 @@ test "Grid init" {
     try std.testing.expectEqual(6, grid.bottom_left);
     try std.testing.expectEqual(7, grid.bottom_center);
     try std.testing.expectEqual(8, grid.bottom_right);
+}
+
+test "Grid5 init" {
+    const T = u8;
+    const data = [25]T{
+        0,  1,  2,  3,  4,
+        5,  6,  7,  8,  9,
+        10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19,
+        20, 21, 22, 23, 24,
+    };
+
+    const grid = Grid(T, 5).init(T, &data, 5);
+
+    try std.testing.expectEqual(0, grid.far_top_far_left);
+    try std.testing.expectEqual(1, grid.far_top_left);
+    try std.testing.expectEqual(2, grid.far_top_center);
+    try std.testing.expectEqual(3, grid.far_top_right);
+    try std.testing.expectEqual(4, grid.far_top_far_right);
+
+    try std.testing.expectEqual(5, grid.top_far_left);
+    try std.testing.expectEqual(6, grid.top_left);
+    try std.testing.expectEqual(7, grid.top_center);
+    try std.testing.expectEqual(8, grid.top_right);
+    try std.testing.expectEqual(9, grid.top_far_right);
+
+    try std.testing.expectEqual(10, grid.center_far_left);
+    try std.testing.expectEqual(11, grid.center_left);
+    try std.testing.expectEqual(12, grid.center_center);
+    try std.testing.expectEqual(13, grid.center_right);
+    try std.testing.expectEqual(14, grid.center_far_right);
+
+    try std.testing.expectEqual(15, grid.bottom_far_left);
+    try std.testing.expectEqual(16, grid.bottom_left);
+    try std.testing.expectEqual(17, grid.bottom_center);
+    try std.testing.expectEqual(18, grid.bottom_right);
+    try std.testing.expectEqual(19, grid.bottom_far_right);
+
+    try std.testing.expectEqual(20, grid.far_bottom_far_left);
+    try std.testing.expectEqual(21, grid.far_bottom_left);
+    try std.testing.expectEqual(22, grid.far_bottom_center);
+    try std.testing.expectEqual(23, grid.far_bottom_right);
+    try std.testing.expectEqual(24, grid.far_bottom_far_right);
 }
 
 test "Grid initFromCenter" {

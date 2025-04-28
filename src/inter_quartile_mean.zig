@@ -37,10 +37,11 @@ fn InterQuartileMean(comptime T: type) type {
     return struct {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
-        const Grid = gridcmn.Grid(T, 3);
+        const Grid3 = gridcmn.Grid(T, 3);
+        const Grid5 = gridcmn.Grid(T, 5);
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm(grid: Grid) T {
+        fn iqm3(grid: Grid3) T {
             const sorted = grid.sortWithCenter();
 
             // Trim the first and last quartile, then average the inner quartiles
@@ -64,70 +65,100 @@ fn InterQuartileMean(comptime T: type) type {
             else
                 ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
 
-            // Round result for integers, take float as is.
             return result;
         }
 
-        test iqm {
+        fn iqm5(grid: Grid5) T {
+            const sorted = grid.sortWithCenter();
+
+            // Trim the first and last quartile, then average the inner quartiles
+            // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
+
+            const result: T = if (types.isInt(T))
+                // Note that the use of ".. + 2) / 4" and ".. + 4) / 9" is to ensure proper rounding in integer division.
+                @intCast((((@as(UAT, sorted[7]) + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((((@as(UAT, sorted[6]) + sorted[18]) * 3) + 2) / 4)) * 2 + 12) / 25)
+            else
+                ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((sorted[6] + sorted[8]) * 0.75)) / 12.5;
+
+            return result;
+        }
+
+        test iqm3 {
             var data = [9]T{
                 9, 8, 7,
                 6, 5, 4,
                 3, 2, 1,
             };
 
-            var grid = Grid.init(T, &data, 3);
+            var grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(5, iqm(grid));
+            try testing.expectEqual(5, iqm3(grid));
 
             data = [9]T{
                 1, 1,  3,
                 3, 7,  8,
                 9, 99, 99,
             };
-            grid = Grid.init(T, &data, 3);
+            grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(6, iqm(grid));
+            try testing.expectEqual(6, iqm3(grid));
         }
 
-        fn interQuartileMean(mode: comptime_int, grid: Grid) T {
+        fn interQuartileMean(mode: comptime_int, grid: anytype) T {
             return switch (mode) {
-                1 => iqm(grid),
+                1 => iqm3(@as(Grid3, grid)),
+                2 => iqm5(@as(Grid5, grid)),
                 else => unreachable,
             };
         }
 
-        pub fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
-            // Process top row with mirrored grid.
-            for (0..width) |column| {
-                const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
-                dstp[(0 * stride) + column] = interQuartileMean(mode, grid);
+        pub fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            const Grid = switch (comptime radius) {
+                1 => Grid3,
+                2 => Grid5,
+                else => unreachable,
+            };
+
+            // Process top rows with mirrored grid.
+            for (0..radius) |row| {
+                for (0..width) |column| {
+                    const grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMean(radius, grid);
+                }
             }
 
-            for (1..height - 1) |row| {
-                // Process first pixel of the row with mirrored grid.
-                const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
-                dstp[(row * stride)] = interQuartileMean(mode, gridFirst);
+            for (radius..height - radius) |row| {
+                // Process first pixels of the row with mirrored grid.
+                for (0..radius) |column| {
+                    const gridFirst = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMean(radius, gridFirst);
+                }
 
-                for (1..width - 1) |w| {
-                    const rowCurr = ((row) * stride);
-                    const top_left = ((row - 1) * stride) + w - 1;
+                for (radius..width - radius) |column| {
+                    const top_left = ((row - radius) * stride) + column - radius;
 
                     // Use a non-mirrored grid everywhere else for maximum performance.
                     // We don't need the mirror effect anyways, as all pixels contain valid data.
                     const grid = Grid.init(T, srcp[top_left..], stride);
 
-                    dstp[rowCurr + w] = interQuartileMean(mode, grid);
+                    dstp[(row * stride) + column] = interQuartileMean(radius, grid);
                 }
 
                 // Process last pixel of the row with mirrored grid.
-                const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
-                dstp[(row * stride) + (width - 1)] = interQuartileMean(mode, gridLast);
+                for (width - radius..width) |column| {
+                    const gridLast = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMean(radius, gridLast);
+                }
             }
 
-            // Process bottom row with mirrored grid.
-            for (0..width) |column| {
-                const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
-                dstp[((height - 1) * stride) + column] = interQuartileMean(mode, grid);
+            // Process bottom rows with mirrored grid.
+            for (height - radius..height) |row| {
+                for (0..width) |column| {
+                    const grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMean(radius, grid);
+                }
             }
         }
 
@@ -166,7 +197,7 @@ fn InterQuartileMean(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (d.modes[_plane]) {
-                        inline 1 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride),
+                        inline 1...2 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride),
                         else => unreachable,
                     }
                 }
@@ -195,6 +226,7 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
 
     d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
     d.vi = vsapi.?.getVideoInfo.?(d.node);
+    //TODO: Rename "mode" to "radius"
 
     const numModes = vsapi.?.mapNumElements.?(in, "mode");
     if (numModes > d.vi.format.numPlanes) {
@@ -207,7 +239,7 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
         if (i < numModes) {
             if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
                 if (mode < 0 or mode > 24) {
-                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid mode specified, only modes 0-1 supported.");
+                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid mode specified, only modes 0-2 supported.");
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }

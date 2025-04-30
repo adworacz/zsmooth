@@ -11,6 +11,7 @@ const vec = @import("common/vector.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
+const ZAPI = vapoursynth.ZAPI;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -35,8 +36,8 @@ const TemporalSoftenData = struct {
     radius: i8,
     threshold: [3]f32,
     scenechange: u8,
-    scenechange_prop_prev: []const u8,
-    scenechange_prop_next: []const u8,
+    scenechange_prop_prev: [:0]const u8,
+    scenechange_prop_next: [:0]const u8,
 
     process: [3]bool,
 };

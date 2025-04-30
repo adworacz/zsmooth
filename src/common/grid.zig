@@ -26,7 +26,7 @@ pub fn Grid(comptime T: type) type {
         // TODO: Rename to `initFromTopLeft`
         pub fn init(comptime R: type, slice: []const R, stride: usize) Self {
             // Vector
-            if (@typeInfo(T) == .Vector) {
+            if (@typeInfo(T) == .vector) {
                 return Self{
                     .top_left = vec.load(T, slice, 0),
                     .top_center = vec.load(T, slice, 1),
@@ -116,7 +116,7 @@ pub fn Grid(comptime T: type) type {
         /// so as to ensure we're loading data from the same field instead of blending two fields together.
         pub fn initInterlaced(comptime R: type, slice: []const R, stride: u32) Self {
             // Vector
-            if (@typeInfo(T) == .Vector) {
+            if (@typeInfo(T) == .vector) {
                 return Self{
                     .top_left = vec.load(T, slice, 0),
                     .top_center = vec.load(T, slice, 1),

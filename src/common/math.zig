@@ -14,43 +14,43 @@ const types = @import("./type.zig");
 /// version.
 pub fn lossyCast(comptime T: type, value: anytype) T {
     switch (@typeInfo(T)) {
-        .Float => {
+        .float => {
             switch (@typeInfo(@TypeOf(value))) {
-                .Int => return @as(T, @floatFromInt(value)),
-                .Float => return @as(T, @floatCast(value)),
-                .ComptimeInt => return @as(T, value),
-                .ComptimeFloat => return @as(T, value),
+                .int => return @as(T, @floatFromInt(value)),
+                .float => return @as(T, @floatCast(value)),
+                .comptime_int => return @as(T, value),
+                .comptime_float => return @as(T, value),
                 else => @compileError("bad type"),
             }
         },
-        .Int => {
+        .int => {
             switch (@typeInfo(@TypeOf(value))) {
-                .Int, .ComptimeInt => {
+                .int, .comptime_int => {
                     return @as(T, @intCast(value));
                 },
-                .Float, .ComptimeFloat => {
+                .float, .comptime_float => {
                     return @as(T, @intFromFloat(value));
                 },
                 else => @compileError("bad type"),
             }
         },
-        .Vector => {
-            switch (@typeInfo(@typeInfo(T).Vector.child)) {
-                .Float => {
-                    switch (@typeInfo(@typeInfo(@TypeOf(value)).Vector.child)) {
-                        .Int => return @as(T, @floatFromInt(value)),
-                        .Float => return @as(T, @floatCast(value)),
-                        .ComptimeInt => return @as(T, value),
-                        .ComptimeFloat => return @as(T, value),
+        .vector => {
+            switch (@typeInfo(@typeInfo(T).vector.child)) {
+                .float => {
+                    switch (@typeInfo(@typeInfo(@TypeOf(value)).vector.child)) {
+                        .int => return @as(T, @floatFromInt(value)),
+                        .float => return @as(T, @floatCast(value)),
+                        .comptime_int => return @as(T, value),
+                        .comptime_float => return @as(T, value),
                         else => @compileError("bad type"),
                     }
                 },
-                .Int => {
-                    switch (@typeInfo(@typeInfo(@TypeOf(value)).Vector.child)) {
-                        .Int, .ComptimeInt => {
+                .int => {
+                    switch (@typeInfo(@typeInfo(@TypeOf(value)).vector.child)) {
+                        .int, .comptime_int => {
                             return @as(T, @intCast(value));
                         },
-                        .Float, .ComptimeFloat => {
+                        .float, .comptime_float => {
                             return @as(T, @intFromFloat(value));
                         },
                         else => @compileError("bad type"),

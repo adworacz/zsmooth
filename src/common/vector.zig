@@ -3,14 +3,14 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 /// Loads a vector of type VT from the specific offset memory address.
-pub fn load(comptime VT: type, src: []const @typeInfo(VT).Vector.child, offset: usize) VT {
-    return src[offset..][0..@typeInfo(VT).Vector.len].*;
+pub fn load(comptime VT: type, src: []const @typeInfo(VT).vector.child, offset: usize) VT {
+    return src[offset..][0..@typeInfo(VT).vector.len].*;
 }
 
 /// Stores vector data into memory at a given offset.
-pub fn store(comptime VT: type, _dst: []@typeInfo(VT).Vector.child, offset: usize, result: VT) void {
-    var dst: []@typeInfo(VT).Vector.child = @ptrCast(@alignCast(_dst));
-    inline for (dst[offset..][0..@typeInfo(VT).Vector.len], 0..) |*d, i| {
+pub fn store(comptime VT: type, _dst: []@typeInfo(VT).vector.child, offset: usize, result: VT) void {
+    var dst: []@typeInfo(VT).vector.child = @ptrCast(@alignCast(_dst));
+    inline for (dst[offset..][0..@typeInfo(VT).vector.len], 0..) |*d, i| {
         d.* = result[i];
     }
 }
@@ -19,8 +19,8 @@ pub fn store(comptime VT: type, _dst: []@typeInfo(VT).Vector.child, offset: usiz
 pub fn minFast(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
     // Use a fast vector trick for floating point vectors,
     // otherwise use the builtin @min
-    if (@typeInfo(@TypeOf(v0)) == .Vector and (@typeInfo(@TypeOf(v0)).Vector.child == f32 or @typeInfo(@TypeOf(v0)).Vector.child == f16)) {
-        return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 < v1, v0, v1);
+    if (@typeInfo(@TypeOf(v0)) == .vector and (@typeInfo(@TypeOf(v0)).vector.child == f32 or @typeInfo(@TypeOf(v0)).vector.child == f16)) {
+        return @select(@typeInfo(@TypeOf(v0)).vector.child, v0 < v1, v0, v1);
     }
     return @min(v0, v1);
 }
@@ -28,8 +28,8 @@ pub fn minFast(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
 pub fn maxFast(v0: anytype, v1: anytype) @TypeOf(v0, v1) {
     // Use a fast vector trick for floating point vectors,
     // otherwise use the builtin @max
-    if (@typeInfo(@TypeOf(v0)) == .Vector and (@typeInfo(@TypeOf(v0)).Vector.child == f32 or @typeInfo(@TypeOf(v0)).Vector.child == f16)) {
-        return @select(@typeInfo(@TypeOf(v0)).Vector.child, v0 > v1, v0, v1);
+    if (@typeInfo(@TypeOf(v0)) == .vector and (@typeInfo(@TypeOf(v0)).vector.child == f32 or @typeInfo(@TypeOf(v0)).vector.child == f16)) {
+        return @select(@typeInfo(@TypeOf(v0)).vector.child, v0 > v1, v0, v1);
     }
     return @max(v0, v1);
 }
@@ -48,10 +48,10 @@ pub fn clampFast(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax
 /// included only to avoid collisions with the zig keyword 'and'.
 ///
 /// Reference: https://github.com/ziglang/zig/issues/14306#issuecomment-1626892042
-pub fn andB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).Vector.len, bool) {
-    assert(@typeInfo(@TypeOf(v0)).Vector.len == @typeInfo(@TypeOf(v1)).Vector.len);
-    assert(@typeInfo(@TypeOf(v0)).Vector.child == bool);
-    assert(@typeInfo(@TypeOf(v1)).Vector.child == bool);
+pub fn andB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).vector.len, bool) {
+    assert(@typeInfo(@TypeOf(v0)).vector.len == @typeInfo(@TypeOf(v1)).vector.len);
+    assert(@typeInfo(@TypeOf(v0)).vector.child == bool);
+    assert(@typeInfo(@TypeOf(v1)).vector.child == bool);
 
     return @select(bool, v0, v1, v0);
 }
@@ -66,16 +66,16 @@ pub fn andB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).Vector.len,
 /// included only to avoid collisions with the zig keyword 'and'.
 ///
 /// Reference: https://github.com/ziglang/zig/issues/14306#issuecomment-1626892042
-pub fn orB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).Vector.len, bool) {
-    assert(@typeInfo(@TypeOf(v0)).Vector.len == @typeInfo(@TypeOf(v1)).Vector.len);
-    assert(@typeInfo(@TypeOf(v0)).Vector.child == bool);
-    assert(@typeInfo(@TypeOf(v1)).Vector.child == bool);
+pub fn orB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).vector.len, bool) {
+    assert(@typeInfo(@TypeOf(v0)).vector.len == @typeInfo(@TypeOf(v1)).vector.len);
+    assert(@typeInfo(@TypeOf(v0)).vector.child == bool);
+    assert(@typeInfo(@TypeOf(v1)).vector.child == bool);
 
     return @select(bool, v0, v0, v1);
 }
 
 /// Gets a pertinent vector size for the given type based on the compilation target.
-// TODO: Rename to getVectorLength, and rename all vec_size variables to vector_len
+// TODO: Rename to getvectorLength, and rename all vec_size variables to vector_len
 pub inline fn getVecSize(comptime T: type) comptime_int {
     if (std.simd.suggestVectorLength(T)) |suggested| {
         return suggested;

@@ -3,8 +3,8 @@ const std = @import("std");
 pub inline fn isFloat(comptime T: type) bool {
     const type_info = @typeInfo(T);
     return switch (type_info) {
-        .Float, .ComptimeFloat => true,
-        .Vector => isFloat(type_info.Vector.child),
+        .float, .comptime_float => true,
+        .vector => isFloat(type_info.vector.child),
         else => false,
     };
 }
@@ -23,8 +23,8 @@ test isFloat {
 pub inline fn isInt(comptime T: type) bool {
     const type_info = @typeInfo(T);
     return switch (type_info) {
-        .Int, .ComptimeInt => true,
-        .Vector => isInt(type_info.Vector.child),
+        .int, .comptime_int => true,
+        .vector => isInt(type_info.vector.child),
         else => false,
     };
 }
@@ -41,7 +41,7 @@ test isInt {
 }
 
 pub inline fn isVector(comptime T: type) bool {
-    return @typeInfo(T) == .Vector;
+    return @typeInfo(T) == .vector;
 }
 
 test isVector {

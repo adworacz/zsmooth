@@ -27,7 +27,7 @@ const { values: cliArgs } = parseArgs({
   }
 })
 
-const DEFAULT_NUM_FRAMES = Math.round(1000 * Number.parseFloat(cliArgs['frame-count-scale']))
+const DEFAULT_NUM_FRAMES = Math.round(2000 * Number.parseFloat(cliArgs['frame-count-scale']))
 const ITERATIONS = 3
 
 type Benchmarks = {

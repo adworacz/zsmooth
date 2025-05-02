@@ -14,16 +14,16 @@ if is_preview():
 length = 30000
 match format:
     case 'u8':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
-        # clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P8, color=[255, 128, 128], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P8, color=[255, 128, 128], length=length)
     case 'u16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48, length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P16, color=[255, 128, 128], length=length)
     case 'f16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH, length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PH, color=[1.0, 0, 0], length=length)
     case 'f32':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PS, color=[1.0, 0, 0], length=length)
     case _:
-        clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)

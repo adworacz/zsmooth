@@ -16,7 +16,7 @@ if is_preview():
     output = 'all'
     function = 'FluxSmoothT'
 
-length = 3000
+length = 30000
 match format:
     case 'u8':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, length=length)

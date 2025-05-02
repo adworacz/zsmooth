@@ -393,15 +393,29 @@ const headers = [
   'Median',
   'Average',
   'Standard Deviation',
-].join(',')
-const entries = results.reduce(
+]
+
+const csvHeaders = headers.join(',')
+const csvEntries = results.reduce(
   (accum, result) =>
     `${accum}"${result.filter}", "${result.plugin}", "${result.format}", "${result.args}", ${result.min}, ${result.max}, ${result.median}, ${result.average}, ${result.stdDev}\n`,
   '',
 )
 
+const markdownHeaders = `| ${headers.join(' | ')} |`
+const markdownTableSeperator = `| ${headers.map(() => ':---: |').join(' ')}`
+const markdownEntries = results.reduce(
+  (accum, result) =>
+    `${accum}| ${result.filter} | ${result.plugin} | ${result.format} | ${result.args} | ${result.min} | ${result.max} | ${result.median} | ${result.average} | ${result.stdDev} |\n`,
+  '',
+)
 
-const benchmarkResultsFilename = 'benchmark_results.csv'
 
-console.log(`Writing resuls to ${benchmarkResultsFilename}`)
-Bun.write(benchmarkResultsFilename, `${headers}\n${entries}`)
+const benchmarkResultsCsvFilename = 'benchmark_results.csv'
+const benchmarkResultsMarkdownFilename = 'benchmark_results.md'
+
+console.log(`Writing resuls to ${benchmarkResultsCsvFilename}`)
+Bun.write(benchmarkResultsCsvFilename, `${csvHeaders}\n${csvEntries}`)
+
+console.log(`Writing resuls to ${benchmarkResultsMarkdownFilename}`)
+Bun.write(benchmarkResultsMarkdownFilename, `${markdownHeaders}\n${markdownTableSeperator}\n${markdownEntries}`)

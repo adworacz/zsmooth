@@ -11,7 +11,7 @@ if is_preview():
 
 # format = 'u8'
 
-length = 3000
+length = 30000
 match format:
     case 'u8':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, length=length)
@@ -35,18 +35,20 @@ clip.set_output(0)
 
 
 if format not in ['f16', 'f32']:
-    cppsoften = clip.focus2.TemporalSoften2(radius=radius)
+    focus2 = clip.focus2.TemporalSoften2(radius=radius)
 
 zsmooth = clip.zsmooth.TemporalSoften(radius=radius);
 
 match output:
-    case 'tsoften2':
-        cppsoften.set_output()
+    case 'focus2':
+        focus2.set_output()
     case 'zsmooth':
         zsmooth.set_output()
-    case _:
+    case 'all':
         clip.set_output(0)
-        cppsoften.set_output(1)
+        focus2.set_output(1)
         zsmooth.set_output(2)
+    case _:
+        raise f"Unrecognized output type: {output}"
 
 

@@ -1,5 +1,5 @@
 import vapoursynth as vs
-from vstools import depth, get_depth
+from vstools import depth, get_depth, get_sample_type
 from vspreview.api import is_preview
 
 core = vs.core
@@ -14,6 +14,7 @@ threshold = 20
 
 if is_preview():
     output = 'all'
+    function = 'FluxSmoothT'
 
 length = 3000
 match format:
@@ -37,23 +38,27 @@ match format:
 
 clip.set_output(0)
 
-if format not in ['f16', 'f32'] and get_depth(clip) != 32:
-    flux = clip.flux.SmoothT(temporal_threshold=threshold)
-    # flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
+if get_sample_type(clip) == vs.INTEGER:
+    if function == 'FluxSmoothT':
+        flux = clip.flux.SmoothT(temporal_threshold=threshold)
+    else: 
+        flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
 
-zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);
-# zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=threshold, spatial_threshold=threshold)
-# zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=1, spatial_threshold=-1);
+if function == 'FluxSmoothT':
+    zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);
+else:
+    zsmooth = clip.zsmooth.FluxSmoothST(scalep=True, temporal_threshold=threshold, spatial_threshold=threshold)
 
 match output:
     case 'flux':
         flux.set_output()
     case 'zsmooth':
         zsmooth.set_output()
-    case _:
+    case 'all':
         clip.set_output(0)
-        if get_depth(clip) != 32:
+        if get_sample_type(clip) == vs.INTEGER:
             flux.set_output(1)
         zsmooth.set_output(2)
-
+    case _:
+        raise f"Unrecognized output type: {output}"
 

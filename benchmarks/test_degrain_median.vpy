@@ -1,5 +1,5 @@
 import vapoursynth as vs
-from vstools import depth
+from vstools import depth, get_sample_type
 from vspreview.api import is_preview
 
 core = vs.core
@@ -8,10 +8,11 @@ core.num_threads = 1
 
 if is_preview():
     output = 'all'
-limit = 4
-mode = 0
+    mode = 0
+
 interlaced = False
 norow = False
+limit = 4
 #format = 'u8'
 
 length = 3000
@@ -39,7 +40,7 @@ match format:
 
 clip.set_output(0)
 
-if (format not in ['f16', 'f32']):
+if get_sample_type(clip) == vs.INTEGER:
     dgm = clip.dgm.DegrainMedian(limit=limit, mode=mode, interlaced=interlaced, norow=norow)
 
 zsmooth = clip.zsmooth.DegrainMedian(limit=limit, mode=mode, scalep=True, interlaced=interlaced, norow=norow)
@@ -53,3 +54,5 @@ match output:
         clip.set_output(0)
         dgm.set_output(1)
         zsmooth.set_output(2)
+    case _:
+        raise f"Unrecognized output type: {output}"

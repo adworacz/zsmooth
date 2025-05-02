@@ -6,10 +6,11 @@ core = vs.core
 core.max_cache_size = 1024
 core.num_threads = 1
 
-mode = 1
-length = 3000
+# mode = 1
+length = 30000
 
 if is_preview():
+    mode = "1"
     output = 'all'
 
 match format:
@@ -43,13 +44,13 @@ else:
     # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
     rg = clip.rgsf.RemoveGrain(mode)
 
-if mode == 4:
+if mode == "4":
     std = clip.std.Median()
-if mode in [11, 12]:
+if mode in ["11", "12"]:
     std = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
-if mode == 19:
+if mode == "19":
     std = clip.std.Convolution(matrix=[1, 1, 1, 1, 0, 1, 1, 1, 1])
-if mode == 20:
+if mode == "20":
     std = clip.std.Convolution(matrix=[1, 1, 1, 1, 1, 1, 1, 1, 1])
 
 zsmooth = clip.zsmooth.RemoveGrain(mode)
@@ -59,12 +60,16 @@ match output:
         zsmooth.set_output()
     case 'rg':
         rg.set_output()
+    case 'std':
+        std.set_output()
     case 'all':
         clip.set_output(0)
         rg.set_output(1)
-        if mode in [4, 11, 12, 19, 20]:
+        if mode in ["4", "11", "12", "19", "20"]:
             std.set_output(2)
         zsmooth.set_output(3)
+    case _:
+        raise f"Unrecognized output type: {output}"
 
 
 

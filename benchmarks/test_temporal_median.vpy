@@ -11,7 +11,7 @@ if is_preview():
     output = 'all'
 #format = 'u8'
 
-length = 3000
+length = 30000
 match format:
     case 'u8':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
@@ -36,8 +36,10 @@ match format:
 clip.set_output(0)
 
 if format != 'f16':
-    tmedian = clip.tmedian.TemporalMedian(radius=radius)
-    neo = clip.neo_tmedian.TemporalMedian(radius=radius)
+    if output in ['tmedian', 'all']:
+        tmedian = clip.tmedian.TemporalMedian(radius=radius)
+    if output in ['neo_tmedian', 'all']:
+        neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 
 zsmooth = clip.zsmooth.TemporalMedian(radius=radius)
 
@@ -46,10 +48,12 @@ match output:
         zsmooth.set_output()
     case 'tmedian':
         tmedian.set_output()
-    case 'neo':
+    case 'neo_tmedian':
         neo.set_output()
     case 'all':
-        clip.set_output(0)
         tmedian.set_output(1)
         zsmooth.set_output(2)
         neo.set_output(3)
+    case _:
+        raise f"Unrecognized output type: {output}"
+    

@@ -7,10 +7,10 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 #format = 'u8'
-mode = 1
 length = 30000
 
 if is_preview():
+    mode=1
     output = 'all'
 
 match format:
@@ -58,4 +58,6 @@ match output:
         clip.set_output(0)
         rg.set_output(1)
         zsmooth.set_output(2)
+    case _:
+        raise f"Unrecognized output type: {output}"
 

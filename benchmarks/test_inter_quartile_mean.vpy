@@ -39,34 +39,14 @@ match format:
 
 clip.set_output(0)
 
-
-# if (format not in ['f16', 'f32']):
-# if (get_sample_type(clip) == vs.INTEGER):
-#     if mode == 1: 
-#         rg = clip.rgvs.Clense()
-#     elif mode == 2:
-#         rg = clip.rgvs.ForwardClense()
-#     else:
-#         rg = clip.rgvs.BackwardClense()
-#
-# else:
-#     # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-#     if mode == 1: 
-#         rg = clip.rgsf.Clense()
-#     elif mode == 2:
-#         rg = clip.rgsf.ForwardClense()
-#     else:
-#         rg = clip.rgsf.BackwardClense()
-
 zsmooth = clip.zsmooth.InterQuartileMean(mode)
 
 match output:
     case 'zsmooth':
         zsmooth.set_output()
-    # case 'rg':
-    #     rg.set_output()
     case 'all':
         clip.set_output(0)
-        # rg.set_output(1)
         zsmooth.set_output(2)
+    case _:
+        raise f"Unrecognized output type: {output}"
 

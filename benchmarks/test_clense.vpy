@@ -7,11 +7,12 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-mode = 1
+# mode = 1
 length = 30000
 
 if is_preview():
     output = 'all'
+    function = 'Clense'
 
 match format:
     case 'u8':
@@ -42,25 +43,25 @@ clip.set_output(0)
 
 # if (format not in ['f16', 'f32']):
 if (get_sample_type(clip) == vs.INTEGER):
-    if mode == 1: 
+    if function == 'Clense': 
         rg = clip.rgvs.Clense()
-    elif mode == 2:
+    elif function == 'ForwardClense':
         rg = clip.rgvs.ForwardClense()
     else:
         rg = clip.rgvs.BackwardClense()
 
 else:
     # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-    if mode == 1: 
+    if function == 'Clense': 
         rg = clip.rgsf.Clense()
-    elif mode == 2:
+    elif function == 'ForwardClense':
         rg = clip.rgsf.ForwardClense()
     else:
         rg = clip.rgsf.BackwardClense()
 
-if mode == 1: 
+if function == 'Clense': 
     zsmooth = clip.zsmooth.Clense()
-elif mode == 2:
+elif function == 'ForwardClense':
     zsmooth = clip.zsmooth.ForwardClense()
 else:
     zsmooth = clip.zsmooth.BackwardClense()
@@ -74,4 +75,6 @@ match output:
         clip.set_output(0)
         rg.set_output(1)
         zsmooth.set_output(2)
+    case _:
+        raise f"Unrecognized output type: {output}"
 

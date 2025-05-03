@@ -1,11 +1,10 @@
 import vapoursynth as vs
-from vstools import depth
-from vspreview.api import is_preview
 
 core = vs.core
 core.max_cache_size = 1024
 core.num_threads = 1
 
+from vspreview.api import is_preview
 if is_preview():
     radius = 1
     output = 'all'
@@ -25,6 +24,7 @@ match format:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
+#from vstools import depth
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)

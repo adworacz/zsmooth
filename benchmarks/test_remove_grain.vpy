@@ -1,6 +1,4 @@
 import vapoursynth as vs
-from vstools import depth, get_sample_type
-from vspreview.api import is_preview
 
 core = vs.core
 core.max_cache_size = 1024
@@ -9,6 +7,7 @@ core.num_threads = 1
 # mode = 1
 length = 30000
 
+from vspreview.api import is_preview
 if is_preview():
     mode = "1"
     output = 'all'
@@ -26,6 +25,7 @@ match format:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
+# from vstools import depth
 # clip = depth(clip, 10)
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
@@ -37,7 +37,7 @@ match format:
 
 clip.set_output(0)
 
-if (get_sample_type(clip) == vs.INTEGER):
+if (clip.format.sample_type == vs.INTEGER):
     rg = clip.rgvs.RemoveGrain(mode)
 else:
     # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.

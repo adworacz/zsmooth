@@ -1,6 +1,4 @@
 import vapoursynth as vs
-from vstools import depth, get_depth, get_sample_type
-from vspreview.api import is_preview
 
 core = vs.core
 core.max_cache_size = 1024
@@ -12,6 +10,7 @@ threshold = 20
 # format = 'u8'
 # output = 'all'
 
+from vspreview.api import is_preview
 if is_preview():
     output = 'all'
     function = 'FluxSmoothT'
@@ -30,6 +29,7 @@ match format:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
+# from vstools import depth
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
@@ -39,7 +39,7 @@ match format:
 
 clip.set_output(0)
 
-if get_sample_type(clip) == vs.INTEGER:
+if clip.format.sample_type == vs.INTEGER:
     if function == 'FluxSmoothT':
         flux = clip.flux.SmoothT(temporal_threshold=threshold)
     else: 

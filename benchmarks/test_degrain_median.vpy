@@ -1,11 +1,10 @@
 import vapoursynth as vs
-from vstools import depth, get_sample_type
-from vspreview.api import is_preview
 
 core = vs.core
 core.max_cache_size = 1024
 core.num_threads = 1
 
+from vspreview.api import is_preview
 if is_preview():
     output = 'all'
     mode = 0
@@ -29,6 +28,7 @@ match format:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
+# from vstools import depth
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
 # clip = depth(clip, 32)
@@ -39,7 +39,7 @@ match format:
 
 clip.set_output(0)
 
-if get_sample_type(clip) == vs.INTEGER:
+if clip.format.sample_type == vs.INTEGER:
     dgm = clip.dgm.DegrainMedian(limit=limit, mode=mode, interlaced=interlaced, norow=norow)
 
 zsmooth = clip.zsmooth.DegrainMedian(limit=limit, mode=mode, scalep=True, interlaced=interlaced, norow=norow)

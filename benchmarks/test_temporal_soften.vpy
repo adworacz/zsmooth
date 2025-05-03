@@ -1,10 +1,10 @@
 import vapoursynth as vs
-from vspreview.api import is_preview
 
 core = vs.core
 core.max_cache_size = 1024
 core.num_threads = 1
 
+from vspreview.api import is_preview
 if is_preview():
     radius = 7
     output = 'all'
@@ -35,7 +35,7 @@ match format:
 clip.set_output(0)
 
 
-if format not in ['f16', 'f32']:
+if clip.format.sample_type == vs.INTEGER:
     focus2 = clip.focus2.TemporalSoften2(radius=radius)
 
 zsmooth = clip.zsmooth.TemporalSoften(radius=radius);

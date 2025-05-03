@@ -6,7 +6,9 @@ So while the benchmarks show fast results, you'll see even faster by using Zsmoo
 
 ## 0.9 - Zig 0.12.1
 Source: BlankClip YUV420, 1920x1080
+
 Machine: AMD Ryzen 9 9950X, 64 GB DDR5 6200 
+
 CPU tuning: AVX2 (not znver4, nor znver5 as it isn't supported on Zig 0.12.1)
 
 | Filter | Plugin | Format | Args | Min | Max | Median | Average | Standard Deviation |

@@ -28,8 +28,8 @@
     // internet connectivity.
     .dependencies = .{
         .vapoursynth = .{
-            .url = "git+https://github.com/dnjulek/vapoursynth-zig.git#4fe18b3e557f1b85d998e5ee979c96900aff3a04",
-            .hash = "vapoursynth-4.0.0-jLYMQxGHAgBM7S5QeQBuhUKZSZMvPyXAhRmsxTmAiZmk",
+            .url = "git+https://github.com/dnjulek/vapoursynth-zig.git#6fc33f730999282cbc0852c745898d74002309a9",
+            .hash = "vapoursynth-4.0.0-jLYMQ2KFAgCnFNGQByrArLO50QH-C4NuQjcbujcw5Rs4",
         },
     },
     .paths = .{

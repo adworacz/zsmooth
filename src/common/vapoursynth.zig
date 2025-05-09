@@ -250,14 +250,13 @@ pub fn normalizePlanes(format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*cons
     //mapNumElements returns -1 if the element doesn't exist (aka, the user doesn't specify the option.)
     const requestedPlanesSize = vsapi.?.mapNumElements.?(in, "planes");
     const requestedPlanesIsEmpty = requestedPlanesSize <= 0;
-    const numPlanes = format.numPlanes;
     var process = [_]bool{ requestedPlanesIsEmpty, requestedPlanesIsEmpty, requestedPlanesIsEmpty };
 
     if (!requestedPlanesIsEmpty) {
         for (0..@intCast(requestedPlanesSize)) |i| {
             const plane: u8 = vsh.mapGetN(u8, in, "planes", @intCast(i), vsapi) orelse unreachable;
 
-            if (plane < 0 or plane > numPlanes) {
+            if (plane < 0 or plane > format.numPlanes) {
                 return PlanesError.IndexOutOfRange;
             }
 
@@ -269,6 +268,46 @@ pub fn normalizePlanes(format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*cons
         }
     }
     return process;
+}
+
+pub const ThresholdError = error {
+    ScaledValueOutsideOfRange,
+    ValueOutsideOfFormatRange,
+};
+
+pub fn normalizeThreshold(key: [:0]const u8, scalep: bool, defaults:[3]f32, format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*const vs.API) ThresholdError![3]f32 {
+    var values = defaults;
+
+    for(0..3) |i| {
+        if (vsh.mapGetN(f32, in, key, @intCast(i), vsapi)) |_val| {
+            if (scalep and (_val < 0 or _val > 255)) {
+                return ThresholdError.ScaledValueOutsideOfRange;
+            }
+
+            // Setting the plane index param of scaleToFormat to 0 for all planes is 
+            // fine because we expect the threshold to be a relative/difference threshold,
+            // not an absolute pixel value threshold.
+            //
+            // This means we don't need to compensate for float YUV values that range from -0.5 to 0.5,
+            // because the relative difference between pixel values is the same "size" as the Y plan that ranges from 0 to 1.
+            // In other words, the difference between the min and max is always 1.0, so we don't need to compensate a relative threshold.
+            const val = if (scalep) scaleToFormat(f32, format, _val, 0) else _val;
+
+            const formatMaximum = getFormatMaximum(f32, format, i > 0);
+            const formatMinimum = getFormatMinimum(f32, format, i > 0);
+
+            if ((val < formatMinimum or val > formatMaximum)) {
+                return ThresholdError.ValueOutsideOfFormatRange;
+            }
+            values[i] = val;
+        } else {
+            // No value specified for this index.
+            if (i > 0) {
+                values[i] = values[i - 1];
+            }
+        }
+    }
+    return values;
 }
 
 /// Reports an error to the VS API and frees the input node;

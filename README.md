@@ -241,6 +241,13 @@ Modes:
 | mode | int[] | 0 - 5, inclusive ([1,1,1]) | The processing mode. 0 is the strongest, 5 is the weakest. Can be specified as an array, with values corresponding to each plane. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
+### InterQuartileMean
+TODO
+
+### TTempSmooth
+* Fixed a bug with center weighting, where center weight simply takes the last value of the processed planes instead of
+treating each center weight separately.
+
 ## Building
 All build artifacts are placed under `zig-out/lib`.
 

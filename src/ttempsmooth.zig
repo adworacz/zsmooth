@@ -39,7 +39,7 @@ const TTempSmoothData = struct {
 
     // TODO: Support per-plane settings for these values.
     maxr: u8, //Temporal radius
-    threshold: [3]u16, // threshold in 8-bit scale (max is 256, thus the use of u16). Scaled in getFrame to pertinent format.
+    threshold: [3]u9, // threshold in 8-bit scale (max is 256, thus the use of u16). Scaled in getFrame to pertinent format.
     fp: bool,
     pfclip: ?*vs.Node,
 
@@ -321,7 +321,7 @@ test calculateTemporalWeights {
 // temporal_difference_weights[0][...] holds the weights for the frames on either side of the source frame (-1 and +1) (prev and next)
 // temporal_difference_weights[1][...] holds the weights for frames 2 steps away (-2 and +2) (2nd prev and 2nd next).
 // etc.
-fn calculateTemporalDifferenceWeights(threshold: u16, mdiff: u16, maxr: u8, strength: u8, _temporal_difference_weights: *[][]f32, center_weight: *f32) void {
+fn calculateTemporalDifferenceWeights(threshold: u9, mdiff: u8, maxr: u8, strength: u8, _temporal_difference_weights: *[][]f32, center_weight: *f32) void {
     // Inverse pixel difference waiting.
     var temporal_difference_weights: [][]f32 = _temporal_difference_weights.*;
     var temporal_weights = [_]f32{0} ** (MAX_RADIUS + 1); // Radius + 1 (center frame)
@@ -373,9 +373,13 @@ fn calculateTemporalDifferenceWeights(threshold: u16, mdiff: u16, maxr: u8, stre
 }
 
 test calculateTemporalDifferenceWeights {
-    var temporal_difference_weights: [][]f32 = try testingAllocator.alloc([]f32, 15);
+    // Maximum radius used in tests is 3
+    // Maximum threshold used in tests is 5
+    // So allocate memory accordingly. 
+    // Tests would segfault if they write past the given allocations.
+    var temporal_difference_weights: [][]f32 = try testingAllocator.alloc([]f32, 3);
     for (0..temporal_difference_weights.len) |i| {
-        temporal_difference_weights[i] = try testingAllocator.alloc(f32, 5 + 1); // max threshold we use is 5, so add one to ensure we can check that values beyond said threshold are zero.
+        temporal_difference_weights[i] = try testingAllocator.alloc(f32, 5);
         @memset(temporal_difference_weights[i], 0);
     }
     defer {
@@ -413,7 +417,6 @@ test calculateTemporalDifferenceWeights {
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][2]); //mdiff = 2
     try std.testing.expectEqual(0.16666666, temporal_difference_weights[0][3]);
     try std.testing.expectEqual(0.08333332, temporal_difference_weights[0][4]);
-    try std.testing.expectEqual(0, temporal_difference_weights[0][5]); // Ensure weights at threshold (5) are zero
     try std.testing.expectEqual(0, temporal_difference_weights[1][0]); // Ensure weights at next frame are 0 (not set)
     try std.testing.expectEqual(0.5, center_weight);
 
@@ -428,7 +431,6 @@ test calculateTemporalDifferenceWeights {
     try std.testing.expectEqual(0, temporal_difference_weights[1][1]); //threshold = 1, zero weight
     try std.testing.expectEqual(1.0 / 7.0, temporal_difference_weights[2][0]); // next next next frame (radius = 3)
     try std.testing.expectEqual(0, temporal_difference_weights[2][1]); //threshold = 1, zero weight
-    try std.testing.expectEqual(0, temporal_difference_weights[3][0]); // Ensure weights at beyond radius are zero
     try std.testing.expectEqual(1.0 / 7.0, center_weight); //even center frame gets the same weight, due to strength being greater than maxr.
 
     // Strength is less than maxr, so weights scale inversely the farther they are from center.
@@ -438,7 +440,6 @@ test calculateTemporalDifferenceWeights {
     try std.testing.expectEqual(1.0 / 2.0 / 3.16666666666666666666, temporal_difference_weights[0][0]); // next frame
     try std.testing.expectEqual(1.0 / 3.0 / 3.16666666666666666666, temporal_difference_weights[1][0]); // next next frame
     try std.testing.expectEqual(1.0 / 4.0 / 3.16666666666666666666, temporal_difference_weights[2][0]); // next next next frame
-    try std.testing.expectEqual(0, temporal_difference_weights[3][0]); // Ensure weights at beyond radius are zero
     try std.testing.expectEqual(1.0 / 3.16666666666666666666, center_weight);
 }
 
@@ -480,7 +481,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
     d.fp = inz.getBool("fp") orelse true;
 
     if ((inz.numElements("thresh") orelse 0) == 0) {
-        d.threshold = .{ 4.0, 5.0, 5.0 };
+        d.threshold = .{ 4, 5, 5 };
     } else {
         for (0..3) |plane| {
             if (inz.getInt2(i32, "thresh", plane)) |thresh| {
@@ -496,7 +497,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         }
     }
 
-    var mdiff: [3]u16 = undefined;
+    var mdiff: [3]u8 = undefined;
 
     if ((inz.numElements("mdiff") orelse 0) == 0) {
         mdiff = .{ 2, 3, 3 };

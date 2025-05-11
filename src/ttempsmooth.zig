@@ -43,10 +43,10 @@ const TTempSmoothData = struct {
     fp: bool,
     pfclip: ?*vs.Node,
 
-    weight_mode: WeightMode,
+    weight_mode: [3]WeightMode,
     temporal_difference_weights: [3][][]f32,
     temporal_weights: [3][]f32,
-    center_weight: [3]f32,
+    center_weight: f32,
 
     // Which planes we will process.
     process: [3]bool,
@@ -283,8 +283,8 @@ fn TTempSmooth(comptime T: type) type {
                     const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
                     const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
 
-                    switch (d.weight_mode) {
-                        inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, shift, d.center_weight[uplane], wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                    switch (d.weight_mode[uplane]) {
+                        inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
                     }
                 }
 
@@ -303,7 +303,7 @@ export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     vsapi.?.freeNode.?(d.node);
 
     for (0..3) |plane| {
-        if (d.weight_mode == .inverse_difference) {
+        if (d.weight_mode[plane] == .inverse_difference) {
             for (0..d.temporal_difference_weights[plane].len) |radius| {
                 allocator.free(d.temporal_difference_weights[plane][radius]);
             }
@@ -336,10 +336,6 @@ fn calculateTemporalWeights(maxr: u8, strength: u8, temporal_weights: *[]f32, ce
         weights[i] /= sum;
     }
 
-    // There was a bug here in the C version of TTempsmooth, wherein
-    // there was only a single center weight value, instead of one per plane,
-    // so the value for the center weight that was actually used in the filter
-    // was the result of the last plane calculation, even if said plane used vastly different thresholds.
     center_weight.* = weights[maxr];
 }
 
@@ -596,7 +592,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         }
 
         if (d.threshold[plane] > mdiff[plane] + 1) {
-            d.weight_mode = .inverse_difference;
+            d.weight_mode[plane] = .inverse_difference;
 
             // Dynamically allocate the slice of slices for the given plane.
             // Aka a slice for each frame, containing the lookup table of weights;
@@ -605,16 +601,16 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
                 d.temporal_difference_weights[plane][i] = allocator.alloc(f32, d.threshold[plane]) catch unreachable;
             }
 
-            calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, &d.temporal_difference_weights[plane], &d.center_weight[plane]);
+            calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, &d.temporal_difference_weights[plane], &d.center_weight);
         } else {
-            d.weight_mode = .temporal;
+            d.weight_mode[plane] = .temporal;
             const diameter = d.maxr * 2 + 1;
 
             // TODO: Temporal_weights contains the full diameter of frames, but that's unnecessary
             // duplication of data, since the weights are the same for frames on either side of the center.
             // Essentially, do the same thing as temporal_difference_weights.
             d.temporal_weights[plane] = allocator.alloc(f32, diameter) catch unreachable;
-            calculateTemporalWeights(d.maxr, strength, &d.temporal_weights[plane], &d.center_weight[plane]);
+            calculateTemporalWeights(d.maxr, strength, &d.temporal_weights[plane], &d.center_weight);
         }
     }
 

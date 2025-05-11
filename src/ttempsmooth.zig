@@ -4,10 +4,11 @@ const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
 const math = @import("common/math.zig");
+const lossyCast = math.lossyCast;
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
-const sort = @import("common/sorting_networks.zig");
 const string = @import("common/string.zig");
+const types = @import("common/type.zig");
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -37,7 +38,6 @@ const TTempSmoothData = struct {
     node: ?*vs.Node,
     vi: *const vs.VideoInfo,
 
-    // TODO: Support per-plane settings for these values.
     maxr: u8, //Temporal radius
     threshold: [3]u9, // threshold in 8-bit scale (max is 256, thus the use of u16). Scaled in getFrame to pertinent format.
     fp: bool,
@@ -53,175 +53,242 @@ const TTempSmoothData = struct {
 };
 
 fn TTempSmooth(comptime T: type) type {
-    const vec_size = vec.getVecSize(T);
-    const VecType = @Vector(vec_size, T);
-
     return struct {
-        fn processPlaneScalar(comptime diameter: u8, srcp: [][]const T, dstp: []T, width: usize, height: usize, stride: usize) void {
-            var temp: [diameter]T = undefined;
+        fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, maxr: u8, threshold: T, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const []const f32) void {
+            // TODO: Make these params.
+            const from_frame_idx = -1;
+            const to_frame_idx = maxr * 2 + 1;
 
             for (0..height) |row| {
                 for (0..width) |column| {
-                    const current_pixel = row * stride + column;
+                    const pixel_idx = row * stride + column;
+                    const current_pixel = pfp[maxr][pixel_idx];
+                    var weight_sum = center_weight; // sum of weights
+                    var sum = lossyCast(f32, srcp[maxr][pixel_idx]) * center_weight; // sum of weighted pixels.
 
-                    for (0..@intCast(diameter)) |i| {
-                        temp[i] = srcp[i][current_pixel];
+                    // Check previous frames, starting with the frame closest to the center
+                    // and then walking backwards.
+                    var frame_idx: usize = maxr - 1;
+
+                    if (frame_idx > from_frame_idx) {
+                        var temporal_pixel1 = pfp[frame_idx][pixel_idx];
+                        var diff = if (types.isInt(T))
+                            math.absDiff(current_pixel, temporal_pixel1)
+                        else
+                            @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
+
+                        if (diff < threshold) {
+                            var weight = switch (comptime weight_mode) {
+                                .temporal => temporal_weights[frame_idx],
+                                .inverse_difference => temporal_difference_weights[maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
+                                //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
+                                //                                                 so we subtract in order to correct the lookup.
+                                //                                                 Note that temporal_difference_weights[0] contains the weights for
+                                //                                                 the frames on either side of the center, so maxr - 1 and maxr + 1.
+                            };
+                            weight_sum += weight;
+                            sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
+
+                            //wrapping subtraction to make working with usize
+                            //and "beyond zero" easier, vs using isize and a
+                            //bunch of casting.
+                            frame_idx -%= 1;
+
+                            //check against maxInt of usize to see if we've wrapped around.
+                            //If we have, then it means that we've gone beyond zero and thus already processed the
+                            //last frame.
+                            while (frame_idx != std.math.maxInt(usize) and frame_idx > from_frame_idx) {
+                                const temporal_pixel2 = temporal_pixel1;
+                                temporal_pixel1 = pfp[frame_idx][pixel_idx];
+
+                                // diff = abs(current_pixel - temporal_pixel1)
+                                diff = if (types.isInt(T))
+                                    math.absDiff(current_pixel, temporal_pixel1)
+                                else
+                                    @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
+
+                                // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
+                                const temporal_diff = if (types.isInt(T))
+                                    math.absDiff(temporal_pixel1, temporal_pixel2)
+                                else
+                                    @min(math.absDiff(temporal_pixel1, temporal_pixel2), 1.0);
+
+                                if (diff < threshold and temporal_diff < threshold) {
+                                    weight = switch (comptime weight_mode) {
+                                        .temporal => temporal_weights[frame_idx],
+                                        .inverse_difference => temporal_difference_weights[maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
+                                    };
+                                    weight_sum += weight;
+                                    sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
+
+                                    //wrapping subtraction to make working with usize
+                                    //and "beyond zero" easier, vs using isize and a
+                                    //bunch of casting.
+                                    frame_idx -%= 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
                     }
 
-                    // 60fps with radius 1
-                    // 7 fps with radius 10
-                    std.mem.sortUnstable(T, temp[0..diameter], {}, comptime std.sort.asc(T));
+                    // Check next frames, starting with the frame closest to the center
+                    // and then walking forwards.
+                    frame_idx = maxr + 1;
 
-                    dstp[current_pixel] = temp[diameter / 2];
+                    if (frame_idx < to_frame_idx) {
+                        // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
+                        // and frame_idx < to_frame_idx instead of frame_idx > from_frame_idx
+                        var temporal_pixel1 = pfp[frame_idx][pixel_idx];
+
+                        var diff = if (types.isInt(T))
+                            math.absDiff(current_pixel, temporal_pixel1)
+                        else
+                            @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
+
+                        if (diff < threshold) {
+                            var weight = switch (comptime weight_mode) {
+                                .temporal => temporal_weights[frame_idx],
+                                .inverse_difference => temporal_difference_weights[frame_idx - maxr - 1][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
+                                //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
+                                //                                                 so we subtract in order to correct the lookup.
+                                //                                                 Note that temporal_difference_weights[0] contains the weights for
+                                //                                                 the frames on either side of the center, so maxr - 1 and maxr + 1.
+                            };
+                            weight_sum += weight;
+                            sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
+
+                            frame_idx += 1;
+
+                            while (frame_idx < to_frame_idx) {
+                                const temporal_pixel2 = temporal_pixel1;
+                                temporal_pixel1 = pfp[frame_idx][pixel_idx];
+
+                                // diff = abs(current_pixel - temporal_pixel1)
+                                diff = if (types.isInt(T))
+                                    math.absDiff(current_pixel, temporal_pixel1)
+                                else
+                                    @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
+
+                                // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
+                                const temporal_diff = if (types.isInt(T))
+                                    math.absDiff(temporal_pixel1, temporal_pixel2)
+                                else
+                                    @min(math.absDiff(temporal_pixel1, temporal_pixel2), 1.0);
+
+                                if (diff < threshold and temporal_diff < threshold) {
+                                    weight = switch (comptime weight_mode) {
+                                        .temporal => temporal_weights[frame_idx],
+                                        .inverse_difference => temporal_difference_weights[frame_idx - maxr - 1][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
+                                    };
+                                    weight_sum += weight;
+                                    sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
+
+                                    frame_idx += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    //TODO: support fp (possibly as comptime if performance is hit.
+                    if (true) {
+                        dstp[pixel_idx] = if (types.isInt(T))
+                            @intFromFloat(@round(lossyCast(f32, srcp[maxr][pixel_idx]) * (1.0 - weight_sum) + sum))
+                        else
+                            srcp[maxr][pixel_idx] * (1.0 - weight_sum) + sum;
+                    } else {
+                        dstp[pixel_idx] = if (types.isInt(T))
+                            @intFromFloat(@round(sum / weight_sum))
+                        else
+                            sum / weight_sum;
+                    }
                 }
             }
         }
 
-        fn processPlaneVector(comptime diameter: u8, srcp: [][]const T, dstp: []T, width: usize, height: usize, stride: usize) void {
-            const width_simd = width / vec_size * vec_size;
-
-            for (0..height) |row| {
-                var column: usize = 0;
-                while (column < width_simd) : (column += vec_size) {
-                    const offset = row * stride + column;
-                    medianVector(diameter, srcp, dstp, offset);
-                }
-
-                // If the video width is not perfectly aligned with the vector width, do one
-                // last operation at the end of the plane to cover what's leftover from the loop above.
-                if (width_simd < width) {
-                    medianVector(diameter, srcp, dstp, (row * stride) + width - vec_size);
-                }
-            }
-        }
-
-        test "processPlane should find the median value" {
-            const height = 2;
-            const width = vec_size + 24;
-            const stride = width + 8 + vec_size;
-            const size = height * stride;
-
-            const radius = 4;
-            const diameter = radius * 2 + 1;
-            const expectedMedian = ([_]T{radius + 1} ** size)[0..];
-
-            var src: [diameter][]const T = undefined;
-            for (0..diameter) |i| {
-                const frame = try testingAllocator.alloc(T, size);
-                @memset(frame, math.lossyCast(T, i + 1));
-
-                src[i] = frame;
-            }
-            defer {
-                for (0..diameter) |i| {
-                    testingAllocator.free(src[i]);
-                }
-            }
-
-            const dstp_scalar = try testingAllocator.alloc(T, size);
-            const dstp_vec = try testingAllocator.alloc(T, size);
-            defer testingAllocator.free(dstp_scalar);
-            defer testingAllocator.free(dstp_vec);
-
-            processPlaneScalar(diameter, &src, dstp_scalar, width, height, stride);
-            processPlaneVector(diameter, &src, dstp_vec, width, height, stride);
-
-            for (0..height) |row| {
-                const start = row * stride;
-                const end = start + width;
-                try testing.expectEqualDeep(expectedMedian[start..end], dstp_scalar[start..end]);
-                try testing.expectEqualDeep(expectedMedian[start..end], dstp_vec[start..end]);
-            }
-        }
-
-        fn medianVector(comptime diameter: u8, srcp: [][]const T, dstp: []T, offset: usize) void {
-            var src: [diameter]VecType = undefined;
-
-            for (0..diameter) |r| {
-                src[r] = vec.load(VecType, srcp[r], offset);
-            }
-
-            const result: VecType = switch (diameter) {
-                3 => sort.median(VecType, 3, src[0..3]),
-                5 => sort.median(VecType, 5, src[0..5]),
-                7 => sort.median(VecType, 7, src[0..7]),
-                9 => sort.median(VecType, 9, src[0..9]),
-                11 => sort.median(VecType, 11, src[0..11]),
-                13 => sort.median(VecType, 13, src[0..13]),
-                15 => sort.median(VecType, 15, src[0..15]),
-                17 => sort.median(VecType, 17, src[0..17]),
-                19 => sort.median(VecType, 19, src[0..19]),
-                21 => sort.median(VecType, 21, src[0..21]),
-                else => unreachable,
-            };
-
-            // Store
-            vec.store(VecType, dstp, offset, result);
-        }
-
-        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
             const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
+            const zapi: ZAPI = ZAPI.init(vsapi, core);
+
+            const n: usize = lossyCast(usize, _n);
+            const first: usize = n -| d.maxr;
+            const last: usize = @min(n + d.maxr, lossyCast(usize, d.vi.numFrames - 1));
 
             if (activation_reason == ar.Initial) {
-                // if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-                // } else {
-                //     // Request previous, current, and next frames, based on the filter radius.
-                //     var i = -d.radius;
-                //     while (i <= d.radius) : (i += 1) {
-                //         vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
-                //     }
-                // }
-            } else if (activation_reason == ar.AllFramesReady) {
-                // // Skip filtering on the first and last frames that lie inside the filter radius,
-                // // since we do not have enough information to filter them properly.
-                // if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                //     return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                // }
-                //
-                // const diameter: u8 = @intCast(d.radius * 2 + 1);
-                // var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
-                //
-                // // Retrieve all source frames within the filter radius.
-                // {
-                //     var i = -d.radius;
-                //     while (i <= d.radius) : (i += 1) {
-                //         src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
-                //     }
-                // }
-                // defer for (0..diameter) |i| vsapi.?.freeFrame.?(src_frames[i]);
-                //
-                // const dst = vscmn.newVideoFrame(&d.process, src_frames[@intCast(d.radius)], d.vi, core, vsapi);
-                //
-                // var plane: c_int = 0;
-                // while (plane < d.vi.format.numPlanes) : (plane += 1) {
-                //     // Skip planes we aren't supposed to process
-                //     if (!d.process[@intCast(plane)]) {
-                //         continue;
-                //     }
-                //
-                //     const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                //     const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                //     const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                //
-                //     var srcp: [MAX_DIAMETER][]const T = undefined;
-                //     for (0..diameter) |i| {
-                //         srcp[i] = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane))))[0..(height * stride)];
-                //     }
-                //     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-                //
-                //     switch (d.radius) {
-                //         inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), srcp[0..(r * 2 + 1)], dstp, width, height, stride),
-                //         else => unreachable,
-                //     }
-                // }
+                for (first..(last + 1)) |i| {
+                    zapi.requestFrameFilter(@intCast(i), d.node, frame_ctx);
 
-                // return dst;
-                _ = core;
-                return null;
+                    if (d.pfclip != null) {
+                        zapi.requestFrameFilter(@intCast(n), d.pfclip, frame_ctx);
+                    }
+                }
+            } else if (activation_reason == ar.AllFramesReady) {
+                var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                var pf_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                const diameter = d.maxr * 2 + 1;
+
+                {
+                    var i = -lossyCast(i8, d.maxr); // -d.maxr
+                    while (i <= d.maxr) : (i += 1) {
+                        const frame_number: i32 = std.math.clamp(lossyCast(i32, n) + i, 0, d.vi.numFrames - 1);
+                        const index: usize = @intCast(i + lossyCast(i8, d.maxr)); // i + d.maxr
+
+                        src_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
+
+                        if (d.pfclip != null) {
+                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
+                        }
+                    }
+                }
+                defer for (0..diameter) |i| {
+                    zapi.freeFrame(src_frames[i]);
+                    if (d.pfclip != null) {
+                        zapi.freeFrame(pf_frames[i]);
+                    }
+                };
+
+                const dst = vscmn.newVideoFrame(&d.process, src_frames[d.maxr], d.vi, core, vsapi);
+
+                for (0..@intCast(d.vi.format.numPlanes)) |uplane| {
+                    if (!d.process[uplane]) {
+                        continue;
+                    }
+
+                    const iplane: c_int = @intCast(uplane);
+
+                    const width: usize = @intCast(zapi.getFrameWidth(dst, iplane));
+                    const height: usize = @intCast(zapi.getFrameHeight(dst, iplane));
+                    const stride: usize = @as(usize, @intCast(zapi.getStride(dst, iplane))) / @sizeOf(T);
+
+                    var srcp: [MAX_DIAMETER][]const T = undefined;
+                    for (0..diameter) |i| {
+                        srcp[i] = @as([*]const T, @ptrCast(@alignCast(zapi.getReadPtr(src_frames[i], iplane))))[0..(height * stride)];
+                    }
+
+                    var pfp: [MAX_DIAMETER][]const T = undefined;
+                    if (d.pfclip != null) {
+                        for (0..diameter) |i| {
+                            pfp[i] = @as([*]const T, @ptrCast(@alignCast(zapi.getReadPtr(pf_frames[i], iplane))))[0..(height * stride)];
+                        }
+                    }
+
+                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(zapi.getWritePtr(dst, iplane))))[0..(height * stride)];
+
+                    // const threshold: T = if (types.isInt(T)) @intCast(d.threshold[uplane]) else @floatFromInt(d.threshold[uplane]);
+                    const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
+                    const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
+
+                    switch (d.weight_mode) {
+                        inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, shift, d.center_weight[uplane], wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                    }
+                }
+
+                return dst;
             }
 
             return null;
@@ -375,7 +442,7 @@ fn calculateTemporalDifferenceWeights(threshold: u9, mdiff: u8, maxr: u8, streng
 test calculateTemporalDifferenceWeights {
     // Maximum radius used in tests is 3
     // Maximum threshold used in tests is 5
-    // So allocate memory accordingly. 
+    // So allocate memory accordingly.
     // Tests would segfault if they write past the given allocations.
     var temporal_difference_weights: [][]f32 = try testingAllocator.alloc([]f32, 3);
     for (0..temporal_difference_weights.len) |i| {
@@ -543,6 +610,9 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
             d.weight_mode = .temporal;
             const diameter = d.maxr * 2 + 1;
 
+            // TODO: Temporal_weights contains the full diameter of frames, but that's unnecessary
+            // duplication of data, since the weights are the same for frames on either side of the center.
+            // Essentially, do the same thing as temporal_difference_weights.
             d.temporal_weights[plane] = allocator.alloc(f32, diameter) catch unreachable;
             calculateTemporalWeights(d.maxr, strength, &d.temporal_weights[plane], &d.center_weight[plane]);
         }
@@ -562,6 +632,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
     const data: *TTempSmoothData = allocator.create(TTempSmoothData) catch unreachable;
     data.* = d;
 
+    //TODO: Add pfclip support.
     var deps = [_]vs.FilterDependency{
         vs.FilterDependency{
             .source = d.node,
@@ -571,7 +642,11 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
         1 => &TTempSmooth(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &TTempSmooth(u16).getFrame else &TTempSmooth(f16).getFrame,
+        // Math.pow doesn't support f16 yet, so have to disable f16 support for the short term until the following is addressed:
+        // * https://github.com/ziglang/zig/issues/23602
+        // * https://github.com/ziglang/zig/pull/23631
+        // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &TTempSmooth(u16).getFrame else &TTempSmooth(f16).getFrame,
+        2 => &TTempSmooth(u16).getFrame,
         4 => &TTempSmooth(f32).getFrame,
         else => unreachable,
     };
@@ -580,5 +655,5 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TTempSmooth", "clip:vnode;maxr:int:opt;thresh:int[]:opt;mdiff:int[]:opt;strength:int:opt;scthresh:float:opt;fp:int:opt;pfclip:vnode:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", ttempSmoothCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TTempSmooth", "clip:vnode;maxr:int:opt;thresh:int[]:opt;mdiff:int[]:opt;strength:int:opt;scthresh:float:opt;fp:int:opt;pfclip:vnode:opt;planes:int[]:opt;", "clip:vnode;", ttempSmoothCreate, null, plugin);
 }

@@ -32,7 +32,7 @@ pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: anytype, plane
     // Integer support, 9-16 bit.
     if (vf.bitsPerSample > 8) {
         return if (types.isFloat(T))
-            value * std.math.pow(T, 2.0, @floatFromInt(vf.bitsPerSample - 8))
+            lossyCast(T, value) * std.math.pow(T, 2.0, @floatFromInt(vf.bitsPerSample - 8))
         else
             lossyCast(T, std.math.shl(u32, lossyCast(u32, value), vf.bitsPerSample - 8));
     }
@@ -45,6 +45,9 @@ test scaleToFormat {
     for (0..3) |plane| {
         // 8 bit gray int - should be the same
         try std.testing.expectEqual(128, scaleToFormat(u8, U8_GRAY_FORMAT, 128, plane));
+
+        // Non-standard int size
+        try std.testing.expectEqual(128, scaleToFormat(u8, U8_GRAY_FORMAT, @as(u9, 128), plane));
 
         // Check that a different output type still produces the same
         // inherent value.

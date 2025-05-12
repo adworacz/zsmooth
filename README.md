@@ -196,8 +196,8 @@ Parameters:
 
 ### FluxSmooth(S|ST)
 ```py
-core.zsmooth.FluxSmoothT(clip clip[, float[] temporal_threshold = 7, bool scalep=False])
-core.zsmooth.FluxSmoothST(clip clip[, float[] temporal_threshold = 7, float[] spatial_threshold = 7, bool scalep = False])
+core.zsmooth.FluxSmoothT(clip clip[, float[] temporal_threshold = 7, float[] planes = [0,1,2], bool scalep=False])
+core.zsmooth.FluxSmoothST(clip clip[, float[] temporal_threshold = 7, float[] spatial_threshold = 7, float[] planes = [0,1,2], bool scalep = False])
 ```
 
 FluxSmoothT (**T**\ emporal) examines each pixel and compares it to the corresponding pixel
@@ -216,6 +216,7 @@ The first and last rows and the first and last columns are not processed by Flux
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | temporal_threshold | float[] | -1 - bit depth max ([7,7,7]) | Temporal neighbour pixels within this threshold from the current pixel are included in the average. Can be specified as an array, with values corresonding to each plane of the input clip. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
 | spatial_threshold | float[] | -1 - bit depth max ([7,7,7]) | Spatial neighbour pixels within this threshold from the current pixel are included in the average. A negative value (such as -1) indicates that the plane should not be processed and will be copied from the input clip. |
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### DegrainMedian

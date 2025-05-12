@@ -57,7 +57,7 @@ match output:
         zsmooth.set_output()
     case 'all':
         clip.set_output(0)
-        if get_sample_type(clip) == vs.INTEGER:
+        if clip.format.sample_type == vs.INTEGER:
             flux.set_output(1)
         zsmooth.set_output(2)
     case _:

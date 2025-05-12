@@ -678,12 +678,22 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         }
     }
 
+    const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
+        vsapi.?.freeNode.?(d.node);
+
+        switch (e) {
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Plane index out of range.", .{ func_name }).ptr),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Plane specified twice.", .{ func_name }).ptr),
+        }
+        return;
+    };
+
     d.temporal_threshold = temporal_threshold;
     d.spatial_threshold = spatial_threshold;
     d.process = [3]bool{
-        d.temporal_threshold[0] >= 0 or d.spatial_threshold[0] >= 0,
-        d.temporal_threshold[1] >= 0 or d.spatial_threshold[1] >= 0,
-        d.temporal_threshold[2] >= 0 or d.spatial_threshold[2] >= 0,
+        planes[0] and (d.temporal_threshold[0] >= 0 or d.spatial_threshold[0] >= 0),
+        planes[1] and (d.temporal_threshold[1] >= 0 or d.spatial_threshold[1] >= 0),
+        planes[2] and (d.temporal_threshold[2] >= 0 or d.spatial_threshold[2] >= 0),
     };
 
     const data: *FluxSmoothData = allocator.create(FluxSmoothData) catch unreachable;
@@ -713,6 +723,6 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:float[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
-    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:float[]:opt;spatial_threshold:float[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:float[]:opt;spatial_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
 }

@@ -4,8 +4,10 @@
 * Add implementation of InterQuartileMean, as made popular by Dogway.
 * Upgraded to Zig 0.14.0
 * Add BENCHMARKS.md to track performance.
-* Fix build zips to not include the zig build path in the final zip file any more. This was my mistake and it shouldn't
+* Fix built zips to not include the zig build path in the final zip file any more. This was my mistake and it shouldn't
 have happened. All zips should just have the library file now with no directory structure. Sorry about that.
+* Add `planes` parameter to FluxSmooth, closing a compatibility gap with the original plugin.
+Request came from Selur: https://github.com/adworacz/zsmooth/issues/3
 
 ## 0.8
 * Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 

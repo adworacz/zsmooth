@@ -390,7 +390,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
             return vscmn.reportError("TemporalSoften: Scene change support does not work with RGB.", vsapi, out, d.node);
         }
 
-        // TODO: Support more scene change plugins via custom scene change property specification.
+        // TODO: Support setting scenechange to negative value to skip invocation of SCDetect and just use existing props.
         if (vsapi.?.getPluginByID.?("com.vapoursynth.misc", core)) |misc_plugin| {
             const args = vsapi.?.createMap.?();
             _ = vsapi.?.mapSetNode.?(args, "clip", d.node, vs.MapAppendMode.Replace);

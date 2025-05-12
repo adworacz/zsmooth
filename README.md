@@ -242,11 +242,11 @@ Modes:
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### InterQuartileMean
-TODO
+In Progress - IQM3 works like a champ, but IQM5 is dog slow. Gonna work on optimizing IQM5 before officially releasing.
 
 ### TTempSmooth
-* Fixed a bug with center weighting, where center weight simply takes the last value of the processed planes instead of
-treating each center weight separately.
+In Progress - scalar implementation has been ported, but it's dog slow (just like the origina), so vector version is
+incoming.
 
 ## Building
 All build artifacts are placed under `zig-out/lib`.

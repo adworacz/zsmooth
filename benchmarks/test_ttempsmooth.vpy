@@ -17,6 +17,7 @@ if is_preview():
     # strength = radius + 1
     strength = 1
     output = 'all'
+    fp = True
 #format = 'u8'
 
 length = 30000
@@ -46,9 +47,9 @@ clip.set_output(0)
 
 if format != 'f16':
     if output in ['ttmpsm', 'all']:
-        ttempsmooth = clip.ttmpsm.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength)
+        ttempsmooth = clip.ttmpsm.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp)
 
-zsmooth = clip.zsmooth.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength)
+zsmooth = clip.zsmooth.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp)
 
 match output:
     case 'zsmooth':

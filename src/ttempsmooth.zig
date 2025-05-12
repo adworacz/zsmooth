@@ -58,7 +58,7 @@ const TTempSmoothData = struct {
 
 fn TTempSmooth(comptime T: type) type {
     return struct {
-        fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, maxr: u8, threshold: T, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
+        fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
             // TODO: Make these params.
             const from_frame_idx = -1;
             const to_frame_idx = maxr * 2 + 1;
@@ -196,8 +196,7 @@ fn TTempSmooth(comptime T: type) type {
                         }
                     }
 
-                    //TODO: support fp (possibly as comptime if performance is hit.
-                    if (true) {
+                    if (fp) {
                         dstp[pixel_idx] = if (types.isInt(T))
                             @intFromFloat(@round(lossyCast(f32, srcp[maxr][pixel_idx]) * (1.0 - weight_sum) + sum))
                         else
@@ -288,7 +287,7 @@ fn TTempSmooth(comptime T: type) type {
                     const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
 
                     switch (d.weight_mode[uplane]) {
-                        inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
                     }
                 }
 

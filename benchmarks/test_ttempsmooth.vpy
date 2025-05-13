@@ -9,16 +9,19 @@ core.num_threads = 1
 # Different if temporal differene with strength < radius, which would produce different weights for each frame.
 from vspreview.api import is_preview
 if is_preview():
-    radius = 3
+    radius = 1
+    output = 'all'
     threshold = [4,5,5]
     # threshold = [20,20,20]
     mdiff = [2,3,3]
     # mdiff = threshold
-    # strength = radius + 1
-    strength = 1
     output = 'all'
-    fp = True
-#format = 'u8'
+
+# format = 'u8'
+
+# strength = radius + 1
+strength = 1
+fp = True
 
 length = 30000
 match format:

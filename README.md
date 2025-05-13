@@ -58,20 +58,23 @@ TemporalSoften averages radius * 2 + 1 frames.
 A pixel is included in the average only if the absolute difference between
 it and the middle frame's corresponding pixel is less than the threshold.
 
-If the scenechange parameter is greater than 0, TemporalSoften will not average
-frames from different scenes.
+If the `scenechange` parameter is `-1`, or greater than 0, TemporalSoften will not average
+frames from different scenes. 
+
+Setting `scenechange`to `-1` skips the internal invocation of SCDetect from [Misc
+filters](https://github.com/vapoursynth/vs-miscfilters-obsolete) and uses the standard "_SceneChangePrev" and
+"_SceneChangeNext" properties, which should be set by other scene detection filters prior to invoking TemporalSoften.
 
 ```py
 core.zsmooth.TemporalSoften(clip clip[, int radius = 4, float[] threshold = [], int scenechange = 0, bool scalep=False])
 ```
-
 
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | radius | int | 1 - 7 (4) | Size of the temporal window. This is an upper bound. At the beginning and end of the clip, only legally accessible frames are incorporated into the radius. So if radius if 4, then on the first frame, only frames 0, 1, 2, and 3 are incorporated into the result. |
 | threshold | float[] | 0 - 255 8-bit, 0 - 65535 16-bit, 0.0 - 1.0 float ([4,4,4] RGB, [4, 8, 8] YUV, [4] GRAY) | If the difference between the pixel in the current frame and any of its temporal neighbors is less than this threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  If set to -1, the plane is copied from the source.|
-| scenechange | int |  0 - 255 (0) | Calculated as a percent internally (scenechange/255) to qualify if a frame is a scenechange or not. Currently requires the SCDetect filter from the Miscellaneous filters plugin, but future plans include specifying custom scene change properties to accomidate other scene change detection mechanisms. |
+| scenechange | int |  -1 - 255 (-1) | Zero (0) disables scene change detection, negative one (-1) respects any existing scene change properties ("_SceneChangePrev", "_SceneChangeNext") and does not call SCDetect from Misc filters. If greater than zero, it is calculated as a percentage internally (scenechange/255) to qualify if a frame is a scenechange or not. Currently requires the SCDetect filter from the Miscellaneous filters plugin. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### RemoveGrain 

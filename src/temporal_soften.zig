@@ -35,9 +35,7 @@ const TemporalSoftenData = struct {
     // The temporal radius from which we'll build a median.
     radius: i8,
     threshold: [3]f32,
-    scenechange: u8,
-    scenechange_prop_prev: [:0]const u8,
-    scenechange_prop_next: [:0]const u8,
+    scenechange: bool,
 
     process: [3]bool,
 };
@@ -213,8 +211,8 @@ fn TemporalSoften(comptime T: type) type {
                 src_frames[0] = vsapi.?.getFrameFilter.?(_n, d.node, frame_ctx);
                 var frames: u8 = 1;
 
-                var sc_prev = if (d.scenechange > 0) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), d.scenechange_prop_prev.ptr, 0, &err) else 0;
-                var sc_next = if (d.scenechange > 0) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), d.scenechange_prop_next.ptr, 0, &err) else 0;
+                var sc_prev = if (d.scenechange) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), "_SceneChangePrev", 0, &err) else 0;
+                var sc_next = if (d.scenechange) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), "_SceneChangeNext", 0, &err) else 0;
 
                 // Request previous frames, up until we hit a scene change, if using scene change detection.
                 // Even though we aren't going to use all of the frames in a scene change
@@ -228,8 +226,8 @@ fn TemporalSoften(comptime T: type) type {
                         continue;
                     }
 
-                    if (d.scenechange > 0) {
-                        sc_prev = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), d.scenechange_prop_prev.ptr, 0, &err);
+                    if (d.scenechange) {
+                        sc_prev = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), "_SceneChangePrev", 0, &err);
                     }
 
                     frames += 1;
@@ -245,8 +243,8 @@ fn TemporalSoften(comptime T: type) type {
                         continue;
                     }
 
-                    if (d.scenechange > 0) {
-                        sc_next = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), d.scenechange_prop_next.ptr, 0, &err);
+                    if (d.scenechange) {
+                        sc_next = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), "_SceneChangeNext", 0, &err);
                     }
 
                     frames += 1;
@@ -312,8 +310,8 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     // Check video format.
     if (!vsh.isConstantVideoFormat(d.vi) or
         (d.vi.format.colorFamily != vs.ColorFamily.YUV and
-        d.vi.format.colorFamily != vs.ColorFamily.RGB and
-        d.vi.format.colorFamily != vs.ColorFamily.Gray))
+            d.vi.format.colorFamily != vs.ColorFamily.RGB and
+            d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
         return vscmn.reportError("TemporalSoften: only constant format YUV, RGB or Grey input is supported", vsapi, out, d.node);
     }
@@ -376,34 +374,35 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.threshold[2] > 0,
     };
 
-    if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scenechange| {
-        if (scenechange < 0 or scenechange > 254) {
-            return vscmn.reportError("TemporalSoften: scenechange must be between 0 and 254 (inclusive)", vsapi, out, d.node);
+    var scene_change_threshold: i32 = 0;
+
+    if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |_scene_change_threshold| {
+        if (_scene_change_threshold < -1 or _scene_change_threshold > 254) {
+            return vscmn.reportError("TemporalSoften: scenechange must be between -1 and 254 (inclusive)", vsapi, out, d.node);
         }
-        d.scenechange = @intCast(scenechange);
+        scene_change_threshold = _scene_change_threshold;
     } else {
-        d.scenechange = 0;
+        scene_change_threshold = 0;
     }
 
-    if (d.scenechange > 0) {
+    d.scenechange = scene_change_threshold != 0;
+
+    if (scene_change_threshold > 0) {
         if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
             return vscmn.reportError("TemporalSoften: Scene change support does not work with RGB.", vsapi, out, d.node);
         }
 
-        // TODO: Support setting scenechange to negative value to skip invocation of SCDetect and just use existing props.
         if (vsapi.?.getPluginByID.?("com.vapoursynth.misc", core)) |misc_plugin| {
             const args = vsapi.?.createMap.?();
             _ = vsapi.?.mapSetNode.?(args, "clip", d.node, vs.MapAppendMode.Replace);
             vsapi.?.freeNode.?(d.node);
-            _ = vsapi.?.mapSetFloat.?(args, "threshold", @as(f64, @floatFromInt(d.scenechange)) / 255.0, vs.MapAppendMode.Replace);
+            _ = vsapi.?.mapSetFloat.?(args, "threshold", @as(f64, @floatFromInt(scene_change_threshold)) / 255.0, vs.MapAppendMode.Replace);
 
             const ret = vsapi.?.invoke.?(misc_plugin, "SCDetect", args);
             vsapi.?.freeMap.?(args);
 
             if (vsapi.?.mapGetNode.?(ret, "clip", 0, &err)) |node| {
                 d.node = node;
-                d.scenechange_prop_prev = "_SceneChangePrev";
-                d.scenechange_prop_next = "_SceneChangeNext";
                 vsapi.?.freeMap.?(ret);
             } else {
                 vsapi.?.mapSetError.?(out, vsapi.?.mapGetError.?(ret) orelse "TemporalSoften: Unexpected error while invoking SCDetect.");
@@ -411,7 +410,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
                 return;
             }
         } else {
-            return vscmn.reportError("TemporalSoften: Miscellaneous filters plugin is required in order to use scene change detection.", vsapi, out, d.node);
+            return vscmn.reportError("TemporalSoften: Miscellaneous filters (https://github.com/vapoursynth/vs-miscfilters-obsolete) plugin is required in order to use scene change detection.", vsapi, out, d.node);
         }
     }
 

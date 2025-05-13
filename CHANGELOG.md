@@ -8,6 +8,8 @@
 have happened. All zips should just have the library file now with no directory structure. Sorry about that.
 * Add `planes` parameter to FluxSmooth, closing a compatibility gap with the original plugin.
 Request came from Selur: https://github.com/adworacz/zsmooth/issues/3
+* Support -1 for `scenechange` parameter in TemporalSoften, which enables reuse of existing scene change 
+properties instead of calling SCDetect from Misc filters internally.
 
 ## 0.8
 * Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 

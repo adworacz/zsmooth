@@ -224,7 +224,7 @@ fn TTempSmooth(comptime T: type) type {
             const center_weight: SumVecType = @splat(_center_weight);
             const threshold: VecType = @splat(_threshold);
             const shift: @Vector(vector_len, u8) = @splat(_shift);
-            const one: @Vector(vector_len, f32) = @splat(1.0);
+            const one: SumVecType = @splat(1.0);
 
             const current_pixel = vec.load(VecType, pfp[maxr], offset);
             var weight_sum: SumVecType = center_weight; // sum of weights
@@ -233,6 +233,7 @@ fn TTempSmooth(comptime T: type) type {
             // Check previous frames, starting with the frame closest to the center
             // and then walking backwards.
             var frame_idx: usize = maxr - 1;
+
 
             if (frame_idx > from_frame_idx) {
                 var temporal_pixel1 = vec.load(VecType, pfp[frame_idx], offset);
@@ -243,7 +244,7 @@ fn TTempSmooth(comptime T: type) type {
                 else
                     @min(math.absDiff(current_pixel, temporal_pixel1), one);
 
-                var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(@Vector(vector_len, f32), @splat(255.0))));
+                var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                 // var slice: []const f32 = &temporal_difference_weights[maxr - 1 - frame_idx];
                 var weight: SumVecType = switch (comptime weight_mode) {
                     .temporal => @splat(temporal_weights[frame_idx]),
@@ -261,6 +262,10 @@ fn TTempSmooth(comptime T: type) type {
                 var src = vec.load(VecType, srcp[frame_idx], offset);
                 weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
                 sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
+
+                // Keep track of when the prior processed frame was less than threshold 
+                // so that we can avoid updating weights if it ever isn't.
+                var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
 
                 //wrapping subtraction to make working with usize
                 //and "beyond zero" easier, vs using isize and a
@@ -286,7 +291,7 @@ fn TTempSmooth(comptime T: type) type {
                     else
                         @min(math.absDiff(temporal_pixel1, temporal_pixel2), one);
 
-                    weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(@Vector(vector_len, f32), @splat(255.0))));
+                    weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                     // slice = &temporal_difference_weights[maxr - 1 - frame_idx];
                     weight = switch (comptime weight_mode) {
                         .temporal => @splat(temporal_weights[frame_idx]),
@@ -298,12 +303,14 @@ fn TTempSmooth(comptime T: type) type {
                         //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
                     };
 
-                    // if (diff < threshold and temporal_diff < threshold)
+                    // if (prior_lt_threshold and (diff < threshold and temporal_diff < threshold))
                     // weight_sum += weight;
                     // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
                     src = vec.load(VecType, srcp[frame_idx], offset);
-                    weight_sum = @select(f32, vec.andB(diff < threshold, temporal_diff < threshold), weight_sum + weight, weight_sum);
-                    sum = @select(f32, vec.andB(diff < threshold, temporal_diff < threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
+                    const lt_thresholds = vec.andB(diff < threshold, temporal_diff < threshold);
+                    weight_sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), weight_sum + weight, weight_sum);
+                    sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
+                    prior_lt_threshold = vec.andB(lt_thresholds, prior_lt_threshold);
 
                     //wrapping subtraction to make working with usize
                     //and "beyond zero" easier, vs using isize and a
@@ -327,7 +334,7 @@ fn TTempSmooth(comptime T: type) type {
                 else
                     @min(math.absDiff(current_pixel, temporal_pixel1), one);
 
-                var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(@Vector(vector_len, f32), @splat(255.0))));
+                var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                 // var slice: []const f32 = &temporal_difference_weights[frame_idx - maxr - 1];
                 var weight: SumVecType = switch (comptime weight_mode) {
                     .temporal => @splat(temporal_weights[frame_idx]),
@@ -345,6 +352,10 @@ fn TTempSmooth(comptime T: type) type {
                 var src = vec.load(VecType, srcp[frame_idx], offset);
                 weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
                 sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
+
+                // Keep track of when the prior processed frame was less than threshold 
+                // so that we can avoid updating weights if it ever isn't.
+                var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
 
                 frame_idx += 1;
 
@@ -364,7 +375,7 @@ fn TTempSmooth(comptime T: type) type {
                     else
                         @min(math.absDiff(temporal_pixel1, temporal_pixel2), one);
 
-                    weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(@Vector(vector_len, f32), @splat(255.0))));
+                    weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                     // slice = &temporal_difference_weights[frame_idx - maxr - 1];
                     weight = switch (comptime weight_mode) {
                         .temporal => @splat(temporal_weights[frame_idx]),
@@ -376,16 +387,15 @@ fn TTempSmooth(comptime T: type) type {
                         //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
                     };
 
-                    // if (diff < threshold and temporal_diff < threshold)
+                    // if (prior_lt_threshold and (diff < threshold and temporal_diff < threshold))
                     // weight_sum += weight;
                     // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
                     src = vec.load(VecType, srcp[frame_idx], offset);
-                    weight_sum = @select(f32, vec.andB(diff < threshold, temporal_diff < threshold), weight_sum + weight, weight_sum);
-                    sum = @select(f32, vec.andB(diff < threshold, temporal_diff < threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
+                    const lt_thresholds = vec.andB(diff < threshold, temporal_diff < threshold);
+                    weight_sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), weight_sum + weight, weight_sum);
+                    sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
+                    prior_lt_threshold = vec.andB(lt_thresholds, prior_lt_threshold);
 
-                    //wrapping subtraction to make working with usize
-                    //and "beyond zero" easier, vs using isize and a
-                    //bunch of casting.
                     frame_idx += 1;
                 }
             }
@@ -399,11 +409,6 @@ fn TTempSmooth(comptime T: type) type {
 
                 vec.store(VecType, dstp, offset, result);
             } else {
-                // dstp[pixel_idx] = if (types.isInt(T))
-                //     @intFromFloat(@round(sum / weight_sum))
-                // else
-                //     sum / weight_sum;
-
                 const result: VecType = if (types.isInt(T))
                     @intFromFloat(@round(sum / weight_sum))
                 else
@@ -476,6 +481,7 @@ fn TTempSmooth(comptime T: type) type {
                 };
 
                 const dst = vscmn.newVideoFrame(&d.process, src_frames[d.maxr], d.vi, core, vsapi);
+                const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
 
                 for (0..@intCast(d.vi.format.numPlanes)) |uplane| {
                     if (!d.process[uplane]) {
@@ -503,7 +509,6 @@ fn TTempSmooth(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(zapi.getWritePtr(dst, iplane))))[0..(height * stride)];
 
                     const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
-                    const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
 
                     switch (d.weight_mode[uplane]) {
                         // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),

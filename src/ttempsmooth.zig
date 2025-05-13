@@ -849,13 +849,17 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
     const data: *TTempSmoothData = allocator.create(TTempSmoothData) catch unreachable;
     data.* = d;
 
-    //TODO: Add pfclip support.
     var deps = [_]vs.FilterDependency{
         vs.FilterDependency{
             .source = d.node,
             .requestPattern = rp.General,
         },
+        vs.FilterDependency{
+            .source = d.pfclip,
+            .requestPattern = rp.General,
+        },
     };
+    const num_deps: u8 = if (d.pfclip != null) 2 else 1;
 
     const getFrame = switch (d.vi.format.bytesPerSample) {
         1 => &TTempSmooth(u8).getFrame,
@@ -868,7 +872,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "TTempSmooth", d.vi, getFrame, ttempSmoothFree, fm.Parallel, &deps, deps.len, data, core);
+    vsapi.?.createVideoFilter.?(out, "TTempSmooth", d.vi, getFrame, ttempSmoothFree, fm.Parallel, deps[0..num_deps].ptr, @intCast(num_deps), data, core);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

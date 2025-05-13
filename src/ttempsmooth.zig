@@ -446,12 +446,13 @@ fn TTempSmooth(comptime T: type) type {
             const n: usize = lossyCast(usize, _n);
             const first: usize = n -| d.maxr;
             const last: usize = @min(n + d.maxr, lossyCast(usize, d.vi.numFrames - 1));
+            const has_pfclip = d.pfclip != null;
 
             if (activation_reason == ar.Initial) {
                 for (first..(last + 1)) |i| {
                     zapi.requestFrameFilter(@intCast(i), d.node, frame_ctx);
 
-                    if (d.pfclip != null) {
+                    if (has_pfclip) {
                         zapi.requestFrameFilter(@intCast(n), d.pfclip, frame_ctx);
                     }
                 }
@@ -468,14 +469,14 @@ fn TTempSmooth(comptime T: type) type {
 
                         src_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
 
-                        if (d.pfclip != null) {
+                        if (has_pfclip) {
                             pf_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
                         }
                     }
                 }
                 defer for (0..diameter) |i| {
                     zapi.freeFrame(src_frames[i]);
-                    if (d.pfclip != null) {
+                    if (has_pfclip) {
                         zapi.freeFrame(pf_frames[i]);
                     }
                 };
@@ -500,7 +501,7 @@ fn TTempSmooth(comptime T: type) type {
                     }
 
                     var pfp: [MAX_DIAMETER][]const T = undefined;
-                    if (d.pfclip != null) {
+                    if (has_pfclip) {
                         for (0..diameter) |i| {
                             pfp[i] = @as([*]const T, @ptrCast(@alignCast(zapi.getReadPtr(pf_frames[i], iplane))))[0..(height * stride)];
                         }
@@ -511,8 +512,8 @@ fn TTempSmooth(comptime T: type) type {
                     const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
 
                     switch (d.weight_mode[uplane]) {
-                        // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
-                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (d.pfclip != null) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
                     }
                 }
 
@@ -529,6 +530,9 @@ export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
 
     vsapi.?.freeNode.?(d.node);
+    if (d.pfclip != null) {
+        vsapi.?.freeNode.?(d.pfclip);
+    } 
 
     for (0..3) |plane| {
         if (d.weight_mode[plane] == .inverse_difference) {

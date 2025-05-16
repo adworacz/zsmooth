@@ -46,6 +46,7 @@ const TTempSmoothData = struct {
     threshold: [3]u9, // threshold in 8-bit scale (max is 256 (MAX_NUM_DIFFERENCES), thus the use of u16). Scaled in getFrame to pertinent format.
     fp: bool,
     pfclip: ?*vs.Node,
+    scenechange: bool,
 
     weight_mode: [3]WeightMode,
     temporal_difference_weights: [3][][MAX_NUM_DIFFERENCES]f32,
@@ -61,11 +62,7 @@ fn TTempSmooth(comptime T: type) type {
     const VecType = @Vector(vector_len, T);
 
     return struct {
-        fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
-            // TODO: Make these params.
-            const from_frame_idx = -1;
-            const to_frame_idx = maxr * 2 + 1;
-
+        fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const pixel_idx = row * stride + column;
@@ -77,7 +74,7 @@ fn TTempSmooth(comptime T: type) type {
                     // and then walking backwards.
                     var frame_idx: usize = maxr - 1;
 
-                    if (frame_idx > from_frame_idx) {
+                    if (frame_idx >= from_frame_idx) {
                         var temporal_pixel1 = pfp[frame_idx][pixel_idx];
                         var diff = if (types.isInt(T))
                             math.absDiff(current_pixel, temporal_pixel1)
@@ -104,7 +101,7 @@ fn TTempSmooth(comptime T: type) type {
                             //check against maxInt of usize to see if we've wrapped around.
                             //If we have, then it means that we've gone beyond zero and thus already processed the
                             //last frame.
-                            while (frame_idx != std.math.maxInt(usize) and frame_idx > from_frame_idx) {
+                            while (frame_idx != std.math.maxInt(usize) and frame_idx >= from_frame_idx) {
                                 const temporal_pixel2 = temporal_pixel1;
                                 temporal_pixel1 = pfp[frame_idx][pixel_idx];
 
@@ -143,7 +140,7 @@ fn TTempSmooth(comptime T: type) type {
                     // and then walking forwards.
                     frame_idx = maxr + 1;
 
-                    if (frame_idx < to_frame_idx) {
+                    if (frame_idx <= to_frame_idx) {
                         // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
                         // and frame_idx < to_frame_idx instead of frame_idx > from_frame_idx
                         var temporal_pixel1 = pfp[frame_idx][pixel_idx];
@@ -167,7 +164,7 @@ fn TTempSmooth(comptime T: type) type {
 
                             frame_idx += 1;
 
-                            while (frame_idx < to_frame_idx) {
+                            while (frame_idx <= to_frame_idx) {
                                 const temporal_pixel2 = temporal_pixel1;
                                 temporal_pixel1 = pfp[frame_idx][pixel_idx];
 
@@ -214,11 +211,7 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
-        fn ttempSmoothVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, offset: usize, maxr: u8, _threshold: T, fp: bool, _shift: u8, _center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
-            // TODO: Make these params.
-            const from_frame_idx = -1;
-            const to_frame_idx = maxr * 2 + 1;
-
+        fn ttempSmoothVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, offset: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, _threshold: T, fp: bool, _shift: u8, _center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
             const SumVecType = @Vector(vector_len, f32);
 
             const center_weight: SumVecType = @splat(_center_weight);
@@ -234,8 +227,7 @@ fn TTempSmooth(comptime T: type) type {
             // and then walking backwards.
             var frame_idx: usize = maxr - 1;
 
-
-            if (frame_idx > from_frame_idx) {
+            if (frame_idx >= from_frame_idx) {
                 var temporal_pixel1 = vec.load(VecType, pfp[frame_idx], offset);
 
                 // diff = abs(current_pixel - temporal_pixel1)
@@ -263,7 +255,7 @@ fn TTempSmooth(comptime T: type) type {
                 weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
                 sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
 
-                // Keep track of when the prior processed frame was less than threshold 
+                // Keep track of when the prior processed frame was less than threshold
                 // so that we can avoid updating weights if it ever isn't.
                 var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
 
@@ -275,7 +267,7 @@ fn TTempSmooth(comptime T: type) type {
                 //check against maxInt of usize to see if we've wrapped around.
                 //If we have, then it means that we've gone beyond zero and thus already processed the
                 //last frame.
-                while (frame_idx != std.math.maxInt(usize) and frame_idx > from_frame_idx) {
+                while (frame_idx != std.math.maxInt(usize) and frame_idx >= from_frame_idx) {
                     const temporal_pixel2 = temporal_pixel1;
                     temporal_pixel1 = vec.load(VecType, pfp[frame_idx], offset);
 
@@ -323,7 +315,7 @@ fn TTempSmooth(comptime T: type) type {
             // and then walking forwards.
             frame_idx = maxr + 1;
 
-            if (frame_idx < to_frame_idx) {
+            if (frame_idx <= to_frame_idx) {
                 // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
                 // and frame_idx < to_frame_idx instead of frame_idx > from_frame_idx
                 var temporal_pixel1 = vec.load(VecType, pfp[frame_idx], offset);
@@ -353,13 +345,13 @@ fn TTempSmooth(comptime T: type) type {
                 weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
                 sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
 
-                // Keep track of when the prior processed frame was less than threshold 
+                // Keep track of when the prior processed frame was less than threshold
                 // so that we can avoid updating weights if it ever isn't.
                 var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
 
                 frame_idx += 1;
 
-                while (frame_idx < to_frame_idx) {
+                while (frame_idx <= to_frame_idx) {
                     const temporal_pixel2 = temporal_pixel1;
                     temporal_pixel1 = vec.load(VecType, pfp[frame_idx], offset);
 
@@ -418,20 +410,20 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
+        fn processPlaneVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
             const width_simd = width / vector_len * vector_len;
 
             for (0..height) |row| {
                 var column: usize = 0;
                 while (column < width_simd) : (column += vector_len) {
                     const offset = row * stride + column;
-                    ttempSmoothVector(srcp, pfp, dstp, offset, maxr, threshold, fp, shift, center_weight, weight_mode, temporal_weights, temporal_difference_weights);
+                    ttempSmoothVector(srcp, pfp, dstp, offset, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, weight_mode, temporal_weights, temporal_difference_weights);
                 }
 
                 // If the video width is not perfectly aligned with the vector width, do one
                 // last operation at the end of the plane to cover what's leftover from the loop above.
                 if (width_simd < width) {
-                    ttempSmoothVector(srcp, pfp, dstp, (row * stride) + width - vector_len, maxr, threshold, fp, shift, center_weight, weight_mode, temporal_weights, temporal_difference_weights);
+                    ttempSmoothVector(srcp, pfp, dstp, (row * stride) + width - vector_len, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, weight_mode, temporal_weights, temporal_difference_weights);
                 }
             }
         }
@@ -453,7 +445,7 @@ fn TTempSmooth(comptime T: type) type {
                     zapi.requestFrameFilter(@intCast(i), d.node, frame_ctx);
 
                     if (has_pfclip) {
-                        zapi.requestFrameFilter(@intCast(n), d.pfclip, frame_ctx);
+                        zapi.requestFrameFilter(@intCast(i), d.pfclip, frame_ctx);
                     }
                 }
             } else if (activation_reason == ar.AllFramesReady) {
@@ -470,7 +462,7 @@ fn TTempSmooth(comptime T: type) type {
                         src_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
 
                         if (has_pfclip) {
-                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
+                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.pfclip, frame_ctx);
                         }
                     }
                 }
@@ -480,6 +472,32 @@ fn TTempSmooth(comptime T: type) type {
                         zapi.freeFrame(pf_frames[i]);
                     }
                 };
+
+                var from_frame_idx: usize = 0;
+                var to_frame_idx: usize = diameter - 1;
+                if (d.scenechange) {
+                    const frames = if (has_pfclip) pf_frames else src_frames;
+                    {
+                        var i = d.maxr;
+                        while (i > 0) : (i -= 1) {
+                            const props = zapi.initZMap(zapi.getFramePropertiesRO(frames[i]));
+                            if (props.getInt(i32, "_SceneChangePrev") == 1) {
+                                from_frame_idx = i;
+                                break;
+                            }
+                        }
+                    }
+                    {
+                        var i = d.maxr;
+                        while (i < diameter - 1) : (i += 1) {
+                            const props = zapi.initZMap(zapi.getFramePropertiesRO(frames[i]));
+                            if (props.getInt(i32, "_SceneChangeNext") == 1) {
+                                to_frame_idx = i;
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 const dst = vscmn.newVideoFrame(&d.process, src_frames[d.maxr], d.vi, core, vsapi);
                 const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
@@ -512,8 +530,8 @@ fn TTempSmooth(comptime T: type) type {
                     const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
 
                     switch (d.weight_mode[uplane]) {
-                        // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
-                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
                     }
                 }
 
@@ -530,9 +548,7 @@ export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
 
     vsapi.?.freeNode.?(d.node);
-    if (d.pfclip != null) {
-        vsapi.?.freeNode.?(d.pfclip);
-    } 
+    vsapi.?.freeNode.?(d.pfclip);
 
     for (0..3) |plane| {
         if (d.weight_mode[plane] == .inverse_difference) {
@@ -743,17 +759,15 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
     d.node, d.vi = inz.getNodeVi("clip").?;
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "TTempSmooth: only constant format input supported");
-        vsapi.?.freeNode.?(d.node);
-        return;
+        zapi.freeNode(d.node);
+        return outz.setError("TTempSmooth: only constant format input supported");
     }
 
     d.maxr = inz.getInt(u8, "maxr") orelse 3;
 
     if ((d.maxr < 1) or (d.maxr > MAX_RADIUS)) {
-        outz.setError("TTempSmooth: maxr must be between 1 and 7 (inclusive)");
         zapi.freeNode(d.node);
-        return;
+        return outz.setError("TTempSmooth: maxr must be between 1 and 7 (inclusive)");
     }
 
     d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
@@ -775,7 +789,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
             if (inz.getInt2(i32, "thresh", plane)) |thresh| {
                 if (thresh < 1 or thresh > MAX_NUM_DIFFERENCES) {
                     zapi.freeNode(d.node);
-                    outz.setError("TTempSmooth: thresh must be between 1 and 256");
+                    return outz.setError("TTempSmooth: thresh must be between 1 and 256");
                 }
 
                 d.threshold[plane] = @intCast(thresh);
@@ -794,7 +808,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
             if (inz.getInt2(i32, "mdiff", plane)) |diff| {
                 if (diff < 0 or diff > 255) {
                     zapi.freeNode(d.node);
-                    outz.setError("TTempSmooth: mdiff must be between 0 and 255");
+                    return outz.setError("TTempSmooth: mdiff must be between 0 and 255");
                 }
 
                 mdiff[plane] = @intCast(diff);
@@ -808,7 +822,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
 
     if (strength < 1 or strength > 8) {
         zapi.freeNode(d.node);
-        outz.setError("TTempSmooth: strength must be between 1 and 8 (inclusive)");
+        return outz.setError("TTempSmooth: strength must be between 1 and 8 (inclusive)");
     }
 
     for (0..3) |plane| {
@@ -839,6 +853,16 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         }
     }
 
+    const scene_change_threshold = if (inz.getFloat(f32, "scthresh")) |scthresh| blk: {
+        if (scthresh < -1 or scthresh > 100) {
+            zapi.freeNode(d.node);
+            return outz.setError("TTempSmooth: scthresh must be between -1 and 100.0 (inclusive)");
+        }
+        break :blk scthresh;
+    } else 12;
+
+    d.scenechange = scene_change_threshold != 0;
+
     d.pfclip = inz.getNode("pfclip");
     if (d.pfclip != null) {
         const pfclipvi = zapi.getVideoInfo(d.pfclip);
@@ -846,7 +870,49 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         if (!vsh.isSameVideoFormat(&d.vi.format, &pfclipvi.format)) {
             zapi.freeNode(d.node);
             zapi.freeNode(d.pfclip);
-            outz.setError("pfclip must have same format and dimensions as the main clip");
+            return outz.setError("pfclip must have same format and dimensions as the main clip");
+        }
+    }
+
+    if (scene_change_threshold > 0) {
+        if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
+            zapi.freeNode(d.node);
+            zapi.freeNode(d.pfclip);
+            return outz.setError(
+                \\TTempSmooth: scthresh > 0 does not work with RGB. 
+                \\Invoke SCDetect (or similar) yourself with an RGB->YUV converted clip, 
+                \\copy the properties (CopyFrameProps) to your input clip,
+                \\and then invoke TTempSmooth with scthresh=-1 to use those properties.
+            );
+        }
+
+        if (zapi.getPluginByID("com.vapoursynth.misc")) |misc_plugin| {
+            const args = zapi.createZMap();
+            defer args.free();
+
+            const node = if (d.pfclip != null) d.pfclip else d.node;
+
+            _ = args.consumeNode("clip", node, .Replace);
+            args.setFloat("threshold", scene_change_threshold / 100.0, .Replace);
+
+            const ret = zapi.initZMap(zapi.invoke(misc_plugin, "SCDetect", args.map));
+            defer ret.free();
+
+            if (ret.getNode("clip")) |n| {
+                if (d.pfclip != null) {
+                    d.pfclip = n;
+                } else {
+                    d.node = n;
+                }
+            } else {
+                zapi.freeNode(d.node);
+                zapi.freeNode(d.pfclip);
+                return outz.setError("TTempSmooth: Unexpected error while invoking SCDetect");
+            }
+        } else {
+            zapi.freeNode(d.node);
+            zapi.freeNode(d.pfclip);
+            return outz.setError("TTempSmooth: Miscellaneous filters (https://github.com/vapoursynth/vs-miscfilters-obsolete) plugin is required in order to use scene change detection.");
         }
     }
 

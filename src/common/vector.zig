@@ -135,6 +135,7 @@ test "vector gather array" {
     const array = [3]u8{ 0, 1, 2 };
     const index: @Vector(3, usize) = .{ 0, 1, 1 };
     const result = gatherArray(array, index); // error: expected integer, float, bool, or pointer for the vector element type; found '[3]u8'
+    // const result = gather(@as([]const u8, @ptrCast(&array)), index); //works
     try std.testing.expect(result[0] == 0);
     try std.testing.expect(result[1] == 1);
     try std.testing.expect(result[2] == 1);

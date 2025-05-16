@@ -291,7 +291,6 @@ export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
-
 export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
     var d: TemporalSoftenData = undefined;
@@ -374,16 +373,12 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.threshold[2] > 0,
     };
 
-    var scene_change_threshold: i32 = 0;
-
-    if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |_scene_change_threshold| {
-        if (_scene_change_threshold < -1 or _scene_change_threshold > 254) {
+    const scene_change_threshold = if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scene_change_threshold| blk: {
+        if (scene_change_threshold < -1 or scene_change_threshold > 254) {
             return vscmn.reportError("TemporalSoften: scenechange must be between -1 and 254 (inclusive)", vsapi, out, d.node);
         }
-        scene_change_threshold = _scene_change_threshold;
-    } else {
-        scene_change_threshold = 0;
-    }
+        break :blk scene_change_threshold;
+    } else 0;
 
     d.scenechange = scene_change_threshold != 0;
 

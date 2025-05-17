@@ -245,7 +245,22 @@ Modes:
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### InterQuartileMean
-In Progress - IQM3 works like a champ, but IQM5 is dog slow. Gonna work on optimizing IQM5 before officially releasing.
+```py
+core.zsmooth.InterQuartileMean(clip clip[, int[] radius])
+```
+Performs an interquartile mean of a 3x3 grid. An interquartile mean is a mean (average)
+where the darkest 1/4 and brightest 1/4 of pixels are thrown out, and the remaining middle
+values are averaged.
+
+Essentially, this is a smartish blurring filter, and works well as a
+prefilter for more advanced filters like SMDegrain, etc.
+
+Future versions will support 5x5 (and maybe 7x7).
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| radius | int[] | 1 | The spatial radius of the filter. Currently only 1 (3x3) is supported, but future versions will include higher radii |
 
 ### TTempSmooth
 In Progress - scalar implementation has been ported, but it's dog slow (just like the origina), so vector version is

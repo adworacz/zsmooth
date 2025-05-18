@@ -369,7 +369,6 @@ export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         },
     };
 
-    // vsapi.?.createVideoFilter.?(out, "Clense", d.vi, getFrame, clenseFree, fm.Parallel, if (d.mode == .Normal) &normalDeps else &forwardBackwardDeps, if (d.mode == .Normal) normalDeps.len else forwardBackwardDeps.len, data, core);
     vsapi.?.createVideoFilter.?(out, "Clense", d.vi, getFrame, clenseFree, fm.Parallel, if (mode == .Normal) &normalDeps else &forwardBackwardDeps, if (mode == .Normal) normalDeps.len else forwardBackwardDeps.len, data, core);
 }
 

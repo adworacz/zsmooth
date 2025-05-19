@@ -34,9 +34,11 @@ match format:
 
 clip.set_output(0)
 
+if output in ['focus2', 'all']: 
+    if clip.format.sample_type == vs.INTEGER:
+        focus2 = clip.focus2.TemporalSoften2(radius=radius)
 
-if clip.format.sample_type == vs.INTEGER:
-    focus2 = clip.focus2.TemporalSoften2(radius=radius)
+std = clip.std.AverageFrames(weights= [1] * (int(radius) * 2 + 1))
 
 zsmooth = clip.zsmooth.TemporalSoften(radius=radius);
 
@@ -45,10 +47,13 @@ match output:
         focus2.set_output()
     case 'zsmooth':
         zsmooth.set_output()
+    case 'std':
+        std.set_output()
     case 'all':
         clip.set_output(0)
         focus2.set_output(1)
-        zsmooth.set_output(2)
+        std.set_output(2)
+        zsmooth.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"
 

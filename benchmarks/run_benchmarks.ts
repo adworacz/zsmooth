@@ -380,13 +380,17 @@ for (const filter of benchmarksToRun) {
     const min = fpsValues[0]
     const max = fpsValues[fpsValues.length - 1]
     const median = fpsValues[Math.trunc(fpsValues.length / 2)]
-    const average =
+    let average =
       fpsValues.reduce((prev, curr) => prev + curr) / fpsValues.length
 
     // https://en.wikipedia.org/wiki/Standard_deviation
     const differences_squared = fpsValues.map((fps) => (fps - average) * (fps - average))
     const variance = differences_squared.reduce((prev, curr) => prev + curr) / fpsValues.length
-    const std_deviation = Math.sqrt(variance)
+    let std_deviation = Math.sqrt(variance)
+
+    // Trim precision to 3 decimal points.
+    average = average.toFixed(3)
+    std_deviation = std_deviation.toFixed(3)
 
     const stringifiedArgs = spec.args.join(' ')
 

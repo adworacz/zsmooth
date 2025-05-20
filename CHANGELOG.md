@@ -1,16 +1,18 @@
 # Changelog
 
 ## 0.9
-* Add implementation of InterQuartileMean, as made popular by Dogway.
-* Upgraded to Zig 0.14.0
-* Add BENCHMARKS.md to track performance.
-* Fix built zips to not include the zig build path in the final zip file any more. This was my mistake and it shouldn't
-have happened. All zips should just have the library file now with no directory structure. Sorry about that.
-* Add `planes` parameter to FluxSmooth, closing a compatibility gap with the original plugin.
-Request came from Selur: https://github.com/adworacz/zsmooth/issues/3
+* Add implementation of InterQuartileMean, as made popular by Dogway. Just IQM3 (3x3) support for now, 5x5 will come later.
+* Implement TTempSmooth. As per usual, it's faster than the original, anywhere from 2.7x-5x depending on the use case
+and the machine running the code.
 * Support -1 for `scenechange` parameter in TemporalSoften, which enables reuse of existing scene change 
 properties instead of calling SCDetect from Misc filters internally.
+* Add `planes` parameter to FluxSmooth, closing a compatibility gap with the original plugin.
+Request came from Selur: https://github.com/adworacz/zsmooth/issues/3
 * Fix bug in Clense with `next` clip dependencies.
+* Upgraded to Zig 0.14.0
+* Fix built zips to not include the zig build path in the final zip file any more. This was my mistake and it shouldn't
+have happened. All zips should just have the library file now with no directory structure. Sorry about that.
+* Add BENCHMARKS.md to track performance.
 
 ## 0.8
 * Fix bug pertaining to scene change handling in TemporalSoften. It had a typo in the scene change property names so 

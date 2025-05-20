@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.10 - TBD
+
 ## 0.9
 * Add implementation of InterQuartileMean, as made popular by Dogway. Just IQM3 (3x3) support for now, 5x5 will come later.
 * Implement TTempSmooth. As per usual, it's faster than the original, anywhere from 2.7x-5x depending on the use case

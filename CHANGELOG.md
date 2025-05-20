@@ -12,6 +12,10 @@ Request came from Selur: https://github.com/adworacz/zsmooth/issues/3
 * Upgraded to Zig 0.14.0
 * Fix built zips to not include the zig build path in the final zip file any more. This was my mistake and it shouldn't
 have happened. All zips should just have the library file now with no directory structure. Sorry about that.
+* Fixed build script to work with Zig 0.14.0 and windows builds.
+* Changed zip names so that AVX512 (znver4) build is tagged with `znver4` at the end instead of the beginning of the
+file name. Should visually sort artifact names better from now on.
+* Add AVX512 (znver4) builds for Linux (GNU and Musl).
 * Add BENCHMARKS.md to track performance.
 
 ## 0.8

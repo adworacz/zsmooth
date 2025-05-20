@@ -248,12 +248,13 @@ Modes:
 ```py
 core.zsmooth.InterQuartileMean(clip clip[, int[] radius])
 ```
-Performs an interquartile mean of a 3x3 grid. An interquartile mean is a mean (average)
-where the darkest 1/4 and brightest 1/4 of pixels are thrown out, and the remaining middle
-values are averaged.
+Smartish spatial blurring filter, works well as a prefilter. 
 
-Essentially, this is a smartish blurring filter, and works well as a
-prefilter for more advanced filters like SMDegrain, etc.
+Works well with `limit_filter` from `vs-jetpack` (or similar) for limiting/thresholding.
+
+Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a 3x3 grid. 
+An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
+are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average.
 
 Future versions will support 5x5 (and maybe 7x7).
 
@@ -263,8 +264,59 @@ Future versions will support 5x5 (and maybe 7x7).
 | radius | int[] | 1 | The spatial radius of the filter. Currently only 1 (3x3) is supported, but future versions will include higher radii |
 
 ### TTempSmooth
-In Progress - scalar implementation has been ported, but it's dog slow (just like the origina), so vector version is
-incoming.
+```py
+core.zsmooth.TTempSmooth(vnode clip[, int maxr=3, int[] thresh=[4, 5, 5], int[] mdiff=[2, 3, 3], int strength=2, float scthresh=12.0, bint fp=True, vnode pfclip=None, int[] planes=[0, 1, 2]])
+```
+TTempSmooth is a motion adaptive (it only works on stationary parts of the picture), temporal smoothing filter.
+
+It's essentially a fancy lookup table internally, but it works by computing a set of weights based on the input
+parameters, and then applying those weights based on the temporal differences of the input clip (or pfclip, if
+provided).
+
+Higher weights contribute more to the final pixel value, and lower weights contribute less.
+
+The parameters are related to each other, with `maxr` and `strength` governing the temporal distance and temporal
+weight, respectively. Frames closer to the center have a higher weight, and frames further from the center have a lower
+weight.
+
+`thresh` and `mdiff` govern the weights concerning the difference in pixel values between frames. Smaller differences
+are weighted higher and larger differences are weighted lower.
+
+Note that there are essentially two modes - a simple temporal weighted mode, and a temporal + difference weighted mode.
+
+The former is activated when `mdiff >= threshold - 1`. This disables all difference weighting, and simply weights pixels
+that have a temporal difference below `threshold` based on how far they are from the center. This is the fastest mode.
+
+The latter is activated when `mdiff < threshold - 1`. In this mode, temporal weights *and* difference weights are
+applied. So in addition to the weights applied in the previous mode, the amount that a pixel differs from the center
+effects how much weight is given to it. Again, smaller differences have higher weights.
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip     | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY |                         | Clip to process                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| radius   | int[]                                             | 1                       | The spatial radius of the filter. Currently only 1 (3x3) is supported, but future versions will include higher radii                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| maxr     | int                                               | 1-7 (3)                 | This sets the maximum temporal radius. By the way it works TTempSmooth automatically varies the radius used... this sets the maximum boundary. At 1 TTempSmooth will be (at max) including pixels from 1 frame away in the average (3 frames total will be considered counting the current frame). At 7 it would be including pixels from up to 7 frames away (15 frames total will be considered). With the way it checks motion there isn't much danger in setting this high, it's basically a quality vs. speed option. Lower settings are faster while larger values tend to create a more stable image.                                                                                                                                                        |
+| thresh   | int[]                                             | ([4, 5, 5])             | (8-bit scale) Your standard thresholds for differences of pixels between frames. TTempSmooth checks 2 frame distance as well as single frame, so these can usually be set slightly higher than with most other temporal smoothers and still avoid artifacts. Valid settings are from 1 to 256. Also important is the fact that as long as `mdiff` is less than the threshold value then pixels with larger differences from the original will have less weight in the average. Thus, even with rather large thresholds pixels just under the threshold won't have much weight, helping to reduce artifacts. If a single value is specified, it will be used for all planes. If two values are given then the second value will be used for the third plane as well. |
+| mdiff    | int[]                                             | ([2, 3, 3])             | (8-bit scale) Any pixels with differences less than or equal to `mdiff` will be blurred at maximum. Usually, the larger the difference to the center pixel the smaller the weight in the average. `mdiff` makes TTempSmooth treat pixels that have a difference of less than or equal to `mdiff` as though they have a difference of 0. In other words, it shifts the zero difference point outwards. Set `mdiff` to a value equal to or greater than `thresh-1` to completely disable inverse pixel difference weighting. Valid settings are from 0 to 255. If a single value is specified, it will be used for all planes. If two values are given then the second value will be used for the third plane as well.                                                |
+| strength | int                                               | 1-8 (2)                 | TTempSmooth uses inverse distance weighting when deciding how much weight to give to each pixel value. The strength option lets you shift the drop off point away from the center to give a stronger smoothing effect and add weight to the outer pixels. It does for the spatial weights what `mdiff` does for the difference weights.
+| scthresh | float                                             | -1.0 - 0 - 100.0 (12.0) | The standard scenechange threshold as a percentage of maximum possible change of the luma plane. A good range of values is between 8 and 15. Set `scthresh` to 0.0 to disable scenechange detection. Set `scthresh` to -1 to disable calls to `misc.SCDetect` internally and just use existing `_SceneChangePrev/Next` properties (useful for when said properties have already been set prior to calling this function).
+| fp       | bool                                              | True                    | Setting `fp=True` will add any weight not given to the outer pixels back onto the center pixel when computing the final value. Setting `fp=False` will just do a normal weighted average. `fp=True` is much better for reducing artifacts in motion areas and usually produces overall better results.
+| pfclip   | same format clip as `clip`                        | (none)                  | This allows you to specify a separate clip for TTempSmooth to use when calculating pixel differences. This applies to checking the motion thresholds, calculating inverse difference weights, and detecting scenechanges. Basically, the `pfclip` will be used to determine the weights in the average but the weights will be applied to the original input clip's pixel values.
+| planes   | int[]                                             | ([0, 1, 2])             | Which planes to process. Any unfiltered planes are copied from the input clip.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+
+Example of the impact of `strength` on the temporal weights, with the center frame being in the middle of each line:
+
+* 1 = 0.13 0.14 0.16 0.20 0.25 0.33 0.50 1.00 0.50 0.33 0.25 0.20 0.16 0.14 0.13
+* 2 = 0.14 0.16 0.20 0.25 0.33 0.50 1.00 1.00 1.00 0.50 0.33 0.25 0.20 0.16 0.14
+* 3 = 0.16 0.20 0.25 0.33 0.50 1.00 1.00 1.00 1.00 1.00 0.50 0.33 0.25 0.20 0.16
+* 4 = 0.20 0.25 0.33 0.50 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.50 0.33 0.25 0.20
+* 5 = 0.25 0.33 0.50 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.50 0.33 0.25
+* 6 = 0.33 0.50 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.50 0.33
+* 7 = 0.50 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 0.50
+* 8 = 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00 1.00
+
+The values shown are for `maxr=7`, when using smaller radius values the weights outside of the range are simply dropped. Thus, setting `strength` to a value of `maxr+1` or higher will give you equal spatial weighting of all pixels in the kernel.
+
 
 ## Building
 All build artifacts are placed under `zig-out/lib`.

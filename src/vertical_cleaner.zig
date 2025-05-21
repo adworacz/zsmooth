@@ -59,11 +59,11 @@ fn VerticalCleaner(comptime T: type) type {
 
             for (1..height - 1) |row| {
                 for (0..width) |column| {
-                    const up = srcp[(row - 1) * stride + column];
+                    const top = srcp[(row - 1) * stride + column];
                     const center = srcp[row * stride + column];
-                    const down = srcp[(row + 1) * stride + column];
+                    const bottom = srcp[(row + 1) * stride + column];
 
-                    dstp[row * stride + column] = sort.median3(up, center, down);
+                    dstp[row * stride + column] = sort.median3(top, center, bottom);
                 }
             }
 

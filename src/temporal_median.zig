@@ -42,7 +42,7 @@ fn TemporalMedian(comptime T: type) type {
     const VecType = @Vector(vec_size, T);
 
     return struct {
-        fn processPlaneScalar(comptime diameter: u8, srcp: [][]const T, dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn processPlaneScalar(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             var temp: [diameter]T = undefined;
 
             for (0..height) |row| {
@@ -55,6 +55,7 @@ fn TemporalMedian(comptime T: type) type {
 
                     // 60fps with radius 1
                     // 7 fps with radius 10
+                    // TODO: Try this code again with new sorting networks in common/sort.zig.
                     std.mem.sortUnstable(T, temp[0..diameter], {}, comptime std.sort.asc(T));
 
                     dstp[current_pixel] = temp[diameter / 2];
@@ -62,7 +63,7 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(comptime diameter: u8, srcp: [][]const T, dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn processPlaneVector(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -119,7 +120,7 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn medianVector(comptime diameter: u8, srcp: [][]const T, dstp: []T, offset: usize) void {
+        fn medianVector(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, offset: usize) void {
             var src: [diameter]VecType = undefined;
 
             for (0..diameter) |r| {

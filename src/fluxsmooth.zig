@@ -44,7 +44,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        fn processPlaneTemporalScalar(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
+        fn processPlaneTemporalScalar(srcp: [3][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * stride + column;
@@ -63,8 +63,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (types.isInt(T)) {
-                    const prevdiff = @max(prev, curr) - @min(prev, curr);
-                    const nextdiff = @max(next, curr) - @min(next, curr);
+                    const prevdiff = math.absDiff(prev, curr);
+                    const nextdiff = math.absDiff(next, curr);
 
                     // Turns out picking the types on
                     // these can have a major impact on performance.
@@ -205,17 +205,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // or
             const mask_either = vec.orB(prevnextless, prevnextmore);
 
-            // max-min is about same perf as saturating subtraction on laptop
-            // TODO: Try on desktop.
-            const prevabsdiff = if (types.isInt(T))
-                @max(prev, curr) - @min(prev, curr)
-            else
-                @abs(prev - curr);
-
-            const nextabsdiff = if (types.isInt(T))
-                @max(next, curr) - @min(next, curr)
-            else
-                @abs(next - curr);
+            const prevabsdiff = math.absDiff(prev, curr);
+            const nextabsdiff = math.absDiff(next, curr);
 
             var sum: @Vector(vec_size, UAT) = curr;
             var count = ones;
@@ -301,7 +292,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             try std.testing.expectEqualDeep(expected, dstp);
         }
 
-        fn processPlaneSpatialTemporalScalar(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
+        fn processPlaneSpatialTemporalScalar(srcp: [3][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: SAT, spatial_threshold: SAT) void {
             // Copy the first line
             @memcpy(dstp, srcp[1][0..width]);
 
@@ -352,8 +343,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         fn fluxsmoothSpatialTemporalScalar(prev: T, curr: T, next: T, neighbors: [8]T, temporal_threshold: SAT, spatial_threshold: SAT) T {
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (types.isInt(T)) {
-                    const prevdiff = @max(prev, curr) - @min(prev, curr);
-                    const nextdiff = @max(next, curr) - @min(next, curr);
+                    const prevdiff = math.absDiff(prev, curr);
+                    const nextdiff = math.absDiff(next, curr);
 
                     var sum: UAT = curr;
                     var count: u8 = 1;
@@ -369,7 +360,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
                     }
 
                     inline for (neighbors) |n| {
-                        const diff = @max(n, curr) - @min(n, curr);
+                        const diff = math.absDiff(n, curr);
 
                         if (diff <= spatial_threshold) {
                             sum += n;
@@ -415,7 +406,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             }
         }
 
-        fn processPlaneSpatialTemporalVector(srcp: [3][]const T, dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
+        fn processPlaneSpatialTemporalVector(srcp: [3][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, temporal_threshold: anytype, spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const width_simd = width / vec_size * vec_size;
 
@@ -450,7 +441,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         }
 
         // TODO: Add tests for this function.
-        fn fluxsmoothSTVector(srcp: [3][]const T, dstp: []T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
+        fn fluxsmoothSTVector(srcp: [3][]const T, noalias dstp: []T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -488,17 +479,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // or
             const mask_either = vec.orB(prevnextless, prevnextmore);
 
-            // TODO: commonize this absdiff logic, and support
-            // scalars and vectors.
-            const prevabsdiff = if (types.isInt(T))
-                @max(prev, curr) - @min(prev, curr)
-            else
-                @abs(prev - curr);
-
-            const nextabsdiff = if (types.isInt(T))
-                @max(next, curr) - @min(next, curr)
-            else
-                @abs(next - curr);
+            const prevabsdiff = math.absDiff(prev, curr);
+            const nextabsdiff = math.absDiff(next, curr); 
 
             var sum: @Vector(vec_size, UAT) = curr;
             var count = ones;
@@ -513,10 +495,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
             // if neighbor <= neighbor_threshold; sum += neighbor; count += 1;
             inline for (neighbors) |n| {
-                const nabsdiff = if (types.isInt(T))
-                    @max(n, curr) - @min(n, curr)
-                else
-                    @abs(n - curr);
+                const nabsdiff = math.absDiff(n, curr);
 
                 sum += @select(T, nabsdiff <= spatial_threshold, n, zeroes);
                 count += @select(T, nabsdiff <= spatial_threshold, ones, zeroes);

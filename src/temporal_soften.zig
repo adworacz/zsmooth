@@ -48,7 +48,7 @@ fn TemporalSoften(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const half_frames: u8 = @divTrunc(frames, 2);
 
             for (0..height) |row| {
@@ -77,7 +77,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneVector(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -93,7 +93,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn temporalSmoothVector(srcp: [MAX_DIAMETER][]const T, dstp: []T, offset: usize, frames: u8, threshold: T) void {
+        fn temporalSmoothVector(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, offset: usize, frames: u8, threshold: T) void {
             const threshold_vec: VecType = @splat(threshold);
             const current_value_vec = vec.load(VecType, srcp[0], offset);
 

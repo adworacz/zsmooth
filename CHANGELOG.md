@@ -3,6 +3,7 @@
 ## 0.10 - TBD
 * Minor code improvements to FluxSmooth, no change in output/speed.
 * Minor code improvements to TemporalMedian, seems like a minor boost in speed.
+* Minor code improvements to TemporalSoften, no change in output/speed.
 
 ## 0.9
 * Add implementation of InterQuartileMean, as made popular by Dogway. Just IQM3 (3x3) support for now, 5x5 will come later.

@@ -4,7 +4,9 @@ const testing = @import("std").testing;
 
 const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
-const gridcmn = @import("common/grid.zig");
+// const gridcmn = @import("common/grid.zig");
+const gridcmn = @import("common/array_grid.zig");
+
 const string = @import("common/string.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
@@ -35,13 +37,14 @@ const InterQuartileMeanData = struct {
 fn InterQuartileMean(comptime T: type) type {
     return struct {
         const UAT = types.UnsignedArithmeticType(T);
-        const Grid = gridcmn.Grid(T);
+        const Grid = gridcmn.ArrayGrid(3, T);
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm(grid: Grid) T {
+        fn iqm(grid: *Grid) T {
             @setFloatMode(float_mode);
 
-            const sorted = grid.sortWithCenter();
+            grid.sortWithCenter();
+            const sorted = grid.values;
 
             // Trim the first and last quartile, then average the inner quartiles
             // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
@@ -77,7 +80,7 @@ fn InterQuartileMean(comptime T: type) type {
 
             var grid = Grid.init(T, &data, 3);
 
-            try testing.expectEqual(5, iqm(grid));
+            try testing.expectEqual(5, iqm(&grid));
 
             data = [9]T{
                 1, 1,  3,
@@ -86,10 +89,10 @@ fn InterQuartileMean(comptime T: type) type {
             };
             grid = Grid.init(T, &data, 3);
 
-            try testing.expectEqual(6, iqm(grid));
+            try testing.expectEqual(6, iqm(&grid));
         }
 
-        fn interQuartileMean(radius: comptime_int, grid: Grid) T {
+        fn interQuartileMean(radius: comptime_int, grid: *Grid) T {
             return switch (radius) {
                 1 => iqm(grid),
                 else => unreachable,
@@ -99,14 +102,14 @@ fn InterQuartileMean(comptime T: type) type {
         pub fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             // Process top row with mirrored grid.
             for (0..width) |column| {
-                const grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
-                dstp[(0 * stride) + column] = interQuartileMean(radius, grid);
+                var grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
+                dstp[(0 * stride) + column] = interQuartileMean(radius, &grid);
             }
 
             for (1..height - 1) |row| {
                 // Process first pixel of the row with mirrored grid.
-                const gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
-                dstp[(row * stride)] = interQuartileMean(radius, gridFirst);
+                var gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
+                dstp[(row * stride)] = interQuartileMean(radius, &gridFirst);
 
                 for (1..width - 1) |w| {
                     const rowCurr = ((row) * stride);
@@ -114,20 +117,20 @@ fn InterQuartileMean(comptime T: type) type {
 
                     // Use a non-mirrored grid everywhere else for maximum performance.
                     // We don't need the mirror effect anyways, as all pixels contain valid data.
-                    const grid = Grid.init(T, srcp[top_left..], stride);
+                    var grid = Grid.init(T, srcp[top_left..], stride);
 
-                    dstp[rowCurr + w] = interQuartileMean(radius, grid);
+                    dstp[rowCurr + w] = interQuartileMean(radius, &grid);
                 }
 
                 // Process last pixel of the row with mirrored grid.
-                const gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
-                dstp[(row * stride) + (width - 1)] = interQuartileMean(radius, gridLast);
+                var gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
+                dstp[(row * stride) + (width - 1)] = interQuartileMean(radius, &gridLast);
             }
 
             // Process bottom row with mirrored grid.
             for (0..width) |column| {
-                const grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
-                dstp[((height - 1) * stride) + column] = interQuartileMean(radius, grid);
+                var grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
+                dstp[((height - 1) * stride) + column] = interQuartileMean(radius, &grid);
             }
         }
 

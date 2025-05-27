@@ -4,8 +4,8 @@ const testing = @import("std").testing;
 
 const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
-// const gridcmn = @import("common/grid.zig");
 const gridcmn = @import("common/array_grid.zig");
+const vec = @import("common/vector.zig");
 
 const string = @import("common/string.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
@@ -35,16 +35,22 @@ const InterQuartileMeanData = struct {
 };
 
 fn InterQuartileMean(comptime T: type) type {
+    const vector_len = vec.getVecSize(T);
+    const VT = @Vector(vector_len, T);
+
     return struct {
         const UAT = types.UnsignedArithmeticType(T);
-        const Grid = gridcmn.ArrayGrid(3, T);
+        const Grid3 = gridcmn.ArrayGrid(3, T);
+        const Grid5 = gridcmn.ArrayGrid(5, T);
+        const GridV3 = gridcmn.ArrayGrid(3, VT);
+        const GridV5 = gridcmn.ArrayGrid(5, VT);
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm(grid: *Grid) T {
+        fn iqm3Scalar(grid: *Grid3) T {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
-            const sorted = grid.values;
+            const sorted = &grid.values;
 
             // Trim the first and last quartile, then average the inner quartiles
             // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
@@ -71,66 +77,229 @@ fn InterQuartileMean(comptime T: type) type {
             return result;
         }
 
-        test iqm {
+        fn iqm3Vector(grid: *GridV3) VT {
+            const UATV = @Vector(vector_len, UAT);
+
+            grid.sortWithCenter();
+
+            const sorted = &grid.values;
+
+            const three: VT = @splat(3);
+            const two: VT = @splat(2);
+            const four: VT = @splat(4);
+            const nine: VT = @splat(9);
+
+            const result: VT = if (types.isInt(VT))
+                // Note that the use of ".. + 2) / 4" and ".. + 4) / 9" is to ensure proper rounding in integer division.
+                @intCast((((@as(UATV, sorted[3]) + sorted[4] + sorted[5]) +
+                    ((((@as(UATV, sorted[2]) + sorted[6]) * three) + two) / four)) * two + four) / nine)
+            else blk: {
+                const point_seven_five: VT = @splat(0.75);
+                const four_point_five: VT = @splat(4.5);
+
+                break :blk ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * point_seven_five)) / four_point_five;
+            };
+
+            // Round result for integers, take float as is.
+            return result;
+        }
+
+        test iqm3Scalar {
             var data = [9]T{
                 9, 8, 7,
                 6, 5, 4,
                 3, 2, 1,
             };
 
-            var grid = Grid.init(T, &data, 3);
+            var grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(5, iqm(&grid));
+            try testing.expectEqual(5, iqm3Scalar(&grid));
 
             data = [9]T{
                 1, 1,  3,
                 3, 7,  8,
                 9, 99, 99,
             };
-            grid = Grid.init(T, &data, 3);
+            grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(6, iqm(&grid));
+            try testing.expectEqual(6, iqm3Scalar(&grid));
         }
 
-        fn interQuartileMean(radius: comptime_int, grid: *Grid) T {
+        /// Interquartile mean of 5x5 grid, including the center.
+        fn iqm5Scalar(grid: *Grid5) T {
+            grid.sortWithCenter();
+            const sorted = &grid.values;
+
+            const result: T = if (types.isInt(T))
+                // Note that the use of ".. + 2) / 4" and ".. + 12) / 25" is to ensure proper rounding in integer division.
+                @intCast((((@as(UAT, sorted[7]) + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((((@as(UAT, sorted[6]) + sorted[18]) * 3) + 2) / 4)) * 2 + 12) / 25)
+            else
+                ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((sorted[6] + sorted[8]) * 0.75)) / 12.5;
+
+            return result;
+        }
+
+        fn iqm5Vector(grid: *GridV5) VT {
+            const UATV = @Vector(vector_len, UAT);
+
+            grid.sortWithCenter();
+
+            const sorted = &grid.values;
+
+            const three: VT = @splat(3);
+            const two: VT = @splat(2);
+            const four: VT = @splat(4);
+            const twelve: VT = @splat(12);
+            const twenty_five: VT = @splat(25);
+
+            const result: VT = if (types.isInt(VT))
+                // Note that the use of ".. + 2) / 4" and ".. + 12) / 25" is to ensure proper rounding in integer division.
+                @intCast((((@as(UATV, sorted[7]) + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((((@as(UATV, sorted[6]) + sorted[18]) * three) + two) / four)) * two + twelve) / twenty_five)
+            else blk: {
+                const point_seven_five: VT = @splat(0.75);
+                const twelve_point_five: VT = @splat(12.5);
+
+                break :blk ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
+                    ((sorted[6] + sorted[8]) * point_seven_five)) / twelve_point_five;
+            };
+
+            return result;
+        }
+
+        fn interQuartileMeanScalar(radius: comptime_int, grid: anytype) T {
             return switch (radius) {
-                1 => iqm(grid),
+                1 => iqm3Scalar(grid),
+                2 => iqm5Scalar(grid),
                 else => unreachable,
             };
         }
 
-        pub fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
-            // Process top row with mirrored grid.
-            for (0..width) |column| {
-                var grid = Grid.initFromCenterMirrored(T, 0, column, width, height, srcp, stride);
-                dstp[(0 * stride) + column] = interQuartileMean(radius, &grid);
+        fn interQuartileMeanVector(radius: comptime_int, grid: anytype) VT {
+            return switch (radius) {
+                1 => iqm3Vector(grid),
+                2 => iqm5Vector(grid),
+                else => unreachable,
+            };
+        }
+
+        fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            const Grid = switch (comptime radius) {
+                1 => Grid3,
+                2 => Grid5,
+                else => unreachable,
+            };
+
+            // Process top rows with mirrored grid.
+            for (0..radius) |row| {
+                for (0..width) |column| {
+                    var grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                }
             }
 
-            for (1..height - 1) |row| {
-                // Process first pixel of the row with mirrored grid.
-                var gridFirst = Grid.initFromCenterMirrored(T, row, 0, width, height, srcp, stride);
-                dstp[(row * stride)] = interQuartileMean(radius, &gridFirst);
+            for (radius..height - radius) |row| {
+                // Process first pixels of the row with mirrored grid.
+                for (0..radius) |column| {
+                    var gridFirst = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridFirst);
+                }
 
-                for (1..width - 1) |w| {
-                    const rowCurr = ((row) * stride);
-                    const top_left = ((row - 1) * stride) + w - 1;
+                for (radius..width - radius) |column| {
+                    const top_left = ((row - radius) * stride) + column - radius;
 
                     // Use a non-mirrored grid everywhere else for maximum performance.
                     // We don't need the mirror effect anyways, as all pixels contain valid data.
                     var grid = Grid.init(T, srcp[top_left..], stride);
 
-                    dstp[rowCurr + w] = interQuartileMean(radius, &grid);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
                 }
 
                 // Process last pixel of the row with mirrored grid.
-                var gridLast = Grid.initFromCenterMirrored(T, row, width - 1, width, height, srcp, stride);
-                dstp[(row * stride) + (width - 1)] = interQuartileMean(radius, &gridLast);
+                for (width - radius..width) |column| {
+                    var gridLast = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridLast);
+                }
             }
 
-            // Process bottom row with mirrored grid.
-            for (0..width) |column| {
-                var grid = Grid.initFromCenterMirrored(T, height - 1, column, width, height, srcp, stride);
-                dstp[((height - 1) * stride) + column] = interQuartileMean(radius, &grid);
+            // Process bottom rows with mirrored grid.
+            for (height - radius..height) |row| {
+                for (0..width) |column| {
+                    var grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                }
+            }
+        }
+
+        fn processPlaneVector(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            // We process the mirrored pixels using our scalar implementation, as Grid.initFromCenterMirrored
+            // doesn't fully support vectors at this time. That's why we need both a scalar Grid and a vector Grid.
+            const GridS = switch (comptime radius) {
+                1 => Grid3,
+                2 => Grid5,
+                else => unreachable,
+            };
+
+            const GridV = switch (comptime radius) {
+                1 => GridV3,
+                2 => GridV5,
+                else => unreachable,
+            };
+
+            // We make some assumptions in this code in order to make processing with vectors simpler.
+            std.debug.assert(width >= vector_len);
+            std.debug.assert(radius < vector_len);
+
+            const width_simd = (width - radius) / vector_len * vector_len;
+
+            // Top rows - mirrored
+            for (0..radius) |row| {
+                for (0..width) |column| {
+                    var grid = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                }
+            }
+
+            // Middle rows
+            for (radius..height - radius) |row| {
+                // First columns - mirrored
+                for (0..radius) |column| {
+                    var gridFirst = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridFirst);
+                }
+
+                // Middle columns - not mirrored
+                var column: usize = radius;
+                while (column < width_simd) : (column += vector_len) {
+                    var grid = GridV.initFromCenter(T, row, column, srcp, stride);
+                    const result = interQuartileMeanVector(radius, &grid);
+                    vec.storeAt(VT, dstp, row, column, stride, result);
+                }
+
+                // Last columns - non-mirrored
+                // We do this to minimize the use of scalar mirror code.
+                if (width_simd < width) {
+                    const adjusted_column = width - vector_len - radius;
+                    var grid = GridV.initFromCenter(T, row, adjusted_column, srcp, stride);
+                    const result = interQuartileMeanVector(radius, &grid);
+                    vec.storeAt(VT, dstp, row, adjusted_column, stride, result);
+                }
+
+                // Last columns - mirrored
+                for (width - radius..width) |c| {
+                    var gridLast = GridS.initFromCenterMirrored(T, row, c, width, height, srcp, stride);
+                    dstp[(row * stride) + c] = interQuartileMeanScalar(radius, &gridLast);
+                }
+            }
+
+            // Bottom rows - mirrored
+            for (height - radius..height) |row| {
+                for (0..width) |column| {
+                    var grid = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
+                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                }
             }
         }
 
@@ -169,7 +338,9 @@ fn InterQuartileMean(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (d.radius[_plane]) {
-                        inline 1 => |radius| processPlaneScalar(radius, srcp, dstp, width, height, stride),
+                        inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride), // TODO: Evaluate whether to use scalar version or not (speed tests).
+                        // inline 1 => processPlaneVector(1, srcp, dstp, width, height, stride),
+                        inline 2 => processPlaneVector(2, srcp, dstp, width, height, stride),
                         else => unreachable,
                     }
                 }
@@ -209,8 +380,8 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
     for (0..3) |i| {
         if (i < numRadius) {
             if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
-                if (radius < 1 or radius > 1) {
-                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 1 supported.");
+                if (radius < 1 or radius > 2) {
+                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 1-2 supported.");
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }

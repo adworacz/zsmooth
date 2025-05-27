@@ -59,7 +59,7 @@ pub fn Grid(comptime T: type) type {
         }
 
         /// Loads data around a center pixel, using mirroring to fill in all missing pixels.
-        /// Note tha for maximum performance, this function should *ONLY* be used on edge pixels.
+        /// Note that for maximum performance, this function should *ONLY* be used on edge pixels.
         /// Using it on pixels that actually have pertinent data leads to crap performance and is completely unnecessary.
         pub fn initFromCenterMirrored(comptime R: type, row: usize, column: usize, width: usize, height: usize, slice: []const R, stride: usize) Self {
             const rowT: i32 = @intCast(row);
@@ -96,20 +96,8 @@ pub fn Grid(comptime T: type) type {
         //This seems *slightly* slower than `init` for some reason, at least on 0.12.1.
         //I'm seeing ~900fps (+/- 10fps) from `init`, while ~850fps from this function.
         pub fn initFromCenter(comptime R: type, row: u32, column: u32, slice: []const R, stride: u32) Self {
-            // Scalar
-            return Self{
-                .top_left = slice[((row - 1) * stride) + column - 1],
-                .top_center = slice[((row - 1) * stride) + column],
-                .top_right = slice[((row - 1) * stride) + column + 1],
-
-                .center_left = slice[(row * stride) + column - 1],
-                .center_center = slice[(row * stride) + column],
-                .center_right = slice[(row * stride) + column + 1],
-
-                .bottom_left = slice[((row + 1) * stride) + column - 1],
-                .bottom_center = slice[((row + 1) * stride) + column],
-                .bottom_right = slice[((row + 1) * stride) + column + 1],
-            };
+            const top_left = ((row - 1) * stride) + column - 1;
+            return init(R, slice[top_left..], stride);
         }
 
         /// Just like `init`, only it loads data from two rows (lines) away instead of one,

@@ -145,7 +145,7 @@ fn TTempSmooth(comptime T: type) type {
 
                     if (frame_idx <= to_frame_idx) {
                         // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
-                        // and frame_idx < to_frame_idx instead of frame_idx > from_frame_idx
+                        // and frame_idx <= to_frame_idx instead of frame_idx >= from_frame_idx
                         var temporal_pixel1 = pfp[frame_idx][pixel_idx];
 
                         var diff = if (types.isInt(T))

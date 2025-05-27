@@ -7,12 +7,24 @@ pub fn load(comptime VT: type, src: []const @typeInfo(VT).vector.child, offset: 
     return src[offset..][0..@typeInfo(VT).vector.len].*;
 }
 
+/// Loads a vector of type VT from the specific row and column in src.
+pub fn loadAt(comptime VT: type, src: []const @typeInfo(VT).vector.child, row: usize, column: usize, stride: usize) VT {
+    const offset = row * stride + column;
+    return load(VT, src, offset);
+}
+
 /// Stores vector data into memory at a given offset.
 pub fn store(comptime VT: type, _dst: []@typeInfo(VT).vector.child, offset: usize, result: VT) void {
     var dst: []@typeInfo(VT).vector.child = @ptrCast(@alignCast(_dst));
     inline for (dst[offset..][0..@typeInfo(VT).vector.len], 0..) |*d, i| {
         d.* = result[i];
     }
+}
+
+/// Stores a vector of type VT into dst starting at the given row and column.
+pub fn storeAt(comptime VT: type, dst: []@typeInfo(VT).vector.child, row: usize, column: usize, stride: usize, result: VT) void {
+    const offset = row * stride + column;
+    return store(VT, dst, offset, result);
 }
 
 // Inspired by https://github.com/zig-gamedev/zig-gamedev/blob/main/libs/zmath/src/zmath.zig#L744

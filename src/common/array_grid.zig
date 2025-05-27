@@ -36,28 +36,49 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
             return Self{ .values = v };
         }
 
+        /// Loads data around a center pixel, without any mirroring.
+        ///
+        /// Small wrapper around `init`.
+        pub fn initFromCenter(comptime R: type, row: usize, column: usize, slice: []const R, stride: usize) Self {
+            const radius = side / 2;
+            const top_left = ((row - radius) * stride) + column - radius;
+            return init(R, slice[top_left..], stride);
+        }
+
+        /// Loads data around a center pixel, using mirroring to fill in all missing pixels.
+        /// Note that for maximum performance, this function should *ONLY* be used on edge pixels.
+        /// Using it on pixels that actually have pertinent data leads to crap performance and is completely unnecessary.
+        ///
+        /// TODO BUG: This doesn't actually work with vectors. Specifically a vector is composed of a mix of 
+        /// pixel positions, some out of range of the edge (and thus in need of mirroring) and some in range of mirroring.
+        /// In order to properly handle this mix, a vector would need to be loaded with a "gather", so addresses for each 
+        /// member of the vector would need to be calculated and then "gathered" accordingly.
         pub fn initFromCenterMirrored(comptime R: type, _row: usize, _column: usize, _width: usize, _height: usize, slice: []const R, stride: usize) Self {
+            comptime std.debug.assert(!types.isVector(T)); // This function doesn't support Vectors yet.
             const row: i16 = @intCast(_row);
             const column: i16 = @intCast(_column);
             const width: i16 = @intCast(_width);
             const height: i16 = @intCast(_height);
 
-            const half_side = side / 2;
+            const radius = side / 2;
 
             var v: A = undefined;
 
             for (0..side) |y| {
                 for (0..side) |x| {
-                    const iy: i16 = @intCast(y);
-                    const ix: i16 = @intCast(x);
+                    const yi: i16 = @intCast(y);
+                    const xi: i16 = @intCast(x);
 
-                    const minRow:i32 = @abs(row + iy - half_side);
-                    const minColumn:i32 = @abs(column + ix - half_side);
+                    const minRow: i32 = @abs(row + yi - radius);
+                    const minColumn: i32 = @abs(column + xi - radius);
 
-                    const clamped_y: usize = @intCast(@min(minRow, 2 * (height - 1) - (row + iy - half_side)));
-                    const clamped_x: usize = @intCast(@min(minColumn, 2 * (width - 1) - (column + ix - half_side)));
+                    const clamped_y: usize = @intCast(@min(minRow, 2 * (height - 1) - (row + yi - radius)));
+                    const clamped_x: usize = @intCast(@min(minColumn, 2 * (width - 1) - (column + xi - radius)));
 
-                    v[y * side + x] = slice[clamped_y * stride + clamped_x];
+                    v[y * side + x] = if (types.isScalar(T))
+                        slice[clamped_y * stride + clamped_x]
+                    else 
+                        vec.load(T, slice, clamped_y * stride + clamped_x);
                 }
             }
 
@@ -82,6 +103,27 @@ test "ArrayGrid init" {
     };
 
     const grid = ArrayGrid(3, T).init(T, &data, 3);
+
+    try std.testing.expectEqual(1, grid.values[0]);
+    try std.testing.expectEqual(2, grid.values[1]);
+    try std.testing.expectEqual(3, grid.values[2]);
+    try std.testing.expectEqual(4, grid.values[3]);
+    try std.testing.expectEqual(5, grid.values[4]);
+    try std.testing.expectEqual(6, grid.values[5]);
+    try std.testing.expectEqual(7, grid.values[6]);
+    try std.testing.expectEqual(8, grid.values[7]);
+    try std.testing.expectEqual(9, grid.values[8]);
+}
+
+test "ArrayGrid initFromCenter" {
+    const T = u8;
+    const data = [_]T{
+        1, 2, 3, //
+        4, 5, 6, //
+        7, 8, 9, //
+    };
+
+    const grid = ArrayGrid(3, T).initFromCenter(T, 1, 1, &data, 3);
 
     try std.testing.expectEqual(1, grid.values[0]);
     try std.testing.expectEqual(2, grid.values[1]);

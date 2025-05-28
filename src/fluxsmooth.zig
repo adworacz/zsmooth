@@ -8,6 +8,7 @@ const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -59,6 +60,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         }
 
         fn fluxsmoothTemporalScalar(prev: T, curr: T, next: T, threshold: T) T {
+            @setFloatMode(float_mode);
+            
             // If both pixels from the corresponding previous and next frames
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
@@ -169,6 +172,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
         // TODO: F16 is still slow (of course)
         // so try processing as f32.
         fn fluxsmoothTVector(srcp: [3][]const T, noalias dstp: []T, offset: usize, _threshold: T) void {
+            @setFloatMode(float_mode);
+
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 
@@ -341,6 +346,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
         // TODO: Add tests.
         fn fluxsmoothSpatialTemporalScalar(prev: T, curr: T, next: T, neighbors: [8]T, temporal_threshold: SAT, spatial_threshold: SAT) T {
+            @setFloatMode(float_mode);
+
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
                 if (types.isInt(T)) {
                     const prevdiff = math.absDiff(prev, curr);
@@ -442,6 +449,8 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
         // TODO: Add tests for this function.
         fn fluxsmoothSTVector(srcp: [3][]const T, noalias dstp: []T, offset: usize, stride: usize, _temporal_threshold: anytype, _spatial_threshold: anytype) void {
+            @setFloatMode(float_mode);
+
             const vec_size = vec.getVecSize(T);
             const VecType = @Vector(vec_size, T);
 

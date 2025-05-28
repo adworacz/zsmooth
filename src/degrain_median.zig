@@ -10,6 +10,7 @@ const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 const grid = @import("common/grid.zig");
 const copy = @import("common/copy.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -314,6 +315,8 @@ fn DegrainMedian(comptime T: type) type {
         ///
         // fn mode0Scalar(prev: GridS, current: GridS, next: GridS, limit: T, pixel_min: T, pixel_max: T) T {
         fn mode0(comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
+            @setFloatMode(float_mode);
+
             const R = @TypeOf(pixel_max);
             var diff: R = pixel_max;
             var max: R = pixel_max;
@@ -355,6 +358,8 @@ fn DegrainMedian(comptime T: type) type {
 
         //TODO: Add tests?
         fn mode1to5(comptime mode: u3, comptime norow: bool, prev: anytype, current: anytype, next: anytype, limit: anytype, pixel_min: anytype, pixel_max: anytype) @TypeOf(pixel_max) {
+            @setFloatMode(float_mode);
+
             const R = @TypeOf(pixel_max);
 
             var result: R = if (types.isScalar(R)) 0 else @splat(0);

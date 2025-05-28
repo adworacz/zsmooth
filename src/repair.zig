@@ -7,6 +7,7 @@ const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
 const gridcmn = @import("common/grid.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -766,6 +767,8 @@ fn Repair(comptime T: type) type {
         }
 
         fn repair(mode: comptime_int, src: T, grid: Grid, chroma: bool) T {
+            @setFloatMode(float_mode);
+
             return switch (mode) {
                 1 => repairMode1(src, grid),
                 2 => repairMode2(src, grid),

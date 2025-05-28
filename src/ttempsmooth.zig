@@ -9,6 +9,7 @@ const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 const string = @import("common/string.zig");
 const types = @import("common/type.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -63,6 +64,8 @@ fn TTempSmooth(comptime T: type) type {
 
     return struct {
         fn processPlaneScalar(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
+            @setFloatMode(float_mode);
+
             for (0..height) |row| {
                 for (0..width) |column| {
                     const pixel_idx = row * stride + column;
@@ -212,6 +215,8 @@ fn TTempSmooth(comptime T: type) type {
         }
 
         fn ttempSmoothVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, offset: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, _threshold: T, fp: bool, _shift: u8, _center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
+            @setFloatMode(float_mode);
+
             const SumVecType = @Vector(vector_len, f32);
 
             const center_weight: SumVecType = @splat(_center_weight);

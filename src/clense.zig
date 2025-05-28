@@ -8,6 +8,7 @@ const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
 const math = @import("common/math.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -46,6 +47,8 @@ fn Clense(comptime T: type, comptime mode: ClenseMode) type {
 
         /// Find the median of the previous, current, and next frames.
         fn clense(noalias dstp: []T, noalias srcp: []const T, noalias prev: []const T, noalias next: []const T, width: usize, height: usize, stride: usize) void {
+            @setFloatMode(float_mode);
+
             for (0..height) |row| {
                 for (0..width) |column| {
                     const p = prev[(row * stride) + column];
@@ -59,6 +62,8 @@ fn Clense(comptime T: type, comptime mode: ClenseMode) type {
 
         /// Clamps the source pixel using the difference between the furthest frame and the weighted minimum or maximum pixel of the closest and furthest frames.
         fn clenseForwardBackward(noalias dstp: []T, noalias srcp: []const T, noalias ref1p: []const T, noalias ref2p: []const T, width: usize, height: usize, stride: usize) void {
+            @setFloatMode(float_mode);
+
             for (0..height) |row| {
                 for (0..width) |column| {
                     const ref1 = ref1p[(row * stride) + column];

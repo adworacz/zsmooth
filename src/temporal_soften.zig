@@ -8,6 +8,7 @@ const types = @import("common/type.zig");
 const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -49,6 +50,8 @@ fn TemporalSoften(comptime T: type) type {
         const UAT = types.UnsignedArithmeticType(T);
 
         fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+            @setFloatMode(float_mode);
+
             const half_frames: u8 = @divTrunc(frames, 2);
 
             for (0..height) |row| {
@@ -94,6 +97,8 @@ fn TemporalSoften(comptime T: type) type {
         }
 
         fn temporalSmoothVector(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, offset: usize, frames: u8, threshold: T) void {
+            @setFloatMode(float_mode);
+
             const threshold_vec: VecType = @splat(threshold);
             const current_value_vec = vec.load(VecType, srcp[0], offset);
 

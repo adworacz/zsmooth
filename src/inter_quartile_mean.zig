@@ -6,6 +6,7 @@ const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/grid.zig");
 const string = @import("common/string.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -38,6 +39,8 @@ fn InterQuartileMean(comptime T: type) type {
 
         // Interquartile mean of 3x3 grid, including the center.
         fn iqm(grid: Grid) T {
+            @setFloatMode(float_mode);
+
             const sorted = grid.sortWithCenter();
 
             // Trim the first and last quartile, then average the inner quartiles

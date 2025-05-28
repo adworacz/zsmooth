@@ -7,6 +7,7 @@ const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
 const gridcmn = @import("common/grid.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -692,6 +693,8 @@ fn RemoveGrain(comptime T: type) type {
         }
 
         fn removegrain(mode: comptime_int, grid: Grid, chroma: bool) T {
+            @setFloatMode(float_mode);
+
             return switch (mode) {
                 1 => rgMode1(grid),
                 2 => rgMode2(grid),

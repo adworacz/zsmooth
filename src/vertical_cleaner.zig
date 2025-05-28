@@ -7,6 +7,7 @@ const copy = @import("common/copy.zig");
 const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const sort = @import("common/sorting_networks.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -37,7 +38,9 @@ fn VerticalCleaner(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        pub fn verticalMedian(noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn verticalMedian(noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            @setFloatMode(float_mode);
+
             // Copy the first line
             copy.copyFirstNLines(T, dstp, srcp, width, stride, 1);
 
@@ -82,7 +85,9 @@ fn VerticalCleaner(comptime T: type) type {
             try std.testing.expectEqualDeep(&expected, dstp);
         }
 
-        pub fn relaxedVerticalMedian(noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, minimum: T, maximum: T) void {
+        fn relaxedVerticalMedian(noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, minimum: T, maximum: T) void {
+            @setFloatMode(float_mode);
+
             // Copy the first two lines
             copy.copyFirstNLines(T, dstp, srcp, width, stride, 2);
 

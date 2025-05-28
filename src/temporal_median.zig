@@ -7,6 +7,7 @@ const math = @import("common/math.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const vec = @import("common/vector.zig");
 const sort = @import("common/sorting_networks.zig");
+const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
@@ -43,6 +44,8 @@ fn TemporalMedian(comptime T: type) type {
 
     return struct {
         fn processPlaneScalar(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+            @setFloatMode(float_mode);
+
             var temp: [diameter]T = undefined;
 
             for (0..height) |row| {
@@ -121,6 +124,8 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn medianVector(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, offset: usize) void {
+            @setFloatMode(float_mode);
+
             var src: [diameter]VecType = undefined;
 
             for (0..diameter) |r| {

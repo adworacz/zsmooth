@@ -7,6 +7,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const optimize_float = b.option(bool, "optimize-float", "Enables 'fast-math' optimizations for floating point arithmetic, at the expense of accuracy. Defaults to true/enabled.") orelse true;
+    const options = b.addOptions();
+    options.addOption(bool, "optimize_float", optimize_float);
+
     const lib = b.addSharedLibrary(.{
         .name = "zsmooth",
         .root_source_file = b.path("src/zsmooth.zig"),
@@ -31,6 +35,7 @@ pub fn build(b: *std.Build) void {
     });
 
     lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
+    lib.root_module.addOptions("config", options);
     lib.linkLibC(); // Necessary to use the C memory allocator.
 
     if (lib.root_module.optimize == .ReleaseFast) {

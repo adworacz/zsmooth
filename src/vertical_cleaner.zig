@@ -29,25 +29,9 @@ const VerticalCleanerData = struct {
     vi: *const vs.VideoInfo,
 
     // The modes for each plane we will process.
-    modes: [3]u5,
+    modes: [3]u2,
 };
 
-/// Using a generic struct here as an optimization mechanism.
-///
-/// Essentially, when I first implemented things using just raw functions.
-/// as soon as I supported 4 modes using a switch in the process_plane_scalar
-/// function, performance dropped like a rock from 700+fps down to 40fps.
-///
-/// This meant that the Zig compiler couldn't optimize code properly.
-///
-/// With this implementation, I can generate perfect auto-vectorized code for each mode
-/// at compile time (in which case the switch inside process_plane_scalar is optimized away).
-///
-/// It requires a "double switch" to in the GetFrame method in order to jump from runtime-land to compiletime-land
-/// but it produces well optimized code at the expensive of a little visual repetition.
-///
-/// I techinically don't need the generic struct, and can get by with just a comptime mode param to process_plane_scalar,
-/// but using a struct means I only need to specify a type param once instead of for each function, so it's slightly cleaner.
 fn VerticalCleaner(comptime T: type) type {
     return struct {
         const SAT = types.SignedArithmeticType(T);

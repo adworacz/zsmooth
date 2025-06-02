@@ -5,11 +5,12 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-radius = 1
+#radius = 1
 length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
+    radius = 1
     output = 'all'
 
 match format:
@@ -37,7 +38,7 @@ match format:
 
 clip.set_output(0)
 
-zsmooth = clip.zsmooth.InterQuartileMean(radius)
+zsmooth = clip.zsmooth.InterQuartileMean(int(radius))
 
 match output:
     case 'zsmooth':

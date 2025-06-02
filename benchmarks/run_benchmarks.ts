@@ -145,9 +145,12 @@ const BENCHMARKS: Benchmarks[] = [
     benchmarkPath: 'test_inter_quartile_mean.vpy',
     // biome-ignore format:
     specs: [
-      { plugin: 'zsmooth' , format:'u8'  , args: [] , frames: DEFAULT_NUM_FRAMES     , } ,
-      { plugin: 'zsmooth' , format:'u16' , args: [] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'zsmooth' , format:'f32' , args: [] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
     ],
   },
   {

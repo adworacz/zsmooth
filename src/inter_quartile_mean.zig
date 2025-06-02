@@ -77,6 +77,27 @@ fn InterQuartileMean(comptime T: type) type {
             return result;
         }
 
+        test iqm3Scalar {
+            var data = [9]T{
+                9, 8, 7,
+                6, 5, 4,
+                3, 2, 1,
+            };
+
+            var grid = Grid3.init(T, &data, 3);
+
+            try testing.expectEqual(5, iqm3Scalar(&grid));
+
+            data = [9]T{
+                1, 1,  3,
+                3, 7,  8,
+                9, 99, 99,
+            };
+            grid = Grid3.init(T, &data, 3);
+
+            try testing.expectEqual(6, iqm3Scalar(&grid));
+        }
+
         fn iqm3Vector(grid: *GridV3) VT {
             const UATV = @Vector(vector_len, UAT);
 
@@ -100,29 +121,7 @@ fn InterQuartileMean(comptime T: type) type {
                 break :blk ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * point_seven_five)) / four_point_five;
             };
 
-            // Round result for integers, take float as is.
             return result;
-        }
-
-        test iqm3Scalar {
-            var data = [9]T{
-                9, 8, 7,
-                6, 5, 4,
-                3, 2, 1,
-            };
-
-            var grid = Grid3.init(T, &data, 3);
-
-            try testing.expectEqual(5, iqm3Scalar(&grid));
-
-            data = [9]T{
-                1, 1,  3,
-                3, 7,  8,
-                9, 99, 99,
-            };
-            grid = Grid3.init(T, &data, 3);
-
-            try testing.expectEqual(6, iqm3Scalar(&grid));
         }
 
         /// Interquartile mean of 5x5 grid, including the center.
@@ -338,9 +337,10 @@ fn InterQuartileMean(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (d.radius[_plane]) {
-                        inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride), // TODO: Evaluate whether to use scalar version or not (speed tests).
-                        // inline 1 => processPlaneVector(1, srcp, dstp, width, height, stride),
-                        inline 2 => processPlaneVector(2, srcp, dstp, width, height, stride),
+                        // inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride),
+                        // Custom vector version is substantially faster than auto-vectorized (scalar) version,
+                        // for both radius 1 and radius 2.
+                        inline 1...2 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride), 
                         else => unreachable,
                     }
                 }

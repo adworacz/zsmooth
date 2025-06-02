@@ -99,6 +99,8 @@ fn InterQuartileMean(comptime T: type) type {
         }
 
         fn iqm3Vector(grid: *GridV3) VT {
+            @setFloatMode(float_mode);
+
             const UATV = @Vector(vector_len, UAT);
 
             grid.sortWithCenter();
@@ -126,6 +128,8 @@ fn InterQuartileMean(comptime T: type) type {
 
         /// Interquartile mean of 5x5 grid, including the center.
         fn iqm5Scalar(grid: *Grid5) T {
+            @setFloatMode(float_mode);
+
             grid.sortWithCenter();
             const sorted = &grid.values;
 
@@ -153,11 +157,13 @@ fn InterQuartileMean(comptime T: type) type {
             if (types.isInt(T)) {
                 try testing.expectEqual(6, iqm5Scalar(&grid));
             } else {
-                try testing.expectEqual(5.8, iqm5Scalar(&grid));
+                try testing.expectApproxEqAbs(5.8, iqm5Scalar(&grid), 0.0001);
             }
         }
 
         fn iqm5Vector(grid: *GridV5) VT {
+            @setFloatMode(float_mode);
+
             const UATV = @Vector(vector_len, UAT);
 
             grid.sortWithCenter();

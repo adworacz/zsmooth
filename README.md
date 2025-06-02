@@ -250,18 +250,30 @@ core.zsmooth.InterQuartileMean(clip clip[, int[] radius])
 ```
 Smartish spatial blurring filter, works well as a prefilter. 
 
-Works well with `limit_filter` from `vs-jetpack` (or similar) for limiting/thresholding.
+Works well with `limit_filter` from `vsjetpack` (or similar) for limiting/thresholding.
 
-Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a 3x3 grid. 
+Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a grid. 
+
 An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
 are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average.
 
-Future versions will support 5x5 (and maybe 7x7).
+Tip: In order to produce Dogway's "IQMV" function, which simply balances IQM3 and IQM5 and takes whichever produces the minimum
+difference, one can combine IQM3 (radius 1) and IQM5 (radius 2) together using 
+`limit_filter` from `vsjetpack/vsrgtools`:
+
+```python
+iqm3 = clip.zsmooth.InterQuartileMean(1)
+iqm5 = clip.zsmooth.InterQuartileMean(2)
+
+from vsrgtools import limit_filter, LimitFilterMode
+iqmv = limit_filter(iqm3, clip, iqm5, mode=LimitFilterMode.SIMPLE_MIN)
+```
+
 
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
-| radius | int[] | 1 | The spatial radius of the filter. Currently only 1 (3x3) is supported, but future versions will include higher radii |
+| radius | int[] | 1-2 (1) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid.|
 
 ### TTempSmooth
 ```py

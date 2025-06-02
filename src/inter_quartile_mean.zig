@@ -140,6 +140,23 @@ fn InterQuartileMean(comptime T: type) type {
             return result;
         }
 
+        test iqm5Scalar {
+            const data = [25]T{
+                1,  1,  1,  1,  1,
+                3,  3,  3,  3,  3,
+                7,  7,  7,  7,  7,
+                8,  8,  8,  8,  8,
+                99, 99, 99, 99, 99,
+            };
+            var grid = Grid5.init(T, &data, 5);
+
+            if (types.isInt(T)) {
+                try testing.expectEqual(6, iqm5Scalar(&grid));
+            } else {
+                try testing.expectEqual(5.8, iqm5Scalar(&grid));
+            }
+        }
+
         fn iqm5Vector(grid: *GridV5) VT {
             const UATV = @Vector(vector_len, UAT);
 
@@ -340,7 +357,7 @@ fn InterQuartileMean(comptime T: type) type {
                         // inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride),
                         // Custom vector version is substantially faster than auto-vectorized (scalar) version,
                         // for both radius 1 and radius 2.
-                        inline 1...2 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride), 
+                        inline 1...2 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride),
                         else => unreachable,
                     }
                 }

@@ -257,8 +257,7 @@ Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mea
 An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
 are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average.
 
-Tip: In order to produce Dogway's "IQMV" function, which simply balances IQM3 and IQM5 and takes whichever produces the minimum
-difference, one can combine IQM3 (radius 1) and IQM5 (radius 2) together using 
+Tip: IQM3 and IQM5 can be combined together to provide better edge protection by taking the best of both worlds using
 `limit_filter` from `vsjetpack/vsrgtools`:
 
 ```python
@@ -269,6 +268,8 @@ from vsrgtools import limit_filter, LimitFilterMode
 iqmv = limit_filter(iqm3, clip, iqm5, mode=LimitFilterMode.SIMPLE_MIN)
 ```
 
+This can be further enhanced by using `limit_filter` to threshold IQM3 and IQM5 separately, and then combining the result with a
+third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
 
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |

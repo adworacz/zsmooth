@@ -4,5 +4,5 @@ _.python.venv = { path = ".mise/venv", create = true }
 [tools]
 bun = "latest"
 python = "3.13.2"
-zig = "0.14.0"
+zig = "0.14.1"
 zls = "0.14.0"

@@ -11,6 +11,7 @@ my benchmarks don't use real video so there's little possibility for "subnormals
 which can have significant performance impacts without fast math.
 * Implement InterQuartileMean radius 2 (5x5 grid).
 * Significantly speedup InterQuartileMean radius 1 (3x3 grid) with hand written vector version.
+* Upgrade to Zig 0.14.1
 
 ## 0.9
 * Add implementation of InterQuartileMean, as made popular by Dogway. Just IQM3 (3x3) support for now, 5x5 will come later.

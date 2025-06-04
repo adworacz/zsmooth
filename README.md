@@ -30,6 +30,8 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
   * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
   * [FluxSmooth(S|ST)](#fluxsmoothsst)
   * [DegrainMedian](#degrainmedian)
+  * [InterQuartileMean](#interquartilemean)
+  * [TTempSmooth](#ttempsmooth)
 * [Building](#building)
    * [Native Builds](#native-builds)
    * [Cross Compiling](#cross-compiling)
@@ -248,14 +250,13 @@ Modes:
 ```py
 core.zsmooth.InterQuartileMean(clip clip[, int[] radius])
 ```
-Smartish spatial blurring filter, works well as a prefilter. 
-
-Works well with `limit_filter` from `vsjetpack` (or similar) for limiting/thresholding.
-
 Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a grid. 
 
 An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
-are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average.
+are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average,
+thus making InterQuartileMean a solid option as a prefilter.
+
+Credit to Dogway's ["IQM3" and "IQM5" implementations](https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L3437-L3575) for the original idea.
 
 Tip: IQM3 and IQM5 can be combined together to provide better edge protection by taking the best of both worlds using
 `limit_filter` from `vsjetpack/vsrgtools`:
@@ -274,7 +275,7 @@ third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
-| radius | int[] | 1-2 (1) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid.|
+| radius | int[] | 1-3 (1) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid.|
 
 ### TTempSmooth
 ```py

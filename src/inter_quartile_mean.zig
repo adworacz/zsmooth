@@ -40,10 +40,15 @@ fn InterQuartileMean(comptime T: type) type {
 
     return struct {
         const UAT = types.UnsignedArithmeticType(T);
+        const UATV = @Vector(vector_len, UAT);
+
         const Grid3 = gridcmn.ArrayGrid(3, T);
         const Grid5 = gridcmn.ArrayGrid(5, T);
+        const Grid7 = gridcmn.ArrayGrid(7, T);
+
         const GridV3 = gridcmn.ArrayGrid(3, VT);
         const GridV5 = gridcmn.ArrayGrid(5, VT);
+        const GridV7 = gridcmn.ArrayGrid(7, VT);
 
         // Interquartile mean of 3x3 grid, including the center.
         fn iqm3Scalar(grid: *Grid3) T {
@@ -101,8 +106,6 @@ fn InterQuartileMean(comptime T: type) type {
         fn iqm3Vector(grid: *GridV3) VT {
             @setFloatMode(float_mode);
 
-            const UATV = @Vector(vector_len, UAT);
-
             grid.sortWithCenter();
 
             const sorted = &grid.values;
@@ -139,7 +142,7 @@ fn InterQuartileMean(comptime T: type) type {
                     ((((@as(UAT, sorted[6]) + sorted[18]) * 3) + 2) / 4)) * 2 + 12) / 25)
             else
                 ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((sorted[6] + sorted[8]) * 0.75)) / 12.5;
+                    ((sorted[6] + sorted[18]) * 0.75)) / 12.5;
 
             return result;
         }
@@ -147,9 +150,9 @@ fn InterQuartileMean(comptime T: type) type {
         test iqm5Scalar {
             const data = [25]T{
                 1,  1,  1,  1,  1,
-                3,  3,  3,  3,  3,
+                1,  3,  3,  3,  3,
                 7,  7,  7,  7,  7,
-                8,  8,  8,  8,  8,
+                8,  8,  8,  8,  99,
                 99, 99, 99, 99, 99,
             };
             var grid = Grid5.init(T, &data, 5);
@@ -157,14 +160,12 @@ fn InterQuartileMean(comptime T: type) type {
             if (types.isInt(T)) {
                 try testing.expectEqual(6, iqm5Scalar(&grid));
             } else {
-                try testing.expectApproxEqAbs(5.8, iqm5Scalar(&grid), 0.0001);
+                try testing.expectApproxEqAbs(6.1, iqm5Scalar(&grid), 0.0001);
             }
         }
 
         fn iqm5Vector(grid: *GridV5) VT {
             @setFloatMode(float_mode);
-
-            const UATV = @Vector(vector_len, UAT);
 
             grid.sortWithCenter();
 
@@ -185,7 +186,77 @@ fn InterQuartileMean(comptime T: type) type {
                 const twelve_point_five: VT = @splat(12.5);
 
                 break :blk ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((sorted[6] + sorted[8]) * point_seven_five)) / twelve_point_five;
+                    ((sorted[6] + sorted[18]) * point_seven_five)) / twelve_point_five;
+            };
+
+            return result;
+        }
+
+        /// Interquartile mean of 7x7 grid, including the center.
+        fn iqm7Scalar(grid: *Grid7) T {
+            @setFloatMode(float_mode);
+
+            grid.sortWithCenter();
+
+            const sorted = &grid.values;
+
+            const result: T = if (types.isInt(T))
+                // Note that the use of ".. + 2) / 4" and ".. + 24) / 49" is to ensure proper rounding in integer division.
+                @intCast((((@as(UAT, sorted[13]) + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
+                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
+                    ((((@as(UAT, sorted[12]) + sorted[36]) * 3) + 2) / 4)) * 2 + 24) / 49)
+            else
+                ((sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
+                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
+                    ((sorted[12] + sorted[36]) * 0.75)) / 24.5;
+
+            return result;
+        }
+
+        test iqm7Scalar {
+            const data = [49]T{
+                1,  1,  1,  1,  1,  1,  1,
+                1,  1,  1,  1,  1,  3,  3,
+                3,  3,  3,  3,  3,  3,  5,
+                7,  7,  7,  7,  7,  7,  7,
+                8,  8,  8,  8,  8,  8,  8,
+                8,  8,  99, 99, 99, 99, 99,
+                99, 99, 99, 99, 99, 99, 99,
+            };
+            var grid = Grid7.init(T, &data, 7);
+
+            if (types.isInt(T)) {
+                try testing.expectEqual(6, iqm7Scalar(&grid));
+            } else {
+                try testing.expectApproxEqAbs(6.0, iqm7Scalar(&grid), 0.02);
+            }
+        }
+
+        fn iqm7Vector(grid: *GridV7) VT {
+            @setFloatMode(float_mode);
+
+            grid.sortWithCenter();
+
+            const sorted = &grid.values;
+
+            const three: VT = @splat(3);
+            const two: VT = @splat(2);
+            const four: VT = @splat(4);
+            const twenty_four: VT = @splat(24);
+            const forty_nine: VT = @splat(49);
+
+            const result: VT = if (types.isInt(T))
+                // Note that the use of ".. + 2) / 4" and ".. + 24) / 49" is to ensure proper rounding in integer division.
+                @intCast((((@as(UATV, sorted[13]) + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
+                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
+                    ((((@as(UATV, sorted[12]) + sorted[36]) * three) + two) / four)) * two + twenty_four) / forty_nine)
+            else blk: {
+                const point_seven_five: VT = @splat(0.75);
+                const twenty_four_point_five: VT = @splat(24.5);
+
+                break :blk ((sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
+                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
+                    ((sorted[12] + sorted[36]) * point_seven_five)) / twenty_four_point_five;
             };
 
             return result;
@@ -195,6 +266,7 @@ fn InterQuartileMean(comptime T: type) type {
             return switch (radius) {
                 1 => iqm3Scalar(grid),
                 2 => iqm5Scalar(grid),
+                3 => iqm7Scalar(grid),
                 else => unreachable,
             };
         }
@@ -203,6 +275,7 @@ fn InterQuartileMean(comptime T: type) type {
             return switch (radius) {
                 1 => iqm3Vector(grid),
                 2 => iqm5Vector(grid),
+                3 => iqm7Vector(grid),
                 else => unreachable,
             };
         }
@@ -211,6 +284,7 @@ fn InterQuartileMean(comptime T: type) type {
             const Grid = switch (comptime radius) {
                 1 => Grid3,
                 2 => Grid5,
+                3 => Grid7,
                 else => unreachable,
             };
 
@@ -261,12 +335,14 @@ fn InterQuartileMean(comptime T: type) type {
             const GridS = switch (comptime radius) {
                 1 => Grid3,
                 2 => Grid5,
+                3 => Grid7,
                 else => unreachable,
             };
 
             const GridV = switch (comptime radius) {
                 1 => GridV3,
                 2 => GridV5,
+                3 => GridV7,
                 else => unreachable,
             };
 
@@ -363,7 +439,7 @@ fn InterQuartileMean(comptime T: type) type {
                         // inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride),
                         // Custom vector version is substantially faster than auto-vectorized (scalar) version,
                         // for both radius 1 and radius 2.
-                        inline 1...2 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride),
+                        inline 1...3 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride),
                         else => unreachable,
                     }
                 }
@@ -403,8 +479,8 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
     for (0..3) |i| {
         if (i < numRadius) {
             if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
-                if (radius < 1 or radius > 2) {
-                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 1-2 supported.");
+                if (radius < 1 or radius > 3) {
+                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 1-3 supported.");
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }

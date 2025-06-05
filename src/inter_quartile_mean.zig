@@ -467,7 +467,7 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
 
     const numRadius = vsapi.?.mapNumElements.?(in, "radius");
     if (numRadius > d.vi.format.numPlanes) {
-        vsapi.?.mapSetError.?(out, "InterQuartileMean: Count of radius must be equal or fewer than the number of input planes.");
+        vsapi.?.mapSetError.?(out, "InterQuartileMean: Element count of radius must be less than or equal to the number of input planes.");
         vsapi.?.freeNode.?(d.node);
         return;
     }

@@ -32,6 +32,8 @@ const InterQuartileMeanData = struct {
 
     // The radius for each plane we will process.
     radius: [3]u5,
+    // Which planes to process.
+    process: [3]bool,
 };
 
 fn InterQuartileMean(comptime T: type) type {
@@ -414,18 +416,12 @@ fn InterQuartileMean(comptime T: type) type {
 
                 defer vsapi.?.freeFrame.?(src_frame);
 
-                const process = [_]bool{
-                    d.radius[0] > 0,
-                    d.radius[1] > 0,
-                    d.radius[2] > 0,
-                };
-
-                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
+                const dst = vscmn.newVideoFrame(&d.process, src_frame, d.vi, core, vsapi);
 
                 for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
                     const plane: c_int = @intCast(_plane);
                     // Skip planes we aren't supposed to process
-                    if (d.radius[_plane] == 0) {
+                    if (!d.process[_plane]) {
                         continue;
                     }
 
@@ -479,8 +475,8 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
     for (0..3) |i| {
         if (i < numRadius) {
             if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
-                if (radius < 1 or radius > 3) {
-                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 1-3 supported.");
+                if (radius < 0 or radius > 3) {
+                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 0-3 supported.");
                     vsapi.?.freeNode.?(d.node);
                     return;
                 }
@@ -490,6 +486,22 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
             d.radius[i] = d.radius[i - 1];
         }
     }
+
+    const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
+        vsapi.?.freeNode.?(d.node);
+
+        switch (e) {
+            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "InterQuartileMean: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "InterQuartileMean: Plane specified twice."),
+        }
+        return;
+    };
+
+    d.process = [3]bool {
+        planes[0] and d.radius[0] > 0,
+        planes[1] and d.radius[1] > 0,
+        planes[2] and d.radius[2] > 0,
+    };
 
     const data: *InterQuartileMeanData = allocator.create(InterQuartileMeanData) catch unreachable;
     data.* = d;
@@ -512,5 +524,5 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;radius:int[];", "clip:vnode;", interQuartileMeanCreate, null, plugin);
+    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;radius:int[];planes:int[]:opt;", "clip:vnode;", interQuartileMeanCreate, null, plugin);
 }

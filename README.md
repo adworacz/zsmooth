@@ -275,7 +275,8 @@ third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
-| radius | int[] | 1-3 (1) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid.|
+| radius | int[] | 0-3 ([1, 1, 1]) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid. Radius 0 disables filtering for the given plane.|
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
 ### TTempSmooth
 ```py

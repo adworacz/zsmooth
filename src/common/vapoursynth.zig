@@ -243,9 +243,9 @@ pub const PlanesError = error{
 /// process array.
 ///
 /// Specifically it handles input like:
-/// planes=[1]
-/// planes=[0,1,2]
-/// planes=2
+/// `planes=[1]`
+/// `planes=[0,1,2]`
+/// `planes=2`
 ///
 /// It will error if a plane is out of range (like 999) or
 /// if the plane has been specified twice (like [1,1]).

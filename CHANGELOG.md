@@ -12,6 +12,7 @@ which can have significant performance impacts without fast math.
 * Implement InterQuartileMean radius 2 (5x5 grid).
 * Implement InterQuartileMean radius 3 (7x7 grid).
 * Significantly speedup InterQuartileMean radius 1 (3x3 grid) with hand written vector version.
+* Support disabling processing in InterQuartileMean via `planes` param, or by passing 0 to `radius`.
 * Upgrade to Zig 0.14.1
 
 ## 0.9

@@ -13,7 +13,7 @@
 Future Zig versions should make this easier, see [this Zig issue](https://github.com/ziglang/zig/issues/19550) for more
 details.
 
-**Note on AVX2:** AVX2 is the assumed baseline for all pre-built x86_64 binaries. AVX2 has been out available since 2013, so
+**Note on AVX2:** AVX2 is the assumed baseline for all pre-built x86_64 binaries. AVX2 has been available since 2013, so
 there's very little hardware left that doesn't support it. If there's demand for pre-AVX2 builds, please open an issue
 and explain (in detail) your needs and reasoning.
 
@@ -107,7 +107,7 @@ core.zsmooth.FluxSmoothST(clip clip[, float[] temporal_threshold = 7, float[] sp
 
 #### Tip
 While FluxSmoothT only supports a temporal radius of 1 (3 frames - previous, current, and next), one can 
-combine `TemporalMedian` and `TemporalSoften` to create essentially the effect over a larger radius.
+combine `TemporalMedian` and `TemporalSoften` to create essentially the same effect over a larger radius.
 
 ```python
 # Credit to Dogway and Didee for the idea:

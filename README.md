@@ -129,7 +129,7 @@ are thrown out, and the remaining middle values are averaged. This prevents the 
 thus making InterQuartileMean a solid option as a prefilter.
 
 ```py
-core.zsmooth.InterQuartileMean(clip clip[, int[] radius])
+core.zsmooth.InterQuartileMean(clip clip[, int[] radius = [1,1,1], int[] planes = [0,1,2]])
 ```
 
 | Parameter | Type | Options (Default) | Description |

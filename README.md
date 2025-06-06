@@ -105,6 +105,22 @@ core.zsmooth.FluxSmoothST(clip clip[, float[] temporal_threshold = 7, float[] sp
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
+#### Tip
+While FluxSmoothT only supports a temporal radius of 1 (3 frames - previous, current, and next), one can 
+combine `TemporalMedian` and `TemporalSoften` to create essentially the effect over a larger radius.
+
+```python
+# Credit to Dogway and Didee for the idea:
+# https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L2078
+# https://forum.doom9.org/showthread.php?p=1471858
+def fluxSmoothT(clip, threshold, radius):
+    med = clip.zsmooth.TemporalMedian(radius)
+    avg = clip.zsmooth.TemporalSoften(radius, threshold)
+
+    from vsrgtools import limit_filter, LimitFilterMode
+    return limit_filter(med, clip, avg, mode=LimitFilterMode.DIFF_MIN)
+```
+
 ### InterQuartileMean
 Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a grid. 
 
@@ -234,7 +250,7 @@ core.zsmooth.TemporalSoften(clip clip[, int radius = 4, float[] threshold = [], 
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | radius | int | 1 - 7 (4) | Size of the temporal window. This is an upper bound. At the beginning and end of the clip, only legally accessible frames are incorporated into the radius. So if radius if 4, then on the first frame, only frames 0, 1, 2, and 3 are incorporated into the result. |
-| threshold | float[] | 0 - 255 8-bit, 0 - 65535 16-bit, 0.0 - 1.0 float ([4,4,4] RGB, [4, 8, 8] YUV, [4] GRAY) | If the difference between the pixel in the current frame and any of its temporal neighbors is less than this threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  If set to -1, the plane is copied from the source.|
+| threshold | float[] | 0 - 255 8-bit, 0 - 65535 16-bit, 0.0 - 1.0 float ([4,4,4] RGB, [4, 8, 8] YUV, [4] GRAY) | If the difference between the pixel in the current frame and any of its temporal neighbors is less than this threshold, it will be included in the mean. If the difference is greater, it will not be included in the mean.  If set to 0, the plane is copied from the source.|
 | scenechange | int |  -1 - 255 (-1) | Zero (0) disables scene change detection, negative one (-1) respects any existing scene change properties ("_SceneChangePrev", "_SceneChangeNext") and does not call SCDetect from Misc filters. If greater than zero, it is calculated as a percentage internally (scenechange/255) to qualify if a frame is a scenechange or not. Currently requires the SCDetect filter from the Miscellaneous filters plugin. |
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 

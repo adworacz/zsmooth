@@ -10,8 +10,8 @@ length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
-    radius = 1
-    format='u8'
+    radius = 2
+    # format='u8'
     output = 'all'
 
 match format:
@@ -41,6 +41,8 @@ clip.set_output(0)
 
 std = clip.std.Median()
 
+ctmf = clip.ctmf.CTMF(radius, opt=3) # CTMF crashes with AVX512, so force use of AVX2: https://github.com/HomeOfVapourSynthEvolution/VapourSynth-CTMF/issues/4
+
 zsmooth = clip.zsmooth.Median(int(radius))
 
 match output:
@@ -48,9 +50,12 @@ match output:
         zsmooth.set_output()
     case 'std':
         std.set_output()
+    case 'ctmf':
+        ctmf.set_output()
     case 'all':
         clip.set_output(0)
         std.set_output(1)
+        ctmf.set_output(2)
         zsmooth.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"

@@ -26,6 +26,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
   * [DegrainMedian](#degrainmedian)
   * [FluxSmooth(S|ST)](#fluxsmoothsst)
   * [InterQuartileMean](#interquartilemean)
+  * [Median](#median)
   * [RemoveGrain](#removegrain)
   * [Repair](#repair)
   * [Temporal Median](#temporal-median)
@@ -154,6 +155,51 @@ iqmv = limit_filter(iqm3, clip, iqm5, mode=LimitFilterMode.SIMPLE_MIN)
 
 This can be further enhanced by using `limit_filter` to threshold IQM3 and IQM5 separately, and then combining the result with a
 third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
+
+### Median
+Replaces each pixel with the median of the surrounding 3x3, 5x5, or 7x7 grid, based on the `radius` parameter.
+
+```py
+core.zsmooth.Median(clip clip[, int[] radius = [1,1,1], int[] planes = [0,1,2]])
+```
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| radius | int[] | 0-3 ([1, 1, 1]) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid. Radius 0 disables filtering for the given plane.|
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
+
+#### Tip
+
+The `Median` and `RemoveGrain` filters can be combined to create the [MinBlur](http://avisynth.nl/index.php/MinBlur)
+function like so:
+
+```
+# http://avisynth.nl/index.php/MinBlur
+# http://avisynth.nl/images/MinBlur.avsi
+# https://github.com/Dogway/Avisynth-Scripts/blob/master/SMDegrain/SMDegrain.avsi#L740
+def minblur(clip, radius, repair_edges=False):
+    match radius:
+        case 1:
+            gauss = clip.zsmooth.RemoveGrain(12)
+        case 2:
+            gauss = clip.zsmooth.RemoveGrain(12).zsmooth.RemoveGrain(20)
+        case 3:
+            gauss = clip.zsmooth.RemoveGrain(12).zsmooth.RemoveGrain(20).zsmooth.RemoveGrain(20)
+        case _:
+            raise "minblur: Only radius 1-3 supported"
+
+    median = clip.zsmooth.Median(radius)
+
+    from vsrgtools import limit_filter, LimitFilterMode
+    limited = limit_filter(gauss, clip, median, mode=LimitFilterMode.DIFF_MIN)
+
+    # Restore edges if desired, Dogway recommends to disable this when using minblur as a prefilter.
+    if repair_edges:
+        return limited.zsmooth.Repair(clip.zsmooth.RemoveGrain(17), 9)
+
+    return limited
+```
 
 ### RemoveGrain 
 

@@ -50,9 +50,9 @@ clip.set_output(0)
 
 if format != 'f16':
     if output in ['ttmpsm', 'all']:
-        ttempsmooth = clip.ttmpsm.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp)
+        ttempsmooth = clip.ttmpsm.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp, scthresh=0)
 
-zsmooth = clip.zsmooth.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp)
+zsmooth = clip.zsmooth.TTempSmooth(maxr=radius, thresh=threshold, mdiff=mdiff, strength=strength, fp=fp, scthresh=0)
 
 match output:
     case 'zsmooth':

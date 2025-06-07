@@ -4,6 +4,12 @@ to provided the greatest stability of FPS numbers between runs.
 
 So while the benchmarks show fast results, you'll see even faster by using Zsmooth when using a fully threaded VapourSynth script.
 
+## Table of Contents
+* [0.9 - Zig 0.14.0 - ARM NEON](#09---zig-0140---arm-neon-aarch64-macos)
+* [0.9 - Zig 0.14.0 - AVX512](#09---zig-0140---avx512-znver4)
+* [0.9 - Zig 0.14.0 - AVX2](#09---zig-0140---avx2)
+* [0.9 - Zig 0.12.1 - AVX2](#09---zig-0121---avx2)
+
 ## 0.9 - Zig 0.14.0 - ARM NEON (aarch64-macos)
 Source: BlankClip YUV420, 1920x1080
 

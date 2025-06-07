@@ -14,6 +14,7 @@ which can have significant performance impacts without fast math.
 * Significantly speedup InterQuartileMean radius 1 (3x3 grid) with hand written vector version.
 * Support disabling processing in InterQuartileMean via `planes` param, or by passing 0 to `radius`.
 * Upgrade to Zig 0.14.1
+* Implement Median, with support for radius 0-3.
 
 ## 0.9
 * Add implementation of InterQuartileMean, as made popular by Dogway. Just IQM3 (3x3) support for now, 5x5 will come later.

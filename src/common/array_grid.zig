@@ -91,6 +91,13 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
         pub fn sortWithCenter(self: *Self) void {
             sort.sort(T, self.values.len, &self.values);
         }
+
+        /// Finds the median of the `values` member.
+        ///
+        /// Note that this has the side effect of *mutating* the `values` member.
+        pub fn medianWithCenter(self: *Self) T {
+            return sort.median(T, self.values.len, &self.values);
+        }
     };
 }
 
@@ -213,4 +220,18 @@ test "ArrayGrid sort" {
     grid.sortWithCenter();
 
     try std.testing.expectEqual(1, grid.values[0]);
+}
+
+test "ArrayGrid median" {
+    const T = u8;
+    const data = [_]T{
+        9, 8, 7, //
+        6, 1, 4, //
+        3, 2, 5, //
+    };
+
+    var grid = ArrayGrid(3, T).init(T, &data, 3);
+    const median = grid.medianWithCenter();
+
+    try std.testing.expectEqual(5, median);
 }

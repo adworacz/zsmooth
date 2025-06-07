@@ -11,6 +11,7 @@ const fluxSmooth = @import("fluxsmooth.zig");
 const degrainMedian = @import("degrain_median.zig");
 const interQuartileMean = @import("inter_quartile_mean.zig");
 const ttempsmooth = @import("ttempsmooth.zig");
+const median = @import("median.zig");
 
 const version = @import("version.zig").version;
 
@@ -27,4 +28,5 @@ export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI)
     degrainMedian.registerFunction(plugin, vsapi);
     interQuartileMean.registerFunction(plugin, vsapi);
     ttempsmooth.registerFunction(plugin, vsapi);
+    median.registerFunction(plugin, vsapi);
 }

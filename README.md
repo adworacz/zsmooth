@@ -125,6 +125,8 @@ def fluxSmoothT(clip, threshold, radius):
 ### InterQuartileMean
 Performs an [interquartile mean](https://en.wikipedia.org/wiki/Interquartile_mean) of a grid. 
 
+Edge pixels are processed using mirror padding.
+
 An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
 are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average,
 thus making InterQuartileMean a solid option as a prefilter.
@@ -158,6 +160,8 @@ third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
 
 ### Median
 Replaces each pixel with the median of the surrounding 3x3, 5x5, or 7x7 grid, based on the `radius` parameter.
+
+Edge pixels are processed using mirror padding.
 
 ```py
 core.zsmooth.Median(clip clip[, int[] radius = [1,1,1], int[] planes = [0,1,2]])

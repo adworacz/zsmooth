@@ -1,14 +1,14 @@
 # Changelog
 
-## 0.10 - TBD
+## 0.10
 * Minor code improvements to FluxSmooth, no change in output/speed.
 * Minor code improvements to TemporalMedian, seems like a minor boost in speed.
 * Minor code improvements to TemporalSoften, no change in output/speed.
 * Enable float "fast-math" for all filters, with a build option for easily switching back to "strict" mode. This brings some performance
-benefits for float formats, at the cost of a potential loss in accuracy. I believe this is an acceptable tradeoff for 
-image processing (this isn't scientific computing). VerticalCleaner seems to be the most impacted in my benchmarks, but 
-my benchmarks don't use real video so there's little possibility for "subnormals"/"denormals" (aka, floats close to zero but not exactly zero)
-which can have significant performance impacts without fast math.
+  benefits for float formats, at the cost of a potential loss in accuracy. I believe this is an acceptable tradeoff for 
+  image processing (this isn't scientific computing). VerticalCleaner seems to be the most positively impacted in terms of
+  speed in my benchmarks, but my benchmarks don't use real video so there's little possibility for "subnormals"/"denormals" 
+  (aka, floats close to zero but not exactly zero) which can have significant performance impacts without fast math.
 * Implement InterQuartileMean radius 2 (5x5 grid).
 * Implement InterQuartileMean radius 3 (7x7 grid).
 * Significantly speedup InterQuartileMean radius 1 (3x3 grid) with hand written vector version.

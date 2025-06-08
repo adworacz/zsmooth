@@ -247,19 +247,24 @@ export fn medianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         return;
     }
 
-    for (0..3) |i| {
-        if (i < numRadius) {
-            if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
-                if (radius < 0 or radius > 3) {
-                    vsapi.?.mapSetError.?(out, "Median: Invalid radius specified, only radius 0-3 supported.");
-                    vsapi.?.freeNode.?(d.node);
-                    return;
+    if (numRadius > 0) {
+        for (0..3) |i| {
+            if (i < numRadius) {
+                if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
+                    if (radius < 0 or radius > 3) {
+                        vsapi.?.mapSetError.?(out, "Median: Invalid radius specified, only radius 0-3 supported.");
+                        vsapi.?.freeNode.?(d.node);
+                        return;
+                    }
+                    d.radius[i] = @intCast(radius);
                 }
-                d.radius[i] = @intCast(radius);
+            } else {
+                d.radius[i] = d.radius[i - 1];
             }
-        } else {
-            d.radius[i] = d.radius[i - 1];
         }
+    } else {
+        // Default radius
+        d.radius = .{ 1, 1, 1 };
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
@@ -299,5 +304,5 @@ export fn medianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("Median", "clip:vnode;radius:int[];planes:int[]:opt;", "clip:vnode;", medianCreate, null, plugin);
+    _ = vsapi.registerFunction.?("Median", "clip:vnode;radius:int[]:opt;planes:int[]:opt;", "clip:vnode;", medianCreate, null, plugin);
 }

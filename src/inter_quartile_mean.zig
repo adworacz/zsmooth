@@ -472,19 +472,24 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
         return;
     }
 
-    for (0..3) |i| {
-        if (i < numRadius) {
-            if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
-                if (radius < 0 or radius > 3) {
-                    vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 0-3 supported.");
-                    vsapi.?.freeNode.?(d.node);
-                    return;
+    if (numRadius > 0) {
+        for (0..3) |i| {
+            if (i < numRadius) {
+                if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
+                    if (radius < 0 or radius > 3) {
+                        vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 0-3 supported.");
+                        vsapi.?.freeNode.?(d.node);
+                        return;
+                    }
+                    d.radius[i] = @intCast(radius);
                 }
-                d.radius[i] = @intCast(radius);
+            } else {
+                d.radius[i] = d.radius[i - 1];
             }
-        } else {
-            d.radius[i] = d.radius[i - 1];
         }
+    } else {
+        // Default radius
+        d.radius = .{ 1, 1, 1 };
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
@@ -497,7 +502,7 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
         return;
     };
 
-    d.process = [3]bool {
+    d.process = [3]bool{
         planes[0] and d.radius[0] > 0,
         planes[1] and d.radius[1] > 0,
         planes[2] and d.radius[2] > 0,
@@ -524,5 +529,5 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;radius:int[];planes:int[]:opt;", "clip:vnode;", interQuartileMeanCreate, null, plugin);
+    _ = vsapi.registerFunction.?("InterQuartileMean", "clip:vnode;radius:int[]:opt;planes:int[]:opt;", "clip:vnode;", interQuartileMeanCreate, null, plugin);
 }

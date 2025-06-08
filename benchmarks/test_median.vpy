@@ -10,7 +10,7 @@ length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
-    radius = 2
+    radius = 1
     # format='u8'
     output = 'all'
 

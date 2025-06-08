@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.11
+* Fix default radius for InterQuartileMean and Median.
+
 ## 0.10
 * Minor code improvements to FluxSmooth, no change in output/speed.
 * Minor code improvements to TemporalMedian, seems like a minor boost in speed.

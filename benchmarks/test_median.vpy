@@ -41,7 +41,8 @@ clip.set_output(0)
 
 std = clip.std.Median()
 
-ctmf = clip.ctmf.CTMF(radius, opt=3) # CTMF crashes with AVX512, so force use of AVX2: https://github.com/HomeOfVapourSynthEvolution/VapourSynth-CTMF/issues/4
+if output in ['ctmf', 'all']:
+    ctmf = clip.ctmf.CTMF(radius, opt=3) # CTMF crashes with AVX512, so force use of AVX2: https://github.com/HomeOfVapourSynthEvolution/VapourSynth-CTMF/issues/4
 
 zsmooth = clip.zsmooth.Median(int(radius))
 

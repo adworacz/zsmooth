@@ -13,6 +13,27 @@ const vsh = vapoursynth.vshelper;
 // Video format utilities (value scaling, peak finding, etc)
 /////////////////////////////////////////////////
 
+/// Convenience enum for reflecting the underlying byte layout of the 
+/// video data provided by Vapoursynth.
+pub const FormatType = enum {
+    U8,
+    U16,
+    F16,
+    F32,
+
+    const Self = @This();
+
+    pub fn getDataType(format: vs.VideoFormat) Self {
+        return switch(format.bytesPerSample) {
+            1 => .U8,
+            2 => if (format.sampleType == vs.SampleType.Integer) .U16 else .F16,
+            4 => .F32,
+            else => unreachable,
+        };
+    } 
+};
+
+
 /// Scales an 8 bit value match the pertinent bit depth, sample
 /// type, and plane (is/is not chroma).
 pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: anytype, plane: anytype) T {

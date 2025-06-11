@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.12
+* TBD
+
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.
 

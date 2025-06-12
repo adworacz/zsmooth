@@ -12,7 +12,6 @@ const string = @import("common/string.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
-const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -264,7 +263,7 @@ export fn medianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
     if (numRadius > 0) {
         for (0..3) |i| {
             if (i < numRadius) {
-                if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
+                if (inz.getInt(i32, "radius")) |radius| {
                     if (radius < 0 or radius > 3) {
                         outz.setError("Median: Invalid radius specified, only radius 0-3 supported.");
                         zapi.freeNode(d.node);

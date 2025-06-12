@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
 const types = @import("common/type.zig");
@@ -403,49 +404,62 @@ fn InterQuartileMean(comptime T: type) type {
             }
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(radius: u8, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const T = @ptrCast(@alignCast(srcp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const d: *InterQuartileMeanData = @ptrCast(@alignCast(instance_data));
-
-            if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-            } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-
-                defer vsapi.?.freeFrame.?(src_frame);
-
-                const dst = vscmn.newVideoFrame(&d.process, src_frame, d.vi, core, vsapi);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
-                    // Skip planes we aren't supposed to process
-                    if (!d.process[_plane]) {
-                        continue;
-                    }
-
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-
-                    switch (d.radius[_plane]) {
-                        // inline 1 => processPlaneScalar(1, srcp, dstp, width, height, stride),
-                        // Custom vector version is substantially faster than auto-vectorized (scalar) version,
-                        // for both radius 1 and radius 2.
-                        inline 1...3 => |radius| processPlaneVector(radius, srcp, dstp, width, height, stride),
-                        else => unreachable,
-                    }
-                }
-
-                return dst;
+            switch (radius) {
+                // Custom vector version is substantially faster than auto-vectorized (scalar) version,
+                // for both radius 1 and radius 2.
+                inline 1...3 => |r| processPlaneVector(r, srcp, dstp, width, height, stride),
+                else => unreachable,
             }
-
-            return null;
         }
     };
+}
+
+fn interQuartileMeanGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const zapi = ZAPI.init(vsapi, core);
+    const d: *InterQuartileMeanData = @ptrCast(@alignCast(instance_data));
+
+    if (activation_reason == ar.Initial) {
+        zapi.requestFrameFilter(n, d.node, frame_ctx);
+    } else if (activation_reason == ar.AllFramesReady) {
+        const src_frame = zapi.initZFrame(d.node, n, frame_ctx);
+        defer src_frame.deinit();
+
+        const dst = src_frame.newVideoFrame2(d.process);
+
+        const processPlane: @TypeOf(&InterQuartileMean(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &InterQuartileMean(u8).processPlane,
+            .U16 => &InterQuartileMean(u16).processPlane,
+            .F16 => &InterQuartileMean(f16).processPlane,
+            .F32 => &InterQuartileMean(f32).processPlane,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (!d.process[plane]) {
+                continue;
+            }
+
+            const width: usize = dst.getWidth(plane);
+            const height: usize = dst.getHeight(plane);
+            const stride8: usize = dst.getStride(plane);
+            const srcp8: []const u8 = src_frame.getReadSlice(plane);
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+
+            processPlane(d.radius[plane], srcp8, dstp8, width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn interQuartileMeanFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
@@ -457,18 +471,17 @@ export fn interQuartileMeanFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsa
 
 export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
+    const zapi = ZAPI.init(vsapi, core);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
     var d: InterQuartileMeanData = undefined;
 
-    // TODO: Add error handling.
-    var err: vs.MapPropertyError = undefined;
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
-
-    const numRadius = vsapi.?.mapNumElements.?(in, "radius");
+    const numRadius: c_int = @intCast(inz.numElements("radius") orelse 0);
     if (numRadius > d.vi.format.numPlanes) {
-        vsapi.?.mapSetError.?(out, "InterQuartileMean: Element count of radius must be less than or equal to the number of input planes.");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError("InterQuartileMean: Element count of radius must be less than or equal to the number of input planes.");
+        zapi.freeNode(d.node);
         return;
     }
 
@@ -477,8 +490,8 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
             if (i < numRadius) {
                 if (vsh.mapGetN(i32, in, "radius", @intCast(i), vsapi)) |radius| {
                     if (radius < 0 or radius > 3) {
-                        vsapi.?.mapSetError.?(out, "InterQuartileMean: Invalid radius specified, only radius 0-3 supported.");
-                        vsapi.?.freeNode.?(d.node);
+                        outz.setError("InterQuartileMean: Invalid radius specified, only radius 0-3 supported.");
+                        zapi.freeNode(d.node);
                         return;
                     }
                     d.radius[i] = @intCast(radius);
@@ -493,11 +506,11 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
-        vsapi.?.freeNode.?(d.node);
+        zapi.freeNode(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "InterQuartileMean: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "InterQuartileMean: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => outz.setError("InterQuartileMean: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => outz.setError("InterQuartileMean: Plane specified twice."),
         }
         return;
     };
@@ -518,14 +531,7 @@ export fn interQuartileMeanCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: 
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &InterQuartileMean(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &InterQuartileMean(u16).getFrame else &InterQuartileMean(f16).getFrame,
-        4 => &InterQuartileMean(f32).getFrame,
-        else => unreachable,
-    };
-
-    vsapi.?.createVideoFilter.?(out, "InterQuartileMean", d.vi, getFrame, interQuartileMeanFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "InterQuartileMean", d.vi, interQuartileMeanGetFrame, interQuartileMeanFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

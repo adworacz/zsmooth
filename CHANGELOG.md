@@ -1,7 +1,8 @@
 # Changelog
 
 ## 0.12
-* TBD
+* Migrate Median and InterQuartileMean to ZAPI and compartmentalized filter modules to reduce binary
+size, improve compatibility, and surprisingly slightly improve performance.
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

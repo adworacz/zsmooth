@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
 const types = @import("common/type.zig");
@@ -10,12 +11,10 @@ const gridcmn = @import("common/grid.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
-const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
 const fm = vs.FilterMode;
-const st = vs.SampleType;
 
 // https://ziglang.org/documentation/master/#Choosing-an-Allocator
 //
@@ -807,66 +806,81 @@ fn RemoveGrain(comptime T: type) type {
             }
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(mode: u5, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize, chroma: bool) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const T = @ptrCast(@alignCast(srcp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
-
-            if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-            } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                defer vsapi.?.freeFrame.?(src_frame);
-
-                const process = [_]bool{
-                    d.modes[0] > 0,
-                    d.modes[1] > 0,
-                    d.modes[2] > 0,
-                };
-                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
-                    // Skip planes we aren't supposed to process
-                    if (d.modes[_plane] == 0) {
-                        continue;
-                    }
-
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
-
-                    // While these double switches may seem excessive at first glance, it's actually a substantial performance
-                    // optimization. By having this switch operate at run time, process_plane_scalar can be
-                    // optimized *at compile time* for *each* mode. This allows it to autovectorize each
-                    // remove grain function for maximum performance.
-                    //
-                    // If I change the code to use function pointers, passing in the remove grain function into
-                    // process_plane_scalar, FPS drops from 750+ to 48. Again, this is because the compiler can't
-                    // properly optimize each RG function and its use in process_plane_scalar.
-                    //
-                    // Function pointers would likely work if I implemented a full @Vector support, but
-                    // when the compiler can produce such performance code using my *scalar* implementation,
-                    // there's literally no point for such an explosion in code.
-                    //
-                    // These double switches (see the other in process_plane_scalar, which operates at comptime)
-                    // are a bit gratuitous but they are *FAST*.
-                    switch (d.modes[_plane]) {
-                        inline 1...24 => |mode| processPlaneScalar(mode, srcp, dstp, width, height, stride, chroma),
-                        else => unreachable,
-                    }
-                }
-
-                return dst;
+            // While these double switches may seem excessive at first glance, it's actually a substantial performance
+            // optimization. By having this switch operate at run time, process_plane_scalar can be
+            // optimized *at compile time* for *each* mode. This allows it to autovectorize each
+            // remove grain function for maximum performance.
+            //
+            // If I change the code to use function pointers, passing in the remove grain function into
+            // process_plane_scalar, FPS drops from 750+ to 48. Again, this is because the compiler can't
+            // properly optimize each RG function and its use in process_plane_scalar.
+            //
+            // Function pointers would likely work if I implemented a full @Vector support, but
+            // when the compiler can produce such performance code using my *scalar* implementation,
+            // there's literally no point for such an explosion in code.
+            //
+            // These double switches (see the other in process_plane_scalar, which operates at comptime)
+            // are a bit gratuitous but they are *FAST*.
+            switch (mode) {
+                inline 1...24 => |m| processPlaneScalar(m, srcp, dstp, width, height, stride, chroma),
+                else => unreachable,
             }
-
-            return null;
         }
     };
+}
+
+fn removeGrainGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const zapi = ZAPI.init(vsapi, core);
+    const d: *RemoveGrainData = @ptrCast(@alignCast(instance_data));
+
+    if (activation_reason == ar.Initial) {
+        zapi.requestFrameFilter(n, d.node, frame_ctx);
+    } else if (activation_reason == ar.AllFramesReady) {
+        const src_frame = zapi.initZFrame(d.node, n, frame_ctx);
+        defer src_frame.deinit();
+
+        const process = [_]bool{
+            d.modes[0] > 0,
+            d.modes[1] > 0,
+            d.modes[2] > 0,
+        };
+        const dst = src_frame.newVideoFrame2(process);
+
+        const processPlane: @TypeOf(&RemoveGrain(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &RemoveGrain(u8).processPlane,
+            .U16 => &RemoveGrain(u16).processPlane,
+            .F16 => &RemoveGrain(f16).processPlane,
+            .F32 => &RemoveGrain(f32).processPlane,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (d.modes[plane] == 0) {
+                continue;
+            }
+
+            const width: usize = dst.getWidth(plane);
+            const height: usize = dst.getHeight(plane);
+            const stride8: usize = dst.getStride(plane);
+            const srcp8: []const u8 = src_frame.getReadSlice(plane);
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+            const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+
+            processPlane(d.modes[plane], srcp8, dstp8, width, height, stride8, chroma);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn removeGrainFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
@@ -878,27 +892,27 @@ export fn removeGrainFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
 
 export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
     _ = user_data;
+    const zapi = ZAPI.init(vsapi, core);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
+
     var d: RemoveGrainData = undefined;
 
-    // TODO: Add error handling.
-    var err: vs.MapPropertyError = undefined;
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
-
-    const numModes = vsapi.?.mapNumElements.?(in, "mode");
+    const numModes: c_int = @intCast(inz.numElements("mode") orelse 0);
     if (numModes > d.vi.format.numPlanes) {
-        vsapi.?.mapSetError.?(out, "RemoveGrain: Number of modes must be equal or fewer than the number of input planes.");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError("RemoveGrain: Number of modes must be equal or fewer than the number of input planes.");
+        zapi.freeNode(d.node);
         return;
     }
 
     for (0..3) |i| {
         if (i < numModes) {
-            if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+            if (inz.getInt(i32, "mode")) |mode| {
                 if (mode < 0 or mode > 24) {
-                    vsapi.?.mapSetError.?(out, "RemoveGrain: Invalid mode specified, only modes 0-24 supported.");
-                    vsapi.?.freeNode.?(d.node);
+                    outz.setError("RemoveGrain: Invalid mode specified, only modes 0-24 supported.");
+                    zapi.freeNode(d.node);
                     return;
                 }
                 d.modes[i] = @intCast(mode);
@@ -918,14 +932,7 @@ export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &RemoveGrain(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &RemoveGrain(u16).getFrame else &RemoveGrain(f16).getFrame,
-        4 => &RemoveGrain(f32).getFrame,
-        else => unreachable,
-    };
-
-    vsapi.?.createVideoFilter.?(out, "RemoveGrain", d.vi, getFrame, removeGrainFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "RemoveGrain", d.vi, removeGrainGetFrame, removeGrainFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

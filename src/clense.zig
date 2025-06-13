@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -37,10 +38,10 @@ const ClenseData = struct {
     // The modes for each plane we will process.
     process: [3]bool,
 
-    // mode: ClenseMode,
+    mode: ClenseMode,
 };
 
-fn Clense(comptime T: type, comptime mode: ClenseMode) type {
+fn Clense(comptime T: type) type {
     return struct {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
@@ -173,94 +174,112 @@ fn Clense(comptime T: type, comptime mode: ClenseMode) type {
             try std.testing.expectEqualDeep(&expected, dstp);
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-            const d: *ClenseData = @ptrCast(@alignCast(instance_data));
 
-            if (activation_reason == ar.Initial) {
-                switch (mode) {
-                    .Normal => {
-                        if (n >= 1 and n <= d.vi.numFrames - 2) {
-                            frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                            vsapi.?.requestFrameFilter.?(n - 1, d.pnode, frame_ctx);
-                            vsapi.?.requestFrameFilter.?(n, d.cnode, frame_ctx);
-                            vsapi.?.requestFrameFilter.?(n + 1, d.nnode, frame_ctx);
-                        } else {
-                            vsapi.?.requestFrameFilter.?(n, d.cnode, frame_ctx);
-                        }
-                    },
-                    .Forward => {
-                        vsapi.?.requestFrameFilter.?(n, d.cnode, frame_ctx);
-                        if (n <= d.vi.numFrames - 3) {
-                            frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                            vsapi.?.requestFrameFilter.?(n + 1, d.cnode, frame_ctx);
-                            vsapi.?.requestFrameFilter.?(n + 2, d.cnode, frame_ctx);
-                        }
-                    },
-                    .Backward => {
-                        if (n >= 2) {
-                            frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                            vsapi.?.requestFrameFilter.?(n - 2, d.cnode, frame_ctx);
-                            vsapi.?.requestFrameFilter.?(n - 1, d.cnode, frame_ctx);
-                        }
-                        vsapi.?.requestFrameFilter.?(n, d.cnode, frame_ctx);
-                    },
-                }
-            } else if (activation_reason == ar.AllFramesReady) {
-                // Skip processing on first/last frames.
-                // Uses `framedata` to communicate state between getFrame calls, as the first call is for ar.Initial to request necessary frames, and the second call is for ar.AllFramesReady once said requested frames are available.
-                // Nifty trick, taken from RGVS/SF + Vapoursynth's SelectEvery function.
-                if (@intFromPtr(frame_data.?.*) != 1) {
-                    return vsapi.?.getFrameFilter.?(n, d.cnode, frame_ctx);
-                }
+        fn processPlane(mode: ClenseMode, noalias dstp8: []u8, noalias srcp8: []const u8, noalias ref1p8: []const u8, noalias ref2p8: []const u8, width: usize, height: usize, stride8: usize) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const T = @ptrCast(@alignCast(srcp8));
+            const ref1p: []const T = @ptrCast(@alignCast(ref1p8));
+            const ref2p: []const T = @ptrCast(@alignCast(ref2p8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-                const ref1 = switch (mode) {
-                    .Normal => vsapi.?.getFrameFilter.?(n - 1, d.pnode, frame_ctx),
-                    .Forward => vsapi.?.getFrameFilter.?(n + 1, d.cnode, frame_ctx),
-                    .Backward => vsapi.?.getFrameFilter.?(n - 1, d.cnode, frame_ctx),
-                };
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.cnode, frame_ctx);
-                const ref2 = switch (mode) {
-                    .Normal => vsapi.?.getFrameFilter.?(n + 1, d.nnode, frame_ctx),
-                    .Forward => vsapi.?.getFrameFilter.?(n + 2, d.cnode, frame_ctx),
-                    .Backward => vsapi.?.getFrameFilter.?(n - 2, d.cnode, frame_ctx),
-                };
-
-                defer {
-                    vsapi.?.freeFrame.?(ref1);
-                    vsapi.?.freeFrame.?(src_frame);
-                    vsapi.?.freeFrame.?(ref2);
-                }
-
-                const dst = vscmn.newVideoFrame(&d.process, src_frame, d.vi, core, vsapi);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
-                    // Skip planes we aren't supposed to process
-                    if (!d.process[_plane]) {
-                        continue;
-                    }
-
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                    const ref1p: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(ref1, plane))))[0..(height * stride)];
-                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
-                    const ref2p: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(ref2, plane))))[0..(height * stride)];
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-
-                    switch (mode) {
-                        .Normal => clense(dstp, srcp, ref1p, ref2p, width, height, stride),
-                        .Forward => clenseForwardBackward(dstp, srcp, ref1p, ref2p, width, height, stride),
-                        .Backward => clenseForwardBackward(dstp, srcp, ref1p, ref2p, width, height, stride),
-                    }
-                }
-
-                return dst;
+            switch (mode) {
+                .Normal => clense(dstp, srcp, ref1p, ref2p, width, height, stride),
+                .Forward => clenseForwardBackward(dstp, srcp, ref1p, ref2p, width, height, stride),
+                .Backward => clenseForwardBackward(dstp, srcp, ref1p, ref2p, width, height, stride),
             }
-
-            return null;
         }
     };
+}
+
+fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+    const zapi = ZAPI.init(vsapi, core);
+    const d: *ClenseData = @ptrCast(@alignCast(instance_data));
+
+    if (activation_reason == ar.Initial) {
+        switch (d.mode) {
+            .Normal => {
+                if (n >= 1 and n <= d.vi.numFrames - 2) {
+                    frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
+                    zapi.requestFrameFilter(n - 1, d.pnode, frame_ctx);
+                    zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n + 1, d.nnode, frame_ctx);
+                } else {
+                    zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                }
+            },
+            .Forward => {
+                zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                if (n <= d.vi.numFrames - 3) {
+                    frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
+                    zapi.requestFrameFilter(n + 1, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n + 2, d.cnode, frame_ctx);
+                }
+            },
+            .Backward => {
+                if (n >= 2) {
+                    frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
+                    zapi.requestFrameFilter(n - 2, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n - 1, d.cnode, frame_ctx);
+                }
+                zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+            },
+        }
+    } else if (activation_reason == ar.AllFramesReady) {
+        // Skip processing on first/last frames.
+        // Uses `framedata` to communicate state between getFrame calls, as the first call is for ar.Initial to request necessary frames, and the second call is for ar.AllFramesReady once said requested frames are available.
+        // Nifty trick, taken from RGVS/SF + Vapoursynth's SelectEvery function.
+        if (@intFromPtr(frame_data.?.*) != 1) {
+            return zapi.getFrameFilter(n, d.cnode, frame_ctx);
+        }
+
+        const ref1 = switch (d.mode) {
+            .Normal => zapi.initZFrame(d.pnode, n - 1, frame_ctx),
+            .Forward => zapi.initZFrame(d.cnode, n + 1, frame_ctx),
+            .Backward => zapi.initZFrame(d.cnode, n - 1, frame_ctx),
+        };
+        const src_frame = zapi.initZFrame(d.cnode, n, frame_ctx);
+        const ref2 = switch (d.mode) {
+            .Normal => zapi.initZFrame(d.nnode, n + 1, frame_ctx),
+            .Forward => zapi.initZFrame(d.cnode, n + 2, frame_ctx),
+            .Backward => zapi.initZFrame(d.cnode, n - 2, frame_ctx),
+        };
+
+        defer {
+            ref1.deinit();
+            src_frame.deinit();
+            ref2.deinit();
+        }
+
+        const dst = src_frame.newVideoFrame2(d.process);
+
+        const processPlane: @TypeOf(&Clense(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &Clense(u8).processPlane,
+            .U16 => &Clense(u16).processPlane,
+            .F16 => &Clense(f16).processPlane,
+            .F32 => &Clense(f32).processPlane,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (!d.process[plane]) {
+                continue;
+            }
+
+            const width: usize = dst.getWidth(plane);
+            const height: usize = dst.getHeight(plane);
+            const stride8: usize = dst.getStride(plane);
+            const ref1p8: []const u8 = ref1.getReadSlice(plane);
+            const srcp8: []const u8 = src_frame.getReadSlice(plane);
+            const ref2p8: []const u8 = ref2.getReadSlice(plane);
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+
+            processPlane(d.mode, dstp8, srcp8, ref1p8, ref2p8, width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
@@ -273,57 +292,53 @@ export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const
 }
 
 export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
-    var d: ClenseData = undefined;
-    var err: vs.MapPropertyError = undefined;
+    const zapi = ZAPI.init(vsapi, core);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
 
-    d.cnode = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
+    var d: ClenseData = undefined;
+
+    d.cnode, d.vi = inz.getNodeVi("clip").?;
     d.pnode = null;
     d.nnode = null;
 
-    d.vi = vsapi.?.getVideoInfo.?(d.cnode);
-    const mode = @as(*ClenseMode, @ptrCast(user_data)).*;
+    d.mode = @as(*ClenseMode, @ptrCast(user_data)).*;
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "Clense: only constant format input supported");
-        vsapi.?.freeNode.?(d.cnode);
+        outz.setError("Clense: only constant format input supported");
+        zapi.freeNode(d.cnode);
         return;
     }
 
-    if (mode == .Normal) {
+    if (d.mode == .Normal) {
         // Reference previous/next clips, falling back to the main clip
         // if either are absent.
-        d.pnode = vsapi.?.mapGetNode.?(in, "previous", 0, &err);
-        if (err == vs.MapPropertyError.Unset) {
-            d.pnode = vsapi.?.addNodeRef.?(d.cnode);
-        }
-        d.nnode = vsapi.?.mapGetNode.?(in, "next", 0, &err);
-        if (err == vs.MapPropertyError.Unset) {
-            d.nnode = vsapi.?.addNodeRef.?(d.cnode);
+        d.pnode = inz.getNode("previous") orelse zapi.addNodeRef(d.cnode);
+        d.nnode = inz.getNode("next") orelse zapi.addNodeRef(d.cnode);
+
+        if (d.pnode != null and !vsh.isSameVideoInfo(d.vi, zapi.getVideoInfo(d.pnode))) {
+            outz.setError("Clense: previous clip does not have the same format as the main clip.");
+            zapi.freeNode(d.cnode);
+            zapi.freeNode(d.pnode);
+            zapi.freeNode(d.nnode);
         }
 
-        if (d.pnode != null and !vsh.isSameVideoInfo(d.vi, vsapi.?.getVideoInfo.?(d.pnode))) {
-            vsapi.?.mapSetError.?(out, "Clense: previous clip does not have the same format as the main clip.");
-            vsapi.?.freeNode.?(d.cnode);
-            vsapi.?.freeNode.?(d.pnode);
-            vsapi.?.freeNode.?(d.nnode);
-        }
-
-        if (d.nnode != null and !vsh.isSameVideoInfo(d.vi, vsapi.?.getVideoInfo.?(d.nnode))) {
-            vsapi.?.mapSetError.?(out, "Clense: next clip does not have the same format as the main clip.");
-            vsapi.?.freeNode.?(d.cnode);
-            vsapi.?.freeNode.?(d.pnode);
-            vsapi.?.freeNode.?(d.nnode);
+        if (d.nnode != null and !vsh.isSameVideoInfo(d.vi, zapi.getVideoInfo(d.nnode))) {
+            outz.setError("Clense: next clip does not have the same format as the main clip.");
+            zapi.freeNode(d.cnode);
+            zapi.freeNode(d.pnode);
+            zapi.freeNode(d.nnode);
         }
     }
 
     d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
-        vsapi.?.freeNode.?(d.cnode);
-        vsapi.?.freeNode.?(d.pnode);
-        vsapi.?.freeNode.?(d.nnode);
+        zapi.freeNode(d.cnode);
+        zapi.freeNode(d.pnode);
+        zapi.freeNode(d.nnode);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "Clense: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "Clense: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => outz.setError("Clense: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => outz.setError("Clense: Plane specified twice."),
         }
         return;
     };
@@ -353,28 +368,7 @@ export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         },
     };
 
-    const getFrame = switch (mode) {
-        .Normal => switch (d.vi.format.bytesPerSample) {
-            1 => &Clense(u8, .Normal).getFrame,
-            2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &Clense(u16, .Normal).getFrame else &Clense(f16, .Normal).getFrame,
-            4 => &Clense(f32, .Normal).getFrame,
-            else => unreachable,
-        },
-        .Forward => switch (d.vi.format.bytesPerSample) {
-            1 => &Clense(u8, .Forward).getFrame,
-            2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &Clense(u16, .Forward).getFrame else &Clense(f16, .Forward).getFrame,
-            4 => &Clense(f32, .Forward).getFrame,
-            else => unreachable,
-        },
-        .Backward => switch (d.vi.format.bytesPerSample) {
-            1 => &Clense(u8, .Backward).getFrame,
-            2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &Clense(u16, .Backward).getFrame else &Clense(f16, .Backward).getFrame,
-            4 => &Clense(f32, .Backward).getFrame,
-            else => unreachable,
-        },
-    };
-
-    vsapi.?.createVideoFilter.?(out, "Clense", d.vi, getFrame, clenseFree, fm.Parallel, if (mode == .Normal) &normalDeps else &forwardBackwardDeps, if (mode == .Normal) normalDeps.len else forwardBackwardDeps.len, data, core);
+    zapi.createVideoFilter(out, "Clense", d.vi, clenseGetFrame, clenseFree, fm.Parallel, if (d.mode == .Normal) &normalDeps else &forwardBackwardDeps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

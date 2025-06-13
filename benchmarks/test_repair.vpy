@@ -38,7 +38,8 @@ clip.set_output(0)
 
 # Make a nice and blury clip to feed to repair functions, since the blur should
 # provide a lot of change and thus make repair operations more evident.
-repair_clip = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
+# repair_clip = clip.std.Convolution(matrix=[1, 2, 1, 2, 4, 2, 1, 2, 1])
+repair_clip = clip # Use just the same clip for benchmarks, otherwise we're benchmarking the Repair AND Convolution
 
 # if (format not in ['f16', 'f32']):
 if (clip.format.sample_type == vs.INTEGER):

@@ -7,6 +7,7 @@ const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
+const math = @import("common/math.zig");
 
 const string = @import("common/string.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
@@ -49,14 +50,37 @@ fn TemporalRepair(comptime T: type) type {
             return std.math.clamp(src, min, max);
         }
 
-        fn temporalRepair(mode: comptime_int, src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
+        /// Preserves more static detail than mode 0. Less sensitive to noise and small fluctations. 
+        fn temporalRepairMode4(chroma: bool, src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
+            const subSat = math.subSat;
+            const addSat = math.addSat;
+            const tmax = if (chroma) types.getTypeMaximum(T, true) else types.getTypeMaximum(T, false);
+            const tmin = if (chroma) types.getTypeMinimum(T, true) else types.getTypeMinimum(T, false);
+
+            const brightest_neighbor = @max(prev_repair, next_repair);
+            const darkest_neighbor = @min(prev_repair, next_repair);
+
+            const diff_curr_darkest = subSat(curr_repair, darkest_neighbor, 0); // curr_repair -| darkest_neighbor
+            const darkest_plus_weighted_diff = addSat(addSat(diff_curr_darkest, diff_curr_darkest, tmax), darkest_neighbor, tmax); // darkest_neighbor +| (diff_curr_darkest *| 2)
+
+            const diff_curr_brightest = subSat(brightest_neighbor, curr_repair, 0); // brightest_neighbor -| curr_repair
+            const brightest_minus_weighted_diff = subSat(brightest_neighbor, addSat(diff_curr_brightest, diff_curr_brightest, tmax), tmin); // brightest_neighbor -| (diff_curr_brightest *| 2)
+
+            const upper = @min(darkest_plus_weighted_diff, brightest_neighbor); // clip dark weighted diff so it doesn't overshoot brightest neighbor
+            const lower = @max(brightest_minus_weighted_diff, darkest_neighbor); // clip bright weigted diff so it doesn't undershoot darkest neighbor
+
+            return if (darkest_neighbor == upper or brightest_neighbor == lower) curr_repair else std.math.clamp(src, lower, upper);
+        }
+
+        fn temporalRepair(mode: comptime_int, chroma: bool, src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
             return switch (mode) {
                 0 => temporalRepairMode0(src, prev_repair, curr_repair, next_repair),
+                4 => temporalRepairMode4(chroma, src, prev_repair, curr_repair, next_repair),
                 else => unreachable,
             };
         }
 
-        fn processPlaneScalar(mode: comptime_int, noalias srcp: []const T, noalias prev_repairp: []const T, noalias curr_repairp: []const T, noalias next_repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn processPlaneScalar(mode: comptime_int, chroma: bool, noalias srcp: []const T, noalias prev_repairp: []const T, noalias curr_repairp: []const T, noalias next_repairp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             for (0..height) |row| {
                 for (0..width) |column| {
                     const src = srcp[row * stride + column];
@@ -64,12 +88,12 @@ fn TemporalRepair(comptime T: type) type {
                     const curr_repair = curr_repairp[row * stride + column];
                     const next_repair = next_repairp[row * stride + column];
 
-                    dstp[row * stride + column] = temporalRepair(mode, src, prev_repair, curr_repair, next_repair);
+                    dstp[row * stride + column] = temporalRepair(mode, chroma, src, prev_repair, curr_repair, next_repair);
                 }
             }
         }
 
-        fn processPlane(mode: u8, noalias srcp8: []const u8, noalias prev_repairp8: []const u8, noalias curr_repairp8: []const u8, noalias next_repairp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlane(mode: u8, chroma: bool, noalias srcp8: []const u8, noalias prev_repairp8: []const u8, noalias curr_repairp8: []const u8, noalias next_repairp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
             const stride = stride8 / @sizeOf(T);
             const srcp: []const T = @ptrCast(@alignCast(srcp8));
             const prev_repairp: []const T = @ptrCast(@alignCast(prev_repairp8));
@@ -78,7 +102,8 @@ fn TemporalRepair(comptime T: type) type {
             const dstp: []T = @ptrCast(@alignCast(dstp8));
 
             switch (mode) {
-                inline 0 => |r| processPlaneScalar(r, srcp, prev_repairp, curr_repairp, next_repairp, dstp, width, height, stride),
+                inline 0 => |r| processPlaneScalar(r, chroma, srcp, prev_repairp, curr_repairp, next_repairp, dstp, width, height, stride),
+                inline 4 => |r| processPlaneScalar(r, chroma, srcp, prev_repairp, curr_repairp, next_repairp, dstp, width, height, stride),
                 // inline 0...3 => |r| processPlaneScalar(r, srcp, prev_repairp, curr_repairp, next_repairp, dstp, width, height, stride),
                 else => unreachable,
             }
@@ -143,8 +168,9 @@ fn temporalRepairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             const curr_repairp8: []const u8 = curr_repair.getReadSlice(plane);
             const next_repairp8: []const u8 = next_repair.getReadSlice(plane);
             const dstp8: []u8 = dst.getWriteSlice(plane);
+            const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
-            processPlane(d.mode[plane], srcp8, prev_repairp8, curr_repairp8, next_repairp8, dstp8, width, height, stride8);
+            processPlane(d.mode[plane], chroma, srcp8, prev_repairp8, curr_repairp8, next_repairp8, dstp8, width, height, stride8);
         }
 
         return dst.frame;
@@ -191,8 +217,8 @@ export fn temporalRepairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         for (0..3) |i| {
             if (i < numMode) {
                 if (inz.getInt(i32, "mode")) |mode| {
-                    if (mode < 0 or mode > 3) {
-                        outz.setError("TemporalRepair: Invalid mode specified, only mode 0-3 supported.");
+                    if (mode < 0 or mode > 4) {
+                        outz.setError("TemporalRepair: Invalid mode specified, only mode 0-4 supported.");
                         zapi.freeNode(d.node);
                         zapi.freeNode(d.repair_node);
                         return;

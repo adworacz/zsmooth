@@ -90,6 +90,20 @@ test subSat {
     try std.testing.expectEqual(1.0, subSat(5.0, 10.0, 1.0));
 }
 
+/// Performs saturating (clamped) addition of two values.
+pub fn addSat(a: anytype, b: anytype, max: anytype) @TypeOf(a, b) {
+    return if (types.isInt(@TypeOf(a, b)))
+        a +| b
+    else
+        @min(a + b, max);
+}
+
+test addSat {
+    const two_fifty_five: u8 = 255;
+    try std.testing.expectEqual(255, addSat(two_fifty_five, 1, 9999));
+    try std.testing.expectEqual(256.0, addSat(255.0, 1.0, 9999));
+}
+
 /// Computes the absolute difference of two values.
 /// Supports fast operation on unsigned types using max/min.
 pub fn absDiff(a: anytype, b: anytype) @TypeOf(a, b) {

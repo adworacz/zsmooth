@@ -278,6 +278,15 @@ core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]
 | radius | int | 1 - 10 (1) | Size of the temporal window from which to calculate the median. First and last _radius_ frames of a clip are not filtered. |
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
+### TemporalRepair
+Applies static detail from the repair clip to the input clip.
+
+Mode 0 - purely temporal, retains more of the input clip except in absolutely static areas.
+Mode 4 - purely temporal, more conservative in its evaluation of motion than Mode 0, so retains more of the repair clip
+except in high motion areas.
+
+Mode 0 = high motion (and noise) sensitivity (little motion (or noise) before filtered clip is applied)
+Mode 4 = low motion (and noise) sensitivity (lots of motion (or noise) before filtered clip is applied)
 
 ### Temporal Soften
 

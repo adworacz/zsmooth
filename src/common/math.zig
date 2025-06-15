@@ -76,7 +76,6 @@ pub fn clamp(val: anytype, lower: anytype, upper: anytype) @TypeOf(val, lower, u
 /// The second parameter is subtracted from the first parameter.
 /// So clampSub(10, 5) == 10 - 5
 /// Integers clamp to zero, and floats clamp to pixel_min.
-/// TODO: Check in godbolt if this saturating subtraction actually helps us
 pub fn subSat(a: anytype, b: anytype, min: anytype) @TypeOf(a, b) {
     return if (types.isInt(@TypeOf(a, b)))
         a -| b
@@ -91,9 +90,11 @@ test subSat {
 }
 
 /// Performs saturating (clamped) addition of two values.
+/// 8-bit is special cased (optimized) since we never use less than 8 bits.
 pub fn addSat(a: anytype, b: anytype, max: anytype) @TypeOf(a, b) {
     return if (types.isInt(@TypeOf(a, b)))
-        a +| b
+        // Special case 8-bit to prevent extra @min instruction.
+        if (@TypeOf(a, b) == u8) a +| b else @min(a +| b, max)
     else
         @min(a + b, max);
 }
@@ -102,6 +103,7 @@ test addSat {
     const two_fifty_five: u8 = 255;
     try std.testing.expectEqual(255, addSat(two_fifty_five, 1, 9999));
     try std.testing.expectEqual(256.0, addSat(255.0, 1.0, 9999));
+    try std.testing.expectEqual(1023, addSat(@as(u16, 1023), 1, 1023));
 }
 
 /// Computes the absolute difference of two values.

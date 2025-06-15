@@ -110,6 +110,16 @@ pub fn getFormatMaximum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     return lossyCast(T, (@as(u32, 1) << @intCast(vf.bitsPerSample)) - 1);
 }
 
+// TODO: These are not perfect replacements for getFormatMaximum, since sometimes 
+// its useful to retrieve the value in a different type. See calculateSoftThresholdParams for an example.
+pub fn getFormatMaximum2(comptime T: type, bits_per_sample: u6, chroma: bool) T {
+    if (types.isFloat(T)) {
+        return if (chroma) 0.5 else 1.0;
+    }
+
+    return lossyCast(T, (@as(u32, 1) << @intCast(bits_per_sample)) - 1);
+}
+
 pub fn getFormatMinimum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     if (vf.sampleType == vs.SampleType.Float) {
         return lossyCast(T, @as(f32, if (vf.colorFamily == vs.ColorFamily.YUV and chroma) -0.5 else 0.0));
@@ -118,8 +128,16 @@ pub fn getFormatMinimum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     return 0;
 }
 
+pub fn getFormatMinimum2(comptime T: type, chroma: bool) T {
+    if (types.isFloat(T)) {
+        return if (chroma) -0.5 else 0;
+    }
+
+    return 0;
+}
+
 test "Format maximum and minimum" {
-    const float_vf: vs.VideoFormat = .{
+    const float_rgb_vf: vs.VideoFormat = .{
         .sampleType = vs.SampleType.Float,
         .colorFamily = vs.ColorFamily.RGB,
         .bitsPerSample = 32,
@@ -165,20 +183,19 @@ test "Format maximum and minimum" {
         .subSamplingH = 2,
     };
 
-    try std.testing.expectEqual(1.0, getFormatMaximum(f32, float_vf, false));
+    try std.testing.expectEqual(1.0, getFormatMaximum(f32, float_rgb_vf, false));
     try std.testing.expectEqual(1.0, getFormatMaximum(f32, float_yuv_vf, false));
-    try std.testing.expectEqual(0.0, getFormatMinimum(f32, float_vf, false));
-    try std.testing.expectEqual(0.0, getFormatMinimum(f32, float_vf, true));
+    try std.testing.expectEqual(0.0, getFormatMinimum(f32, float_rgb_vf, false));
     try std.testing.expectEqual(-0.5, getFormatMinimum(f32, float_yuv_vf, true));
 
-    try std.testing.expectEqual(255, getFormatMaximum(f32, u8_vf, false));
-    try std.testing.expectEqual(0, getFormatMinimum(f32, u8_vf, false));
+    try std.testing.expectEqual(255, getFormatMaximum(u8, u8_vf, false));
+    try std.testing.expectEqual(0, getFormatMinimum(u8, u8_vf, false));
 
-    try std.testing.expectEqual(1023, getFormatMaximum(f32, u10_vf, false));
-    try std.testing.expectEqual(0, getFormatMinimum(f32, u10_vf, false));
+    try std.testing.expectEqual(1023, getFormatMaximum(u16, u10_vf, false));
+    try std.testing.expectEqual(0, getFormatMinimum(u16, u10_vf, false));
 
-    try std.testing.expectEqual(65535, getFormatMaximum(f32, u16_vf, false));
-    try std.testing.expectEqual(0, getFormatMinimum(f32, u16_vf, false));
+    try std.testing.expectEqual(65535, getFormatMaximum(u16, u16_vf, false));
+    try std.testing.expectEqual(0, getFormatMinimum(u16, u16_vf, false));
 }
 
 /// Considers the color family and plane index to determine

@@ -286,6 +286,8 @@ Mode 4 - purely temporal, more conservative in its evaluation of motion than Mod
 except in high motion areas.
 
 Mode 0 = high motion (and noise) sensitivity (little motion (or noise) before filtered clip is applied)
+Mode 1 = lower motion (and noise) sensitivity than Mode 0 and 2, higher than mode 4.
+Mode 2 = high motion (and noise) sensitivity, spatial-temporal.
 Mode 4 = low motion (and noise) sensitivity (lots of motion (or noise) before filtered clip is applied)
 
 ### Temporal Soften

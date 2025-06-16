@@ -121,11 +121,31 @@ fn TemporalRepair(comptime T: type) type {
 
             return std.math.clamp(src, min, max);
         }
+        
+        fn spatialTemporalRepairMode2(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
+            const center_idx = curr_repair.values.len / 2;
+            var brightest_diff_max: T = 0;
+            var darkest_diff_max: T = 0;
+
+            // TODO: Test without inline
+            inline for (prev_repair.values, curr_repair.values, next_repair.values) |p, c, n| {
+                const brightest_sat_diff, const darkest_sat_diff = getExtremesDiffs(p, c, n);
+                brightest_diff_max = @max(brightest_sat_diff, brightest_diff_max);
+                darkest_diff_max = @max(darkest_sat_diff, darkest_diff_max);
+            }
+
+            const diff_max = @max(brightest_diff_max, darkest_diff_max);
+
+            const curr_diff_upper = addSat(curr_repair.values[center_idx], diff_max, format_max);
+            const curr_diff_lower = subSat(curr_repair.values[center_idx], diff_max, format_min);
+
+            return std.math.clamp(src, curr_diff_lower, curr_diff_upper);
+        }
 
         fn spatialTemporalRepair(mode: comptime_int, format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
             return switch (mode) {
                 1 => spatialTemporalRepairMode1(format_min, format_max, src, prev_repair, curr_repair, next_repair),
-                // 2 => spatialTemporalRepairMode2(chroma, src, prev_repair, curr_repair, next_repair),
+                2 => spatialTemporalRepairMode2(format_min, format_max, src, prev_repair, curr_repair, next_repair),
                 // 3 => spatialTemporalRepairMode3(chroma, src, prev_repair, curr_repair, next_repair),
                 else => unreachable,
             };

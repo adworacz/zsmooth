@@ -281,7 +281,7 @@ export fn medianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
-        vsapi.?.freeNode.?(d.node);
+        zapi.freeNode(d.node);
 
         switch (e) {
             vscmn.PlanesError.IndexOutOfRange => outz.setError("Median: Plane index out of range."),

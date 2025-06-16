@@ -179,7 +179,7 @@ fn VerticalCleaner(comptime T: type) type {
                     const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
                     const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
-                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+                    const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, plane);
                     const maximum = vscmn.getFormatMaximum(T, d.vi.format, chroma);
                     const minimum = vscmn.getFormatMinimum(T, d.vi.format, chroma);
 

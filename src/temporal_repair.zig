@@ -127,8 +127,9 @@ fn TemporalRepair(comptime T: type) type {
             var brightest_diff_max: T = 0;
             var darkest_diff_max: T = 0;
 
-            // TODO: Test without inline
-            inline for (prev_repair.values, curr_repair.values, next_repair.values) |p, c, n| {
+            // `inline for` of this loop seemed to offer little to no noticeable difference in speed.
+            // Could be worth retesting on different architectures.
+            for (prev_repair.values, curr_repair.values, next_repair.values) |p, c, n| {
                 const brightest_sat_diff, const darkest_sat_diff = getExtremesDiffs(p, c, n);
                 brightest_diff_max = @max(brightest_sat_diff, brightest_diff_max);
                 darkest_diff_max = @max(darkest_sat_diff, darkest_diff_max);

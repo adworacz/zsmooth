@@ -281,14 +281,19 @@ core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]
 ### TemporalRepair
 Applies static detail from the repair clip to the input clip.
 
+Ranking of modes based on restoration amount (how much of repair clip is restored onto input clip), from most to least: 
+
+```
+4, 0, 1, 2
+```
+
+Put another way, the sensitivity to motion or noise in the repair clip increases from left to right in those modes. This
+means that more areas are considered 'static' and thus repaired. So much more of the repair clip shows up for mode 4
+than mode 2.
+
 Mode 0 - purely temporal, retains more of the input clip except in absolutely static areas.
 Mode 4 - purely temporal, more conservative in its evaluation of motion than Mode 0, so retains more of the repair clip
 except in high motion areas.
-
-Mode 0 = high motion (and noise) sensitivity (little motion (or noise) before filtered clip is applied)
-Mode 1 = lower motion (and noise) sensitivity than Mode 0 and 2, higher than mode 4.
-Mode 2 = high motion (and noise) sensitivity, spatial-temporal.
-Mode 4 = low motion (and noise) sensitivity (lots of motion (or noise) before filtered clip is applied)
 
 ### Temporal Soften
 

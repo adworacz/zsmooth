@@ -3,6 +3,8 @@
 ## 0.12
 * Migrate Median and InterQuartileMean to ZAPI and compartmentalized filter modules to reduce binary
 size, improve compatibility, and surprisingly slightly improve performance.
+* Fix bug in Median and InterQuartileMean where radii values passed as an array were not respected properly (only the
+first value was used.)
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

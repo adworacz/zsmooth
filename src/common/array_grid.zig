@@ -49,9 +49,9 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
         /// Note that for maximum performance, this function should *ONLY* be used on edge pixels.
         /// Using it on pixels that actually have pertinent data leads to crap performance and is completely unnecessary.
         ///
-        /// TODO BUG: This doesn't actually work with vectors. Specifically a vector is composed of a mix of 
+        /// TODO BUG: This doesn't actually work with vectors. Specifically a vector is composed of a mix of
         /// pixel positions, some out of range of the edge (and thus in need of mirroring) and some in range of mirroring.
-        /// In order to properly handle this mix, a vector would need to be loaded with a "gather", so addresses for each 
+        /// In order to properly handle this mix, a vector would need to be loaded with a "gather", so addresses for each
         /// member of the vector would need to be calculated and then "gathered" accordingly.
         pub fn initFromCenterMirrored(comptime R: type, _row: usize, _column: usize, _width: usize, _height: usize, slice: []const R, stride: usize) Self {
             comptime std.debug.assert(!types.isVector(T)); // This function doesn't support Vectors yet.
@@ -77,7 +77,7 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
 
                     v[y * side + x] = if (types.isScalar(T))
                         slice[clamped_y * stride + clamped_x]
-                    else 
+                    else
                         vec.load(T, slice, clamped_y * stride + clamped_x);
                 }
             }
@@ -97,6 +97,22 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
         /// Note that this has the side effect of *mutating* the `values` member.
         pub fn medianWithCenter(self: *Self) T {
             return sort.median(T, self.values.len, &self.values);
+        }
+
+        /// Creates an array containing all values of the grid
+        /// except the center.
+        pub fn valuesWithoutCenter(self: *Self) [side * side - 1]T {
+            var values_without_center: [self.values.len - 1]T = undefined;
+            var values_idx: usize = 0;
+            for (self.values, 0..) |v, i| {
+                // Skip the center value.
+                if (i == self.values.len / 2) {
+                    continue;
+                }
+                values_without_center[values_idx] = v;
+                values_idx += 1;
+            }
+            return values_without_center;
         }
     };
 }

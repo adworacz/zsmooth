@@ -152,3 +152,26 @@ test compareSwap {
     try std.testing.expectEqual(@Vector(1, u8){1}, d);
     try std.testing.expectEqual(@Vector(1, u8){5}, e);
 }
+
+pub fn averageArray(comptime T: type, comptime N: comptime_int, array: *const [N]T) T {
+    const UAT = types.UnsignedArithmeticType(T);
+
+    var sum: UAT = if (types.isScalar(T)) 0 else @splat(0);
+    for (array) |v| {
+        sum += v;
+    }
+
+    const array_len: UAT = if (types.isScalar(T)) array.len else @splat(array.len);
+    const half_array_len: UAT = if (types.isScalar(T)) array.len / 2 else array_len / @as(UAT, @splat(2));
+
+    return lossyCast(T, if (types.isInt(T))
+        (sum + half_array_len) / array_len
+    else
+        sum / array_len);
+}
+
+test averageArray {
+    const arr = [_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 };
+
+    try std.testing.expectEqual(5, averageArray(u8, arr.len, &arr)); //4.5, but integer, so its rounded up.
+}

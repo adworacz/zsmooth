@@ -117,13 +117,20 @@ pub fn SignedArithmeticType(comptime T: type) type {
 ///
 /// Note that sometimes this type is not big enough, and thus wider types may be required.
 pub fn UnsignedArithmeticType(comptime T: type) type {
-    return switch (T) {
-        u8 => u16,
-        u16 => u32,
-        f16 => f16,
-        f32 => f32,
-        else => unreachable,
-    };
+    if (isScalar(T)) {
+        return switch (T) {
+            u8 => u16,
+            u16 => u32,
+            f16 => f16,
+            f32 => f32,
+            else => unreachable,
+        };
+    } else {
+        // Vector
+        const vector_len = @typeInfo(T).vector.len;
+        const VC = @typeInfo(T).vector.child;
+        return @Vector(vector_len, UnsignedArithmeticType(VC));
+    }
 }
 
 /// Similar to UnsignedArithmeticType, only bigger. Meant to handle

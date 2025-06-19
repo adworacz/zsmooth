@@ -265,6 +265,23 @@ const BENCHMARKS: Benchmarks[] = [
     ],
   },
   {
+    filter: 'SmartMedian',
+    benchmarkPath: 'test_smart_median.vpy',
+    // CTMF is *slow* in u16 radius 1 and 3
+    // biome-ignore format:
+    specs: [
+      { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES               , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8           , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2           , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 2       , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 2       , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 4       , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 4       , } ,
+    ],
+  },
+  {
     filter: 'TemporalMedian',
     benchmarkPath: 'test_temporal_median.vpy',
     // Notes:

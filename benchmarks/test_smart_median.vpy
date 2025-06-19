@@ -39,8 +39,8 @@ from vstools import depth
 
 clip.set_output(0)
 
-threshold = 255
-zsmooth = clip.zsmooth.SmartMedian(radius, threshold)
+threshold = 50
+zsmooth = clip.zsmooth.SmartMedian(radius, threshold, scalep=True)
 
 match output:
     case 'zsmooth':

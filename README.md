@@ -29,6 +29,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
   * [Median](#median)
   * [RemoveGrain](#removegrain)
   * [Repair](#repair)
+  * [Smart Median](#smart-median)
   * [Temporal Median](#temporal-median)
   * [Temporal Soften](#temporal-soften)
   * [TTempSmooth](#ttempsmooth)
@@ -178,7 +179,7 @@ core.zsmooth.Median(clip clip[, int[] radius = [1,1,1], int[] planes = [0,1,2]])
 The `Median` and `RemoveGrain` filters can be combined to create the [MinBlur](http://avisynth.nl/index.php/MinBlur)
 function like so:
 
-```
+```python
 # http://avisynth.nl/index.php/MinBlur
 # http://avisynth.nl/images/MinBlur.avsi
 # https://github.com/Dogway/Avisynth-Scripts/blob/master/SMDegrain/SMDegrain.avsi#L740
@@ -262,6 +263,36 @@ Parameters:
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | repairclip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Reference clip, often is (but not required to be) the original unprocesed clip |
 | mode | int | 1-24 | For a description of each mode, see the docs from the original Vapoursynth documentation here: https://github.com/vapoursynth/vs-removegrain/blob/master/docs/rgvs.rst |
+
+### Smart Median
+A smart median, thresholded based on a modified form of variance. 
+
+What this means is that `SmartMedian` preserves edges and details much better than a normal median.
+
+Lower values for the threshold mean that only flat surfaces are smoothed with a median, while higher
+values mean that flat surfaces *and* some finer details/edges are smoothed with a median.
+
+The threshold value applies on a curve, so the largest changes happen with lower thresholding values,
+with changes ramping slower in higher thresholds.
+
+Setting the threshold to bit depth max (or 255 in 8-bit scale / with `scalep=True`) returns a result that's 
+*close* (but still less smoothed) to what's returned by `Median` for the same radius.
+
+Edge pixels are processed using mirror padding.
+
+Credit to Dogway for the [original idea](https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L4268-L4270)
+
+```py
+core.zsmooth.SmartMedian(clip clip[, int[] radius = [1,1,1], int[] threshold = [50,50,50], bool scalep = False, int[] planes = [0,1,2]])
+```
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
+| radius | int[] | 0-3 ([1, 1, 1]) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid. Radius 0 disables filtering for the given plane.|
+| threshold | int[] | 0-bit depth max, or 0-255 with `scalep=True`([50, 50, 50] for radius 1, [128, 128, 128] for radius 2+) | The variance threshold. Pixels with a variance under the threshold are smoothed, and over the threshold are returned as is.|
+| scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
 ### Temporal Median
 TemporalMedian is a temporal denoising filter. It replaces every pixel with the median of its temporal neighbourhood.

@@ -5,6 +5,7 @@
 size, improve compatibility, and surprisingly slightly improve performance.
 * Fix bug in Median and InterQuartileMean where radii values passed as an array were not respected properly (only the
 first value was used.)
+* Add SmartMedian - a median thresholded based on variance. Honestly, I really like the results of this one.
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

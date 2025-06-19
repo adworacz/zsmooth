@@ -123,12 +123,12 @@ fn SmartMedian(comptime T: type) type {
             // Dogway did it intentionally: https://forum.doom9.org/showthread.php?s=a1d14808b0218ddbf119fe50215f666a&p=2017961#post2017961
             // https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L4268-L4270
             // The multiplication by 13 boosts the square root into a nice curve for a better (smoother) thresholding experience.
-            const F32V = @Vector(vector_len, f32);
-            const thirteen: F32V = @splat(13);
+            const FV = @Vector(vector_len, if (types.isInt(T)) f32 else T);
+            const thirteen: FV = @splat(13);
 
             const curved_variance_ish: UATV = blk: {
                 break :blk if (types.isInt(VT))
-                    lossyCast(UATV, @round(@sqrt(@as(F32V, @floatFromInt(squared_diff_sum))) * thirteen))
+                    lossyCast(UATV, @round(@sqrt(@as(FV, @floatFromInt(squared_diff_sum))) * thirteen))
                 else
                     @sqrt(squared_diff_sum) * thirteen;
             };
@@ -296,9 +296,8 @@ fn smartMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaq
         const processPlane: @TypeOf(&SmartMedian(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &SmartMedian(u8).processPlane,
             .U16 => &SmartMedian(u16).processPlane,
-            // .F16 => &SmartMedian(f16).processPlane, // TODO: Re-enable
+            .F16 => &SmartMedian(f16).processPlane,
             .F32 => &SmartMedian(f32).processPlane,
-            else => unreachable,
         };
 
         for (0..@intCast(d.vi.format.numPlanes)) |plane| {

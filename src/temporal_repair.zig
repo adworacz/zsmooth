@@ -51,6 +51,8 @@ fn TemporalRepair(comptime T: type) type {
 
         /// Clips the source pixel to the min and max of the prev, curr, and next frames from the repair clip.
         fn temporalRepairMode0(src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
+            @setFloatMode(float_mode);
+
             const min = @min(prev_repair, curr_repair, next_repair);
             const max = @max(prev_repair, curr_repair, next_repair);
 
@@ -59,11 +61,7 @@ fn TemporalRepair(comptime T: type) type {
 
         /// Preserves more static detail than mode 0. Less sensitive to noise and small fluctations.
         fn temporalRepairMode4(format_min: T, format_max: T, src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
-            // // Clamp float input so that we can perform proper addition/subtraction on it.
-            // // Fixes an issue where illegal float input was producing negative values out of the addSat operation below.
-            // const prev_repair = if (types.isInt(T)) _prev_repair else std.math.clamp(_prev_repair, format_min, format_max);
-            // const curr_repair = if (types.isInt(T)) _curr_repair else std.math.clamp(_curr_repair, format_min, format_max);
-            // const next_repair = if (types.isInt(T)) _next_repair else std.math.clamp(_next_repair, format_min, format_max);
+            @setFloatMode(float_mode);
 
             const brightest_neighbor = @max(prev_repair, next_repair);
             const darkest_neighbor = @min(prev_repair, next_repair);
@@ -107,6 +105,8 @@ fn TemporalRepair(comptime T: type) type {
         }
 
         fn spatialTemporalRepairMode1(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
+            @setFloatMode(float_mode);
+
             const center_idx = curr_repair.values.len / 2;
             var brightest_diff_max: T = 0;
             var darkest_diff_max: T = 0;
@@ -133,6 +133,8 @@ fn TemporalRepair(comptime T: type) type {
         }
 
         fn spatialTemporalRepairMode2(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
+            @setFloatMode(float_mode);
+
             const center_idx = curr_repair.values.len / 2;
             var brightest_diff_max: T = 0;
             var darkest_diff_max: T = 0;
@@ -170,6 +172,8 @@ fn TemporalRepair(comptime T: type) type {
         }
 
         fn spatialTemporalRepairMode3(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
+            @setFloatMode(float_mode);
+
             const center_idx = curr_repair.values.len / 2;
             var prev_diff_max: T = 0;
             var next_diff_max: T = 0;

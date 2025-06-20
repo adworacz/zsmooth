@@ -39,15 +39,16 @@ clip.set_output(0)
 
 # Make a nice and blury clip to feed to repair functions, since the blur should
 # provide a lot of change and thus make repair operations more evident.
-smoothed = clip.zsmooth.RemoveGrain(12)
-# smoothed = clip
-smoothed.set_output(7)
+# smoothed = clip.zsmooth.RemoveGrain(12)
+smoothed = clip
+smoothed.set_output(8)
 
 zsmooth = smoothed.zsmooth.TemporalRepair(clip, mode)
 smoothed.zsmooth.TemporalRepair(clip, 0).set_output(3)
 smoothed.zsmooth.TemporalRepair(clip, 1).set_output(4)
 smoothed.zsmooth.TemporalRepair(clip, 2).set_output(5)
-smoothed.zsmooth.TemporalRepair(clip, 4).set_output(6)
+smoothed.zsmooth.TemporalRepair(clip, 3).set_output(6)
+smoothed.zsmooth.TemporalRepair(clip, 4).set_output(7)
 
 match output:
     case 'zsmooth':

@@ -309,22 +309,46 @@ core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]
 | radius | int | 1 - 10 (1) | Size of the temporal window from which to calculate the median. First and last _radius_ frames of a clip are not filtered. |
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
-### TemporalRepair
-Applies static detail from the repair clip to the input clip.
+### Temporal Repair
+**EXPERIMENTAL - MAY HAVE BUGS**
 
-Ranking of modes based on restoration amount (how much of repair clip is restored onto input clip), from most to least: 
+Applies **static** detail from the repair clip to the input clip.
+
+Ranking of modes based on restoration amount (how much of repair clip is restored onto input clip), from least to most: 
 
 ```
-4, 0, 1, 2
+<-- less restoration                        more restoration -->
+                         2, 1, 0, 3, 4
+<-- more motion/noise sensitive, less motion/noise sensitive -->
 ```
 
-Put another way, the sensitivity to motion or noise in the repair clip increases from left to right in those modes. This
+Put another way, the sensitivity to motion or noise in the repair clip decreases from left to right in those modes. This
 means that more areas are considered 'static' and thus repaired. So much more of the repair clip shows up for mode 4
 than mode 2.
 
-Mode 0 - purely temporal, retains more of the input clip except in absolutely static areas.
-Mode 4 - purely temporal, more conservative in its evaluation of motion than Mode 0, so retains more of the repair clip
-except in high motion areas.
+Some modes are temporal only (0, 4) while other modes use a combination of spatial and temporal information (1, 2, 3). 
+"Spatial" means that they additionally utilize the surrounding 8 pixels (in the current, previous, and next frames) in
+all calculations.
+
+* Mode 0 - Temporal. Restores less than Mode 3 and 4. This is the default mode.
+* Mode 1 - Spatial and temporal. Restores less than Mode 0.
+* Mode 2 - Spatial and temporal. Restore the least amount of static detail of all modes. Often used for restoring static
+detail after a deinterlacer.
+* Mode 3 - Spatial and temporal. Restores more detail than any other modes except for mode 4. Also used
+post-deinterlacing, use it if you want to preserve more detail than mode 2.
+* Mode 4 - Temporal. more conservative in its evaluation of motion than Mode 0, so retains more of the repair clip
+except in high motion areas. Could be useful to smooth only high motion areas to improve compression.
+
+```py
+core.zsmooth.TemporalRepair(clip clip, clip repairclip, [, int[] mode = 0, int[] planes = [0, 1, 2]])
+```
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip       | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY |             | Clip to process                                                                                                                                             |
+| repairclip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY |             | Reference clip, often is (but not required to be) the original unprocesed clip. Static detail from this clip will be repaired/restored onto the input clip. |
+| mode       | int[]                                             | 0-4 (0)     | Mode/method for restoration. See above documentation to understand how each mode relates to each other.                                                     |
+| planes     | int[]                                             | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip.                                                                              |
 
 ### Temporal Soften
 

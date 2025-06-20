@@ -59,6 +59,12 @@ fn TemporalRepair(comptime T: type) type {
 
         /// Preserves more static detail than mode 0. Less sensitive to noise and small fluctations.
         fn temporalRepairMode4(format_min: T, format_max: T, src: T, prev_repair: T, curr_repair: T, next_repair: T) T {
+            // // Clamp float input so that we can perform proper addition/subtraction on it.
+            // // Fixes an issue where illegal float input was producing negative values out of the addSat operation below.
+            // const prev_repair = if (types.isInt(T)) _prev_repair else std.math.clamp(_prev_repair, format_min, format_max);
+            // const curr_repair = if (types.isInt(T)) _curr_repair else std.math.clamp(_curr_repair, format_min, format_max);
+            // const next_repair = if (types.isInt(T)) _next_repair else std.math.clamp(_next_repair, format_min, format_max);
+
             const brightest_neighbor = @max(prev_repair, next_repair);
             const darkest_neighbor = @min(prev_repair, next_repair);
 
@@ -68,8 +74,12 @@ fn TemporalRepair(comptime T: type) type {
             const diff_curr_brightest = subSat(brightest_neighbor, curr_repair, 0); // brightest_neighbor -| curr_repair
             const brightest_minus_weighted_diff = subSat(brightest_neighbor, addSat(diff_curr_brightest, diff_curr_brightest, format_max), format_min); // brightest_neighbor -| (diff_curr_brightest *| 2)
 
-            const upper = @min(darkest_plus_weighted_diff, brightest_neighbor); // clip dark weighted diff so it doesn't overshoot brightest neighbor
+            var upper = @min(darkest_plus_weighted_diff, brightest_neighbor); // clip dark weighted diff so it doesn't overshoot brightest neighbor
             const lower = @max(brightest_minus_weighted_diff, darkest_neighbor); // clip bright weigted diff so it doesn't undershoot darkest neighbor
+
+            // Clamp the upper so that it can't be less than the lower, which
+            // can happen for float content with illegal values after the addSat's above.
+            upper = if (types.isFloat(T)) @max(upper, lower) else upper;
 
             return if (darkest_neighbor == upper or brightest_neighbor == lower) curr_repair else std.math.clamp(src, lower, upper);
         }
@@ -121,7 +131,7 @@ fn TemporalRepair(comptime T: type) type {
 
             return std.math.clamp(src, min, max);
         }
-        
+
         fn spatialTemporalRepairMode2(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
             const center_idx = curr_repair.values.len / 2;
             var brightest_diff_max: T = 0;
@@ -137,8 +147,47 @@ fn TemporalRepair(comptime T: type) type {
 
             const diff_max = @max(brightest_diff_max, darkest_diff_max);
 
-            const curr_diff_upper = addSat(curr_repair.values[center_idx], diff_max, format_max);
+            var curr_diff_upper = addSat(curr_repair.values[center_idx], diff_max, format_max);
             const curr_diff_lower = subSat(curr_repair.values[center_idx], diff_max, format_min);
+
+            // Clamp the upper so that it can't be less than the lower, which
+            // can happen for float content with illegal values after the addSat's above.
+            curr_diff_upper = if (types.isFloat(T)) @max(curr_diff_upper, curr_diff_lower) else curr_diff_upper;
+
+            return std.math.clamp(src, curr_diff_lower, curr_diff_upper);
+        }
+
+        /// Finds the absolute difference between the current frame and the previous + next frames.
+        /// Returns the previous frame difference first, and the next frame difference second.
+        fn getNeighborDiff(prev: T, curr: T, next: T) struct { T, T } {
+            const pdiff = math.absDiff(curr, prev);
+            const ndiff = math.absDiff(curr, next);
+
+            return .{
+                pdiff,
+                ndiff,
+            };
+        }
+
+        fn spatialTemporalRepairMode3(format_min: T, format_max: T, src: T, prev_repair: Grid, curr_repair: Grid, next_repair: Grid) T {
+            const center_idx = curr_repair.values.len / 2;
+            var prev_diff_max: T = 0;
+            var next_diff_max: T = 0;
+
+            for (prev_repair.values, curr_repair.values, next_repair.values) |p, c, n| {
+                const prev_diff, const next_diff = getNeighborDiff(p, c, n);
+                prev_diff_max = @max(prev_diff, prev_diff_max);
+                next_diff_max = @max(next_diff, next_diff_max);
+            }
+
+            const diff_min = @min(prev_diff_max, next_diff_max);
+
+            var curr_diff_upper = addSat(curr_repair.values[center_idx], diff_min, format_max);
+            const curr_diff_lower = subSat(curr_repair.values[center_idx], diff_min, format_min);
+
+            // Clamp the upper so that it can't be less than the lower, which
+            // can happen for float content with illegal values after the addSat's above.
+            curr_diff_upper = if (types.isFloat(T)) @max(curr_diff_upper, curr_diff_lower) else curr_diff_upper;
 
             return std.math.clamp(src, curr_diff_lower, curr_diff_upper);
         }
@@ -147,7 +196,7 @@ fn TemporalRepair(comptime T: type) type {
             return switch (mode) {
                 1 => spatialTemporalRepairMode1(format_min, format_max, src, prev_repair, curr_repair, next_repair),
                 2 => spatialTemporalRepairMode2(format_min, format_max, src, prev_repair, curr_repair, next_repair),
-                // 3 => spatialTemporalRepairMode3(chroma, src, prev_repair, curr_repair, next_repair),
+                3 => spatialTemporalRepairMode3(format_min, format_max, src, prev_repair, curr_repair, next_repair),
                 else => unreachable,
             };
         }

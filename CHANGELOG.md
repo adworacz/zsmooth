@@ -6,6 +6,9 @@ size, improve compatibility, and surprisingly slightly improve performance.
 * Fix bug in Median and InterQuartileMean where radii values passed as an array were not respected properly (only the
 first value was used.)
 * Add SmartMedian - a median thresholded based on variance. Honestly, I really like the results of this one.
+* Add TemporalRepair, from RGTools. Consider this experimental, as I have nothing to compare against in the Vapoursynth
+world, so the output may be slightly different (buggy) than the Avisynth version. Please file an issue for any
+differences found.
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

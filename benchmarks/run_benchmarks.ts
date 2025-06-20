@@ -313,6 +313,28 @@ const BENCHMARKS: Benchmarks[] = [
     ],
   },
   {
+    filter: 'TemporalRepair',
+    benchmarkPath: 'test_temporal_repair.vpy',
+    // biome-ignore format:
+    specs: [
+      { plugin: 'zsmooth' , format:'u8'  , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES     , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 4 , } ,
+    ],
+  },
+  {
     filter: 'TemporalSoften',
     benchmarkPath: 'test_temporal_soften.vpy',
     // Notes:

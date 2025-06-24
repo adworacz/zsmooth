@@ -112,6 +112,19 @@ pub fn SignedArithmeticType(comptime T: type) type {
     };
 }
 
+/// Similar to SignedArithmeticType, only bigger. Meant to handle
+/// operations where the original signed value may be multiplied muliple times
+/// over (and thus overflow on smaller types).
+pub fn BigSignedArithmeticType(comptime T: type) type {
+    return switch (T) {
+        u8 => i32,
+        u16 => i64,
+        f16 => f16,
+        f32 => f32,
+        else => unreachable,
+    };
+}
+
 /// Determines the minimal type to store unsigned values (particularly integers)
 /// without overflowing when doing most arithmetic.
 ///

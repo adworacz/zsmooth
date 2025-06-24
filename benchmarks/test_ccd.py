@@ -1,0 +1,66 @@
+import vapoursynth as vs
+
+core = vs.core
+core.max_cache_size = 1024
+core.num_threads = 1
+
+# format = 'u8'
+# mode = 1
+threshold = 20 # threshold needs adjusting based on bit depth.
+length = 30000
+
+from vspreview.api import is_preview
+if is_preview():
+    output = 'all'
+    function = 'Clense'
+
+match format:
+    case 'u8':
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
+    case 'u16':
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48, color=[255, 255, 255], length=length)
+    case 'f16':
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH, color=[1.0, 1.0, 1.0], length=length)
+    case 'f32':
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, color=[1.0, 1.0, 1.0], length=length)
+    case _:
+        # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
+        from vstools import initialize_clip
+        clip = initialize_clip(clip)
+        clip = clip.resize.Point(format=vs.RGB24)
+
+from vstools import depth
+# clip = depth(clip, 10)
+# clip = depth(clip, 16)
+# clip = depth(clip, 16, sample_type=vs.FLOAT)
+clip = depth(clip, 32)
+
+# Use 720 x 480 to check stride issues.
+# clip = clip.resize.Lanczos(720, 480, format=vs.YUV444P16)
+# clip = clip.resize.Lanczos(720, 480)
+
+clip.set_output(0)
+
+# Requires akarin...
+# from vsdenoise import ccd
+# jetpack = ccd(clip, threshold)
+ccd = clip.ccd.CCD(threshold)
+zsmooth = clip.zsmooth.CCD(threshold)
+
+match output:
+    case 'zsmooth':
+        zsmooth.set_output()
+    case 'ccd':
+        ccd.set_output()
+    # case 'jetpack':
+    #     jetpack.set_output()
+    case 'all':
+        clip.set_output(0)
+        ccd.set_output(1)
+        # jetpack.set_output(2)
+        zsmooth.set_output(3)
+    case _:
+        raise f"Unrecognized output type: {output}"
+

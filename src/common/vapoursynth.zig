@@ -13,7 +13,7 @@ const vsh = vapoursynth.vshelper;
 // Video format utilities (value scaling, peak finding, etc)
 /////////////////////////////////////////////////
 
-/// Convenience enum for reflecting the underlying byte layout of the 
+/// Convenience enum for reflecting the underlying byte layout of the
 /// video data provided by Vapoursynth.
 pub const FormatType = enum {
     U8,
@@ -24,15 +24,14 @@ pub const FormatType = enum {
     const Self = @This();
 
     pub fn getDataType(format: vs.VideoFormat) Self {
-        return switch(format.bytesPerSample) {
+        return switch (format.bytesPerSample) {
             1 => .U8,
             2 => if (format.sampleType == vs.SampleType.Integer) .U16 else .F16,
             4 => .F32,
             else => unreachable,
         };
-    } 
+    }
 };
-
 
 /// Scales an 8 bit value match the pertinent bit depth, sample
 /// type, and plane (is/is not chroma).
@@ -110,7 +109,7 @@ pub fn getFormatMaximum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
     return lossyCast(T, (@as(u32, 1) << @intCast(vf.bitsPerSample)) - 1);
 }
 
-// TODO: These are not perfect replacements for getFormatMaximum, since sometimes 
+// TODO: These are not perfect replacements for getFormatMaximum, since sometimes
 // its useful to retrieve the value in a different type. See calculateSoftThresholdParams for an example.
 pub fn getFormatMaximum2(comptime T: type, bits_per_sample: u6, chroma: bool) T {
     if (types.isFloat(T)) {
@@ -118,6 +117,23 @@ pub fn getFormatMaximum2(comptime T: type, bits_per_sample: u6, chroma: bool) T 
     }
 
     return lossyCast(T, (@as(u32, 1) << @intCast(bits_per_sample)) - 1);
+}
+
+test getFormatMaximum2 {
+    try std.testing.expectEqual(255, getFormatMaximum2(u8, 8, false));
+    try std.testing.expectEqual(255, getFormatMaximum2(u8, 8, true));
+
+    try std.testing.expectEqual(1023, getFormatMaximum2(u16, 10, false));
+    try std.testing.expectEqual(1023, getFormatMaximum2(u16, 10, true));
+
+    try std.testing.expectEqual(65535, getFormatMaximum2(u16, 16, false));
+    try std.testing.expectEqual(65535, getFormatMaximum2(u16, 16, true));
+
+    try std.testing.expectEqual(1.0, getFormatMaximum2(f16, 16, false));
+    try std.testing.expectEqual(0.5, getFormatMaximum2(f16, 16, true));
+
+    try std.testing.expectEqual(1.0, getFormatMaximum2(f32, 32, false));
+    try std.testing.expectEqual(0.5, getFormatMaximum2(f32, 32, true));
 }
 
 pub fn getFormatMinimum(comptime T: type, vf: vs.VideoFormat, chroma: bool) T {
@@ -134,6 +150,20 @@ pub fn getFormatMinimum2(comptime T: type, chroma: bool) T {
     }
 
     return 0;
+}
+
+test getFormatMinimum2 {
+    try std.testing.expectEqual(0, getFormatMinimum2(u8, false));
+    try std.testing.expectEqual(0, getFormatMinimum2(u8, true));
+
+    try std.testing.expectEqual(0, getFormatMinimum2(u16, false));
+    try std.testing.expectEqual(0, getFormatMinimum2(u16, true));
+
+    try std.testing.expectEqual(0, getFormatMinimum2(f16, false));
+    try std.testing.expectEqual(-0.5, getFormatMinimum2(f16, true));
+
+    try std.testing.expectEqual(0, getFormatMinimum2(f32, false));
+    try std.testing.expectEqual(-0.5, getFormatMinimum2(f32, true));
 }
 
 test "Format maximum and minimum" {
@@ -311,21 +341,21 @@ pub fn normalizePlanes(format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*cons
     return process;
 }
 
-pub const ThresholdError = error {
+pub const ThresholdError = error{
     ScaledValueOutsideOfRange,
     ValueOutsideOfFormatRange,
 };
 
-pub fn normalizeThreshold(key: [:0]const u8, scalep: bool, defaults:[3]f32, format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*const vs.API) ThresholdError![3]f32 {
+pub fn normalizeThreshold(key: [:0]const u8, scalep: bool, defaults: [3]f32, format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*const vs.API) ThresholdError![3]f32 {
     var values = defaults;
 
-    for(0..3) |i| {
+    for (0..3) |i| {
         if (vsh.mapGetN(f32, in, key, @intCast(i), vsapi)) |_val| {
             if (scalep and (_val < 0 or _val > 255)) {
                 return ThresholdError.ScaledValueOutsideOfRange;
             }
 
-            // Setting the plane index param of scaleToFormat to 0 for all planes is 
+            // Setting the plane index param of scaleToFormat to 0 for all planes is
             // fine because we expect the threshold to be a relative/difference threshold,
             // not an absolute pixel value threshold.
             //

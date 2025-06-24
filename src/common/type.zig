@@ -138,8 +138,8 @@ pub fn UnsignedArithmeticType(comptime T: type) type {
 /// over (and thus overflow on smaller types).
 pub fn BigUnsignedArithmeticType(comptime T: type) type {
     return switch (T) {
-        u8 => u16,
-        u16 => u32,
+        u8 => u32,
+        u16 => u64,
         f16 => f16,
         f32 => f32,
         else => unreachable,

@@ -175,3 +175,28 @@ test averageArray {
 
     try std.testing.expectEqual(5, averageArray(u8, arr.len, &arr)); //4.5, but integer, so its rounded up.
 }
+
+/// Calculates a mirrored index
+pub fn mirrorIndex(index: isize, _dimension: usize) usize {
+    //TODO: Explore different implementations, as some might be faster than others.
+    //TODO: Check this in compiler explorer...
+
+    const dimension: isize = @intCast(_dimension);
+    const result: isize = if (index < 0)
+        -index
+    else if (index >= dimension)
+        2 * (dimension - 1) - index
+    else
+        index;
+
+    return @intCast(result);
+}
+
+test mirrorIndex {
+    const width = 10;
+    try std.testing.expectEqual(1, mirrorIndex(1, width));
+    try std.testing.expectEqual(1, mirrorIndex(-1, width));
+
+    try std.testing.expectEqual(9, mirrorIndex(9, width));
+    try std.testing.expectEqual(8, mirrorIndex(10, width));
+}

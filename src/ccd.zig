@@ -112,6 +112,68 @@ fn CCD(comptime T: type) type {
             };
         }
 
+        // Faster than ccdScalar, since we only load minimal amounts of data.
+        fn ccdScalar2(comptime mirror: bool, threshold: BUAT, format_min: T, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [3][]const T) struct { T, T, T } {
+            @setFloatMode(float_mode);
+
+            const F = if (types.isInt(T)) f32 else T;
+
+            const center_r = src[0][row * stride + column];
+            const center_g = src[1][row * stride + column];
+            const center_b = src[2][row * stride + column];
+
+            var total_r: UAT = center_r;
+            var total_g: UAT = center_g;
+            var total_b: UAT = center_b;
+
+            var count: u8 = 0;
+
+            // TODO: support different point selections (high/medium/low) like vs-jetpack.
+            var y: isize = @as(isize, @intCast(row)) - radius;
+            while (y <= row + radius) : (y += 8) {
+                var x: isize = @as(isize, @intCast(column)) - radius;
+                while (x <= column + radius) : (x += 8) {
+                    const absolute_y: usize = if (mirror) math.mirrorIndex(y, height) else @intCast(y);
+                    const absolute_x: usize = if (mirror) math.mirrorIndex(x, width) else @intCast(x);
+
+                    const neighbor_r = src[0][absolute_y * stride + absolute_x];
+                    const neighbor_g = src[1][absolute_y * stride + absolute_x];
+                    const neighbor_b = src[2][absolute_y * stride + absolute_x];
+
+                    const diff_r: BSAT = lossyCast(BSAT, neighbor_r) - center_r;
+                    const diff_g: BSAT = lossyCast(BSAT, neighbor_g) - center_g;
+                    const diff_b: BSAT = lossyCast(BSAT, neighbor_b) - center_b;
+
+                    // sum of squared differences
+                    const ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
+
+                    if (ssd < threshold) {
+                        total_r += neighbor_r;
+                        total_g += neighbor_g;
+                        total_b += neighbor_b;
+                        count += 1;
+                    }
+                }
+            }
+
+            var calculated_r: F = lossyCast(F, total_r) * (1.0 / (lossyCast(F, count) + 1.0));
+            var calculated_g: F = lossyCast(F, total_g) * (1.0 / (lossyCast(F, count) + 1.0));
+            var calculated_b: F = lossyCast(F, total_b) * (1.0 / (lossyCast(F, count) + 1.0));
+
+            if (types.isInt(T)) {
+                // Round int formats before we cast back.
+                calculated_r = @round(calculated_r);
+                calculated_g = @round(calculated_g);
+                calculated_b = @round(calculated_b);
+            }
+
+            return .{
+                std.math.clamp(lossyCast(T, calculated_r), format_min, format_max),
+                std.math.clamp(lossyCast(T, calculated_g), format_min, format_max),
+                std.math.clamp(lossyCast(T, calculated_b), format_min, format_max),
+            };
+        }
+
         fn processPlaneScalar(threshold: BUAT, format_min: T, format_max: T, srcp: [3][]const T, dstp: [3][]T, width: usize, height: usize, stride: usize) void {
             // Process top rows with mirrored grid.
             for (0..radius) |row| {
@@ -183,6 +245,60 @@ fn CCD(comptime T: type) type {
                     dstp[0][(row * stride) + column] = result[0];
                     dstp[1][(row * stride) + column] = result[1];
                     dstp[2][(row * stride) + column] = result[2];
+                }
+            }
+        }
+
+        fn processPlanesScalar2(threshold: BUAT, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+            // Process top rows with mirrored grid.
+            for (0..radius) |row| {
+                for (0..width) |column| {
+                    const result = ccdScalar2(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+
+                    dst[0][(row * stride) + column] = result[0];
+                    dst[1][(row * stride) + column] = result[1];
+                    dst[2][(row * stride) + column] = result[2];
+                }
+            }
+
+            for (radius..height - radius) |row| {
+                // Process first pixels of the row with mirrored grid.
+                for (0..radius) |column| {
+                    const result = ccdScalar2(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+
+                    dst[0][(row * stride) + column] = result[0];
+                    dst[1][(row * stride) + column] = result[1];
+                    dst[2][(row * stride) + column] = result[2];
+                }
+
+                for (radius..width - radius) |column| {
+                    // Use a non-mirrored grid everywhere else for maximum performance.
+                    // We don't need the mirror effect anyways, as all pixels contain valid data.
+                    const result = ccdScalar2(false, threshold, format_min, format_max, row, column, width, height, stride, src);
+
+                    dst[0][(row * stride) + column] = result[0];
+                    dst[1][(row * stride) + column] = result[1];
+                    dst[2][(row * stride) + column] = result[2];
+                }
+
+                // Process last pixel of the row with mirrored grid.
+                for (width - radius..width) |column| {
+                    const result = ccdScalar2(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+
+                    dst[0][(row * stride) + column] = result[0];
+                    dst[1][(row * stride) + column] = result[1];
+                    dst[2][(row * stride) + column] = result[2];
+                }
+            }
+
+            // Process bottom rows with mirrored grid.
+            for (height - radius..height) |row| {
+                for (0..width) |column| {
+                    const result = ccdScalar2(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+
+                    dst[0][(row * stride) + column] = result[0];
+                    dst[1][(row * stride) + column] = result[1];
+                    dst[2][(row * stride) + column] = result[2];
                 }
             }
         }
@@ -276,7 +392,8 @@ fn CCD(comptime T: type) type {
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
             const format_min = vscmn.getFormatMinimum2(T, chroma);
 
-            processPlaneScalar(threshold, format_min, format_max, srcp, dstp, width, height, stride);
+            // processPlaneScalar(threshold, format_min, format_max, srcp, dstp, width, height, stride);
+            processPlanesScalar2(threshold, format_min, format_max, srcp, dstp, width, height, stride);
         }
     };
 }

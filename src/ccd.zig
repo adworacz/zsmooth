@@ -231,7 +231,7 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        fn processPlanesVector2(threshold: BUAT, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+        fn processPlanesVector(threshold: BUAT, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // We make some assumptions in this code in order to make processing with vectors simpler.
             std.debug.assert(width >= vector_len);
             std.debug.assert(radius < vector_len);
@@ -320,10 +320,7 @@ fn CCD(comptime T: type) type {
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
             const format_min = vscmn.getFormatMinimum2(T, chroma);
 
-            // processPlaneScalar(threshold, format_min, format_max, srcp, dstp, width, height, stride);
-            // processPlanesScalar2(threshold, format_min, format_max, srcp, dstp, width, height, stride);
-            //processPlanesVector(threshold, format_min, format_max, srcp, dstp, width, height, stride);
-            processPlanesVector2(threshold, format_min, format_max, srcp, dstp, width, height, stride);
+            processPlanesVector(threshold, format_min, format_max, srcp, dstp, width, height, stride);
         }
     };
 }
@@ -393,40 +390,11 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     d.node, d.vi = inz.getNodeVi("clip").?;
 
-    // const scalep = inz.getBool("scalep") orelse false;
+    const format_max = vscmn.getFormatMaximum(f32, d.vi.format, false);
 
     d.threshold = inz.getFloat(f32, "threshold") orelse 4;
-    d.threshold = (d.threshold * d.threshold) / (255 * 255 * 3);
-
-    // const numThreshold: c_int = @intCast(inz.numElements("threshold") orelse 0);
-    // if (numThreshold > d.vi.format.numPlanes) {
-    //     outz.setError("CCD: Element count of threshold must be less than or equal to the number of input planes.");
-    //     zapi.freeNode(d.node);
-    //     return;
-    // }
-    // if (numThreshold > 0) {
-    //     for (0..3) |i| {
-    //         if (inz.getFloat2(f32, "threshold", i)) |_threshold| {
-    //             const format_max = if (scalep) 255 else vscmn.getFormatMaximum(f32, d.vi.format, false);
-    //             if (_threshold < 0 or _threshold > format_max) {
-    //                 outz.setError(printf(allocator, "CCD: Invalid threshold, must be in the range of 0 - {d} with scalep = {} for this bit depth", .{ format_max, scalep }));
-    //                 zapi.freeNode(d.node);
-    //                 return;
-    //             }
-    //             d.threshold[i] = if (scalep) vscmn.scaleToFormat(f32, d.vi.format, _threshold, 0) else _threshold;
-    //         } else {
-    //             d.threshold[i] = d.threshold[i - 1];
-    //         }
-    //     }
-    // } else {
-    //     const fifty = vscmn.scaleToFormat(f32, d.vi.format, 50, 0);
-    //     const one_twenty_eight = vscmn.scaleToFormat(f32, d.vi.format, 128, 0);
-    //     d.threshold = .{
-    //         if (d.radius[0] == 1) fifty else one_twenty_eight,
-    //         if (d.radius[1] == 1) fifty else one_twenty_eight,
-    //         if (d.radius[2] == 1) fifty else one_twenty_eight,
-    //     };
-    // }
+    d.threshold = d.threshold * format_max; // Scale to input bit depth for consitency across inputs.
+    d.threshold = (d.threshold * d.threshold) / (255 * 255 * 3); // squared euclidian, scaled to sum of sqaured differences for float.
 
     const data: *CCDData = allocator.create(CCDData) catch unreachable;
     data.* = d;
@@ -442,5 +410,5 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;scalep:int:opt;", "clip:vnode;", ccdCreate, null, plugin);
+    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;", "clip:vnode;", ccdCreate, null, plugin);
 }

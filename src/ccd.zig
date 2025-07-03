@@ -35,6 +35,7 @@ const CCDData = struct {
     vi: *const vs.VideoInfo,
 
     threshold: f32,
+    scale: f32,
 };
 
 fn CCD(comptime T: type) type {
@@ -51,7 +52,7 @@ fn CCD(comptime T: type) type {
     const VBUAT = @Vector(vector_len, BUAT);
 
     return struct {
-        fn ccdScalar(comptime mirror: bool, threshold: BUAT, format_min: T, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [3][]const T) struct { T, T, T } {
+        fn ccdScalar(comptime mirror: bool, threshold: BUAT, scale: f32, format_min: T, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [3][]const T) struct { T, T, T } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) f32 else T;
@@ -66,11 +67,22 @@ fn CCD(comptime T: type) type {
 
             var count: u8 = 0;
 
+            // zig fmt: off
+            const scaled_radius: isize = @intFromFloat(@round(radius * scale));
+            const start_y: isize = @as(isize, @intCast(row)) - scaled_radius;
+            const end_y:   isize = @as(isize, @intCast(row)) + scaled_radius;
+
+            const start_x: isize = @as(isize, @intCast(column)) - scaled_radius;
+            const end_x:   isize = @as(isize, @intCast(column)) + scaled_radius;
+
+            const step:    isize = @intFromFloat(@round(8 * scale));
+            // zig fmt: on
+
             // TODO: support different point selections (high/medium/low) like vs-jetpack.
-            var y: isize = @as(isize, @intCast(row)) - radius;
-            while (y <= row + radius) : (y += 8) {
-                var x: isize = @as(isize, @intCast(column)) - radius;
-                while (x <= column + radius) : (x += 8) {
+            var y: isize = start_y;
+            while (y <= end_y) : (y += step) {
+                var x: isize = start_x;
+                while (x <= end_x) : (x += step) {
                     const absolute_y: usize = if (mirror) math.mirrorIndex(y, height) else @intCast(y);
                     const absolute_x: usize = if (mirror) math.mirrorIndex(x, width) else @intCast(x);
 
@@ -113,7 +125,7 @@ fn CCD(comptime T: type) type {
         }
 
         // Only handles non-mirrored content, since mirroring is much more difficult to implement for vectors.
-        fn ccdVector(_threshold: BUAT, _format_min: T, _format_max: T, row: usize, column: usize, stride: usize, src: [3][]const T) struct { VT, VT, VT } {
+        fn ccdVector(_threshold: BUAT, scale: f32, _format_min: T, _format_max: T, row: usize, column: usize, stride: usize, src: [3][]const T) struct { VT, VT, VT } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
@@ -133,12 +145,22 @@ fn CCD(comptime T: type) type {
             var count: @Vector(vector_len, u8) = @splat(0);
             const one: @Vector(vector_len, u8) = @splat(1);
 
+            // zig fmt: off
+            const scaled_radius: usize = @intFromFloat(@round(radius * scale));
+            const start_y = row - scaled_radius;
+            const end_y   = row + scaled_radius;
+
+            const start_x = column - scaled_radius;
+            const end_x   = column + scaled_radius;
+
+            const step: usize = @intFromFloat(@round(8 * scale));
+            // zig fmt: on
+
             // TODO: support different point selections (high/medium/low) like vs-jetpack.
-            // TODO: Test inline while
-            var y: usize = row - radius;
-            while (y <= row + radius) : (y += 8) {
-                var x: usize = column - radius;
-                while (x <= column + radius) : (x += 8) {
+            var y: usize = start_y;
+            while (y <= end_y) : (y += step) {
+                var x: usize = start_x;
+                while (x <= end_x) : (x += step) {
                     const neighbor_r = vec.load(VT, src[0], y * stride + x);
                     const neighbor_g = vec.load(VT, src[1], y * stride + x);
                     const neighbor_b = vec.load(VT, src[2], y * stride + x);
@@ -177,6 +199,7 @@ fn CCD(comptime T: type) type {
             };
         }
 
+        // TODO: Add scale support. Low priority, since this function is currently unused.
         fn processPlanesScalar(threshold: BUAT, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // Process top rows with mirrored grid.
             for (0..radius) |row| {
@@ -231,17 +254,19 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        fn processPlanesVector(threshold: BUAT, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+        fn processPlanesVector(threshold: BUAT, scale: f32, format_min: T, format_max: T, src: [3][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // We make some assumptions in this code in order to make processing with vectors simpler.
             std.debug.assert(width >= vector_len);
             std.debug.assert(radius < vector_len);
 
-            const width_simd = (width - diameter) / vector_len * vector_len;
+            const scaled_radius: usize = @intFromFloat(@round(radius * scale));
+            const scaled_diameter: usize = @intFromFloat(@round(diameter * scale));
+            const width_simd = (width - scaled_diameter) / vector_len * vector_len;
 
             // Top rows - mirrored
-            for (0..radius) |row| {
+            for (0..scaled_radius) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, scale, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -250,10 +275,10 @@ fn CCD(comptime T: type) type {
             }
 
             // Middle rows
-            for (radius..height - radius) |row| {
+            for (scaled_radius..height - scaled_radius) |row| {
                 // First columns - mirrored
-                for (0..radius) |column| {
-                    const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+                for (0..scaled_radius) |column| {
+                    const result = ccdScalar(true, threshold, scale, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -261,9 +286,9 @@ fn CCD(comptime T: type) type {
                 }
 
                 // Middle columns - not mirrored
-                var column: usize = radius;
+                var column: usize = scaled_radius;
                 while (column < width_simd) : (column += vector_len) {
-                    const result = ccdVector(threshold, format_min, format_max, row, column, stride, src);
+                    const result = ccdVector(threshold, scale, format_min, format_max, row, column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + column, result[0]);
                     vec.store(VT, dst[1], row * stride + column, result[1]);
@@ -273,8 +298,8 @@ fn CCD(comptime T: type) type {
                 // Last columns - non-mirrored
                 // We do this to minimize the use of scalar mirror code.
                 if (width_simd < width) {
-                    const adjusted_column = width - vector_len - radius;
-                    const result = ccdVector(threshold, format_min, format_max, row, adjusted_column, stride, src);
+                    const adjusted_column = width - vector_len - scaled_radius;
+                    const result = ccdVector(threshold, scale, format_min, format_max, row, adjusted_column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + adjusted_column, result[0]);
                     vec.store(VT, dst[1], row * stride + adjusted_column, result[1]);
@@ -282,8 +307,8 @@ fn CCD(comptime T: type) type {
                 }
 
                 // Last columns - mirrored
-                for (width - radius..width) |c| {
-                    const result = ccdScalar(true, threshold, format_min, format_max, row, c, width, height, stride, src);
+                for (width - scaled_radius..width) |c| {
+                    const result = ccdScalar(true, threshold, scale, format_min, format_max, row, c, width, height, stride, src);
 
                     dst[0][(row * stride) + c] = result[0];
                     dst[1][(row * stride) + c] = result[1];
@@ -292,9 +317,9 @@ fn CCD(comptime T: type) type {
             }
 
             // Bottom rows - mirrored
-            for (height - radius..height) |row| {
+            for (height - scaled_radius..height) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, scale, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -303,7 +328,7 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        fn processPlanes(_threshold: f32, chroma: bool, bits_per_sample: u6, srcp8: [3][]const u8, dstp8: [3][]u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlanes(_threshold: f32, scale: f32, chroma: bool, bits_per_sample: u6, srcp8: [3][]const u8, dstp8: [3][]u8, width: usize, height: usize, stride8: usize) void {
             const threshold: BUAT = lossyCast(BUAT, _threshold);
             const stride = stride8 / @sizeOf(T);
             const srcp: [3][]const T = .{
@@ -320,7 +345,7 @@ fn CCD(comptime T: type) type {
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
             const format_min = vscmn.getFormatMinimum2(T, chroma);
 
-            processPlanesVector(threshold, format_min, format_max, srcp, dstp, width, height, stride);
+            processPlanesVector(threshold, scale, format_min, format_max, srcp, dstp, width, height, stride);
         }
     };
 }
@@ -365,7 +390,7 @@ fn ccdGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fram
         const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, 0);
         const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 
-        processPlanes(d.threshold, chroma, bits_per_sample, srcp8, dstp8, width, height, stride8);
+        processPlanes(d.threshold, d.scale, chroma, bits_per_sample, srcp8, dstp8, width, height, stride8);
 
         return dst.frame;
     }
@@ -385,6 +410,11 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     const zapi = ZAPI.init(vsapi, core);
     const inz = zapi.initZMap(in);
     // const outz = zapi.initZMap(out);
+    //
+    // TODO:
+    // 1. Add scale support
+    // 2. Add temporal support.
+    // 3. Add different points support.
 
     var d: CCDData = undefined;
 
@@ -395,6 +425,8 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     d.threshold = inz.getFloat(f32, "threshold") orelse 4;
     d.threshold = d.threshold * format_max; // Scale to input bit depth for consitency across inputs.
     d.threshold = (d.threshold * d.threshold) / (255 * 255 * 3); // squared euclidian, scaled to sum of sqaured differences for float.
+
+    d.scale = inz.getFloat(f32, "scale") orelse @as(f32, @floatFromInt(d.vi.height)) / 240.0;
 
     const data: *CCDData = allocator.create(CCDData) catch unreachable;
     data.* = d;
@@ -410,5 +442,5 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;", "clip:vnode;", ccdCreate, null, plugin);
+    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;scale:float:opt;", "clip:vnode;", ccdCreate, null, plugin);
 }

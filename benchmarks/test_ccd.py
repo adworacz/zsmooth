@@ -47,7 +47,7 @@ clip.set_output(0)
 # from vsdenoise import ccd, CCDPoints
 # jetpack = ccd(clip, thr = threshold, scale = 1, ref_points = CCDPoints.MEDIUM, planes=[0,1,2])
 ccd = clip.ccd.CCD(threshold)
-zsmooth = clip.zsmooth.CCD(threshold)
+zsmooth = clip.zsmooth.CCD(threshold, scale=1) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
 
 match output:
     case 'zsmooth':

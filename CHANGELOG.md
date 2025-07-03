@@ -8,7 +8,9 @@ first value was used.)
 * Add SmartMedian - a median thresholded based on variance. Honestly, I really like the results of this one.
 * Add TemporalRepair, from RGTools. Consider this experimental, as I have nothing to compare against in the Vapoursynth
 world, so the output may be slightly different (buggy) than the Avisynth version. Please file an issue for any
-differences found.
+differences found. Note that float formats might be slightly incorrect due to the use of clamping right now - I intend
+to remove said clamping in the future.
+* Add CCD (CamCorderDenoise), modeled off of a mix of two other implementations (vs-jetpack and EndOfEternity's plugin).
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

@@ -5,14 +5,13 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-# mode = 1
-threshold = 20 # threshold needs adjusting based on bit depth.
+threshold = 20 
 length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    function = 'Clense'
+    # format = 'u8'
 
 match format:
     case 'u8':
@@ -29,13 +28,14 @@ match format:
         # clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
         from vstools import initialize_clip
         clip = initialize_clip(clip)
-        clip = clip.resize.Point(format=vs.RGB24)
+        # clip = clip.resize.Point(format=vs.RGB24)
+        clip = clip.resize.Point(format=vs.RGBS)
 
 from vstools import depth
 # clip = depth(clip, 10)
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
-clip = depth(clip, 32)
+# clip = depth(clip, 32)
 
 # Use 720 x 480 to check stride issues.
 # clip = clip.resize.Lanczos(720, 480, format=vs.YUV444P16)
@@ -44,8 +44,8 @@ clip = depth(clip, 32)
 clip.set_output(0)
 
 # Requires akarin...
-# from vsdenoise import ccd
-# jetpack = ccd(clip, threshold)
+# from vsdenoise import ccd, CCDPoints
+# jetpack = ccd(clip, thr = threshold, scale = 1, ref_points = CCDPoints.MEDIUM, planes=[0,1,2])
 ccd = clip.ccd.CCD(threshold)
 zsmooth = clip.zsmooth.CCD(threshold)
 

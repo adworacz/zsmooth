@@ -56,6 +56,19 @@ type Results = {
 
 const BENCHMARKS: Benchmarks[] = [
   {
+    filter: 'CCD',
+    benchmarkPath: 'test_ccd.vpy',
+    // biome-ignore format:
+    specs: [
+      { plugin: 'zsmooth' , format:'u8'  , args: [] , frames: DEFAULT_NUM_FRAMES / 10          , } ,
+
+      { plugin: 'zsmooth' , format:'u16' , args: [] , frames: DEFAULT_NUM_FRAMES / 10 / 2      , } ,
+
+      { plugin: 'zsmooth' , format:'f32' , args: [] , frames: DEFAULT_NUM_FRAMES / 10 / 4      , } ,
+      { plugin: 'ccd'     , format:'f32' , args: [] , frames: DEFAULT_NUM_FRAMES / 10 / 10 / 4 , } ,
+    ],
+  },
+  {
     filter: 'Clense',
     benchmarkPath: 'test_clense.vpy',
     // biome-ignore format:
@@ -520,8 +533,8 @@ const markdownEntries = results.reduce(
 const benchmarkResultsCsvFilename = 'benchmark_results.csv'
 const benchmarkResultsMarkdownFilename = 'benchmark_results.md'
 
-console.log(`Writing resuls to ${benchmarkResultsCsvFilename}`)
+console.log(`Writing results to ${benchmarkResultsCsvFilename}`)
 Bun.write(benchmarkResultsCsvFilename, `${csvHeaders}\n${csvEntries}`)
 
-console.log(`Writing resuls to ${benchmarkResultsMarkdownFilename}`)
+console.log(`Writing results to ${benchmarkResultsMarkdownFilename}`)
 Bun.write(benchmarkResultsMarkdownFilename, `${markdownHeaders}\n${markdownTableSeperator}\n${markdownEntries}`)

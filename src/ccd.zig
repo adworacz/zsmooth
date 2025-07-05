@@ -283,14 +283,16 @@ fn CCD(comptime T: type) type {
             std.debug.assert(width >= vector_len);
             std.debug.assert(radius < vector_len);
 
-            const scaled_radius: usize = @intFromFloat(@round(radius * scale));
+            //TODO: There's a bug here with larger scales, where width_simd is substantially less than
+            //width - vector_len - scaled_radius
             const scaled_diameter: usize = @intFromFloat(@round(diameter * scale));
-            const width_simd = (width - scaled_diameter) / vector_len * vector_len;
+            const scaled_radius: usize = scaled_diameter / 2;
+            const width_simd = (width - scaled_radius) / vector_len * vector_len;
 
             // Top rows - mirrored
             for (0..scaled_radius) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, scale, points, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -302,7 +304,7 @@ fn CCD(comptime T: type) type {
             for (scaled_radius..height - scaled_radius) |row| {
                 // First columns - mirrored
                 for (0..scaled_radius) |column| {
-                    const result = ccdScalar(true, threshold, scale, points, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -311,8 +313,8 @@ fn CCD(comptime T: type) type {
 
                 // Middle columns - not mirrored
                 var column: usize = scaled_radius;
-                while (column < width_simd) : (column += vector_len) {
-                    const result = ccdVector(threshold, scale, points, format_min, format_max, row, column, stride, src);
+                while (column < width_simd + scaled_radius) : (column += vector_len) {
+                    const result = ccdVector(threshold, points, format_min, format_max, row, column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + column, result[0]);
                     vec.store(VT, dst[1], row * stride + column, result[1]);
@@ -321,9 +323,9 @@ fn CCD(comptime T: type) type {
 
                 // Last columns - non-mirrored
                 // We do this to minimize the use of scalar mirror code.
-                if (width_simd < width) {
+                if (width_simd + scaled_radius < width) {
                     const adjusted_column = width - vector_len - scaled_radius;
-                    const result = ccdVector(threshold, scale, points, format_min, format_max, row, adjusted_column, stride, src);
+                    const result = ccdVector(threshold, points, format_min, format_max, row, adjusted_column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + adjusted_column, result[0]);
                     vec.store(VT, dst[1], row * stride + adjusted_column, result[1]);
@@ -332,7 +334,7 @@ fn CCD(comptime T: type) type {
 
                 // Last columns - mirrored
                 for (width - scaled_radius..width) |c| {
-                    const result = ccdScalar(true, threshold, scale, points, format_min, format_max, row, c, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, format_min, format_max, row, c, width, height, stride, src);
 
                     dst[0][(row * stride) + c] = result[0];
                     dst[1][(row * stride) + c] = result[1];
@@ -343,7 +345,7 @@ fn CCD(comptime T: type) type {
             // Bottom rows - mirrored
             for (height - scaled_radius..height) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, scale, points, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, format_min, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];

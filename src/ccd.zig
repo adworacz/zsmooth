@@ -198,45 +198,55 @@ fn CCD(comptime T: type) type {
 
             var count: @Vector(vector_len, u8) = @splat(0);
             const one: @Vector(vector_len, u8) = @splat(1);
+            const vtemporal_diameter: @Vector(vector_len, u8) = @splat(temporal_diameter);
 
-            for (0..temporal_diameter) |i| {
-                for (points) |point| {
-                    const y: usize = @intCast(@as(isize, @intCast(row)) + point[1]);
-                    const x: usize = @intCast(@as(isize, @intCast(column)) + point[0]);
+            for (points) |point| {
+                const y: usize = @intCast(@as(isize, @intCast(row)) + point[1]);
+                const x: usize = @intCast(@as(isize, @intCast(column)) + point[0]);
 
-                    const neighbor_r = vec.load(VT, src[i * 3 + 0], y * stride + x);
-                    const neighbor_g = vec.load(VT, src[i * 3 + 1], y * stride + x);
-                    const neighbor_b = vec.load(VT, src[i * 3 + 2], y * stride + x);
+                const current_neighbor_r = vec.load(VT, src[temporal_radius * 3 + 0], y * stride + x);
+                const current_neighbor_g = vec.load(VT, src[temporal_radius * 3 + 1], y * stride + x);
+                const current_neighbor_b = vec.load(VT, src[temporal_radius * 3 + 2], y * stride + x);
 
-                    const diff_r: VBSAT = lossyCast(VBSAT, neighbor_r) - center_r;
-                    const diff_g: VBSAT = lossyCast(VBSAT, neighbor_g) - center_g;
-                    const diff_b: VBSAT = lossyCast(VBSAT, neighbor_b) - center_b;
+                var ssd: VBUAT = @splat(0);
+
+                for (0..temporal_diameter) |i| {
+                    const temporal_neighbor_r = vec.load(VT, src[i * 3 + 0], y * stride + x);
+                    const temporal_neighbor_g = vec.load(VT, src[i * 3 + 1], y * stride + x);
+                    const temporal_neighbor_b = vec.load(VT, src[i * 3 + 2], y * stride + x);
+
+                    const diff_r: VBSAT = lossyCast(VBSAT, temporal_neighbor_r) - center_r;
+                    const diff_g: VBSAT = lossyCast(VBSAT, temporal_neighbor_g) - center_g;
+                    const diff_b: VBSAT = lossyCast(VBSAT, temporal_neighbor_b) - center_b;
 
                     // sum of squared differences
-                    var ssd: VBUAT = lossyCast(VBUAT, diff_r * diff_r) + lossyCast(VBUAT, diff_g * diff_g) + lossyCast(VBUAT, diff_b * diff_b);
-                    
-                    // This isn't exactly correct. It looks like vsjetpack CCD considers all frames for each point.
+                    const frame_ssd: VBUAT = lossyCast(VBUAT, diff_r * diff_r) + lossyCast(VBUAT, diff_g * diff_g) + lossyCast(VBUAT, diff_b * diff_b);
 
-                    // temporal weight ssd (greater differences in temporal neighbors will be tolerated)
-                    // to be honest, I'm not entirely sure I like this approach, but its what vsjetpack's CCD does.
+                    // Add the weighted SSD to the total SSD.
                     const weight: F = @splat(@floatCast(weights[i]));
-                    ssd = if (types.isFloat(T))
-                        ssd * weight
+                    ssd += if (types.isFloat(T))
+                        frame_ssd * weight
                     else
-                        @intFromFloat(@round(@as(F, @floatFromInt(ssd)) * weight));
-
-                    const ssd_lt_threshold = ssd < threshold;
-                    total_r = @select(UAT, ssd_lt_threshold, total_r + neighbor_r, total_r);
-                    total_g = @select(UAT, ssd_lt_threshold, total_g + neighbor_g, total_g);
-                    total_b = @select(UAT, ssd_lt_threshold, total_b + neighbor_b, total_b);
-                    count = @select(u8, ssd_lt_threshold, count + one, count);
+                        @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd)) * weight));
                 }
+
+                // Average the SSD across the number of frames.
+                ssd = if (types.isFloat(T)) 
+                    ssd / lossyCast(F, vtemporal_diameter)
+                else 
+                    ssd / vtemporal_diameter;
+
+                const ssd_lt_threshold = ssd < threshold;
+                total_r = @select(UAT, ssd_lt_threshold, total_r + current_neighbor_r, total_r);
+                total_g = @select(UAT, ssd_lt_threshold, total_g + current_neighbor_g, total_g);
+                total_b = @select(UAT, ssd_lt_threshold, total_b + current_neighbor_b, total_b);
+                count = @select(u8, ssd_lt_threshold, count + one, count);
             }
 
             const one_point_zero: F = @splat(1.0);
-            var calculated_r: F = lossyCast(F, total_r) * (one_point_zero / (lossyCast(F, count) + one_point_zero));
-            var calculated_g: F = lossyCast(F, total_g) * (one_point_zero / (lossyCast(F, count) + one_point_zero));
-            var calculated_b: F = lossyCast(F, total_b) * (one_point_zero / (lossyCast(F, count) + one_point_zero));
+            var calculated_r: F = lossyCast(F, total_r) / (lossyCast(F, count) + one_point_zero);
+            var calculated_g: F = lossyCast(F, total_g) / (lossyCast(F, count) + one_point_zero);
+            var calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + one_point_zero);
 
             if (types.isInt(T)) {
                 // Round int formats before we cast back.

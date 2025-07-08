@@ -5,6 +5,7 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
+temporal_radius = 0
 threshold = 20 
 length = 30000
 
@@ -49,9 +50,9 @@ if output in ['ccd', 'all']:
 
 if output in ['jetpack', 'all']:
     from vsdenoise import ccd as jetccd, CCDPoints
-    jetpack = jetccd(clip, thr = threshold, scale=0, ref_points = CCDPoints.LOW | CCDPoints.MEDIUM, planes=[0,1,2]) # Scale=0 for jetpack is the same as scale=1 for zsmooth.
+    jetpack = jetccd(clip, tr=temporal_radius, thr = threshold, scale=0, ref_points = CCDPoints.LOW | CCDPoints.MEDIUM, planes=[0,1,2]) # Scale=0 for jetpack is the same as scale=1 for zsmooth.
 
-zsmooth = clip.zsmooth.CCD(threshold, scale=1, points=[True, True, False]) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
+zsmooth = clip.zsmooth.CCD(threshold, scale=1, points=[True, True, False], temporal_radius=temporal_radius) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
 
 match output:
     case 'zsmooth':

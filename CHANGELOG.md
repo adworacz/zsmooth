@@ -15,7 +15,8 @@ Note that the spatial-only output is identical to `vs-jetpack`, but the temporal
 *similar* to `vs-jetpack` but not exactly the same. The algorithms should be producing identical output with
 `temporal_radius = 3` (other radii are different due to modifications I made to support wider radii than `vs-jetpack`).
 I'm honestly not sure why. The approaches should be effectively identical, but I may have misunderstood the Expr-foo that vs-jetpack's version engages in. Or it's all due to rounding
-differences, but I think the changes are too great to be the result of just rounding differences.
+differences, but I think the changes are too great to be the result of just rounding differences. Still, we're 20-30x
+faster than `vs-jetpack`.
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

@@ -5,14 +5,17 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-temporal_radius = 0
 threshold = 20 
 length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    # format = 'u8'
+    temporal_radius = 0
+    format = 'u8'
+
+# Handle strings passed in by vspipe args.
+temporal_radius = int(temporal_radius)
 
 match format:
     case 'u8':
@@ -25,8 +28,8 @@ match format:
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, color=[1.0, 1.0, 1.0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
-        # clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
-        clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
+        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
         from vstools import initialize_clip
         clip = initialize_clip(clip)
         # clip = clip.resize.Point(format=vs.RGB24)
@@ -45,12 +48,12 @@ from vstools import depth
 clip.set_output(0)
 
 # Requires akarin...
-if output in ['ccd', 'all']:
-    ccd = clip.ccd.CCD(threshold)
-
-if output in ['jetpack', 'all']:
-    from vsdenoise import ccd as jetccd, CCDPoints
-    jetpack = jetccd(clip, tr=temporal_radius, thr = threshold, scale=0, ref_points = CCDPoints.LOW | CCDPoints.MEDIUM, planes=[0,1,2]) # Scale=0 for jetpack is the same as scale=1 for zsmooth.
+# if output in ['ccd', 'all']:
+#     ccd = clip.ccd.CCD(threshold)
+#
+# if output in ['jetpack', 'all']:
+#     from vsdenoise import ccd as jetccd, CCDPoints
+#     jetpack = jetccd(clip, tr=temporal_radius, thr = threshold, scale=0, ref_points = CCDPoints.LOW | CCDPoints.MEDIUM, planes=[0,1,2]) # Scale=0 for jetpack is the same as scale=1 for zsmooth.
 
 zsmooth = clip.zsmooth.CCD(threshold, scale=1, points=[True, True, False], temporal_radius=temporal_radius) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
 
@@ -63,8 +66,8 @@ match output:
         jetpack.set_output()
     case 'all':
         clip.set_output(0)
-        ccd.set_output(1)
-        jetpack.set_output(2)
+        # ccd.set_output(1)
+        # jetpack.set_output(2)
         zsmooth.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"

@@ -10,7 +10,12 @@ first value was used.)
 world, so the output may be slightly different (buggy) than the Avisynth version. Please file an issue for any
 differences found. Note that float formats might be slightly incorrect due to the use of clamping right now - I intend
 to remove said clamping in the future.
-* Add CCD (CamCorderDenoise), modeled off of a mix of two other implementations (vs-jetpack and EndOfEternity's plugin).
+* Add CCD (CamCorderDenoise), modeled off of a mix of two other implementations (`vs-jetpack` and EndOfEternity's plugin).
+Note that the spatial-only output is identical to `vs-jetpack`, but the temporal output (`temporal_radius > 0`) is
+*similar* to `vs-jetpack` but not exactly the same. The algorithms should be producing identical output with
+`temporal_radius = 3` (other radii are different due to modifications I made to support wider radii than `vs-jetpack`).
+I'm honestly not sure why. The approaches should be effectively identical, but I may have misunderstood the Expr-foo that vs-jetpack's version engages in. Or it's all due to rounding
+differences, but I think the changes are too great to be the result of just rounding differences.
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

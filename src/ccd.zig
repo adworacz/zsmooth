@@ -109,7 +109,7 @@ fn CCD(comptime T: type) type {
     const VBUAT = @Vector(vector_len, BUAT);
 
     return struct {
-        fn ccdScalar(comptime mirror: bool, threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_min: T, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { T, T, T } {
+        fn ccdScalar(comptime mirror: bool, threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { T, T, T } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) f32 else T;
@@ -170,23 +170,31 @@ fn CCD(comptime T: type) type {
                 calculated_b = @round(calculated_b);
             }
 
-            return .{
-                std.math.clamp(lossyCast(T, calculated_r), format_min, format_max),
-                std.math.clamp(lossyCast(T, calculated_g), format_min, format_max),
-                std.math.clamp(lossyCast(T, calculated_b), format_min, format_max),
+            return if (types.isFloat(T)) .{
+                lossyCast(T, calculated_r),
+                lossyCast(T, calculated_g),
+                lossyCast(T, calculated_b),
+            } else .{
+                // Clamp integer formats so that we can handle things like 10-bit.
+                std.math.clamp(lossyCast(T, calculated_r), 0, format_max),
+                std.math.clamp(lossyCast(T, calculated_g), 0, format_max),
+                std.math.clamp(lossyCast(T, calculated_b), 0, format_max),
             };
         }
 
         // Only handles non-mirrored content, since mirroring is much more difficult to implement for vectors.
-        fn ccdVector(_threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, _format_min: T, _format_max: T, row: usize, column: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { VT, VT, VT } {
+        fn ccdVector(_threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, _format_max: T, row: usize, column: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { VT, VT, VT } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
 
             const threshold: VBUAT = @splat(_threshold);
-            const format_min: VT = @splat(_format_min);
             const format_max: VT = @splat(_format_max);
             const temporal_diameter = temporal_radius * 2 + 1;
+
+            const one: @Vector(vector_len, u8) = @splat(1);
+            const zero: @Vector(vector_len, T) = @splat(0);
+            const vtemporal_diameter: @Vector(vector_len, T) = @splat(lossyCast(T, temporal_diameter));
 
             const center_r = vec.load(VT, src[temporal_radius * 3 + 0], row * stride + column);
             const center_g = vec.load(VT, src[temporal_radius * 3 + 1], row * stride + column);
@@ -197,8 +205,6 @@ fn CCD(comptime T: type) type {
             var total_b: VUAT = center_b;
 
             var count: @Vector(vector_len, u8) = @splat(0);
-            const one: @Vector(vector_len, u8) = @splat(1);
-            const vtemporal_diameter: @Vector(vector_len, u8) = @splat(temporal_diameter);
 
             for (points) |point| {
                 const y: usize = @intCast(@as(isize, @intCast(row)) + point[1]);
@@ -231,10 +237,11 @@ fn CCD(comptime T: type) type {
                 }
 
                 // Average the SSD across the number of frames.
-                ssd = if (types.isFloat(T)) 
-                    ssd / lossyCast(F, vtemporal_diameter)
-                else 
-                    ssd / vtemporal_diameter;
+                if (temporal_radius > 0) {
+                    // using a branch to avoid expensive integer division
+                    // when temporal_radius = 0
+                    ssd = ssd / vtemporal_diameter;
+                }
 
                 const ssd_lt_threshold = ssd < threshold;
                 total_r = @select(UAT, ssd_lt_threshold, total_r + current_neighbor_r, total_r);
@@ -249,26 +256,31 @@ fn CCD(comptime T: type) type {
             var calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + one_point_zero);
 
             if (types.isInt(T)) {
-                // Round int formats before we cast back.
+                // Round integer formats before we cast back.
                 calculated_r = @round(calculated_r);
                 calculated_g = @round(calculated_g);
                 calculated_b = @round(calculated_b);
             }
 
-            return .{
-                std.math.clamp(lossyCast(VT, calculated_r), format_min, format_max),
-                std.math.clamp(lossyCast(VT, calculated_g), format_min, format_max),
-                std.math.clamp(lossyCast(VT, calculated_b), format_min, format_max),
+            return if (types.isFloat(T)) .{
+                lossyCast(VT, calculated_r),
+                lossyCast(VT, calculated_g),
+                lossyCast(VT, calculated_b),
+            } else .{
+                // Clamp integer formats so that we can handle things like 10-bit.
+                std.math.clamp(lossyCast(VT, calculated_r), zero, format_max),
+                std.math.clamp(lossyCast(VT, calculated_g), zero, format_max),
+                std.math.clamp(lossyCast(VT, calculated_b), zero, format_max),
             };
         }
 
         // Outdated, and missing several key features like scaling, points, and temporal support.
         // But leaving for future reference.
-        // fn processPlanesScalar(threshold: BUAT, format_min: T, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+        // fn processPlanesScalar(threshold: BUAT, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
         //     // Process top rows with mirrored grid.
         //     for (0..radius) |row| {
         //         for (0..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
         //
         //             dst[0][(row * stride) + column] = result[0];
         //             dst[1][(row * stride) + column] = result[1];
@@ -279,7 +291,7 @@ fn CCD(comptime T: type) type {
         //     for (radius..height - radius) |row| {
         //         // Process first pixels of the row with mirrored grid.
         //         for (0..radius) |column| {
-        //             const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
         //
         //             dst[0][(row * stride) + column] = result[0];
         //             dst[1][(row * stride) + column] = result[1];
@@ -289,7 +301,7 @@ fn CCD(comptime T: type) type {
         //         for (radius..width - radius) |column| {
         //             // Use a non-mirrored grid everywhere else for maximum performance.
         //             // We don't need the mirror effect anyways, as all pixels contain valid data.
-        //             const result = ccdScalar(false, threshold, format_min, format_max, row, column, width, height, stride, src);
+        //             const result = ccdScalar(false, threshold, format_max, row, column, width, height, stride, src);
         //
         //             dst[0][(row * stride) + column] = result[0];
         //             dst[1][(row * stride) + column] = result[1];
@@ -298,7 +310,7 @@ fn CCD(comptime T: type) type {
         //
         //         // Process last pixel of the row with mirrored grid.
         //         for (width - radius..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
         //
         //             dst[0][(row * stride) + column] = result[0];
         //             dst[1][(row * stride) + column] = result[1];
@@ -309,7 +321,7 @@ fn CCD(comptime T: type) type {
         //     // Process bottom rows with mirrored grid.
         //     for (height - radius..height) |row| {
         //         for (0..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_min, format_max, row, column, width, height, stride, src);
+        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
         //
         //             dst[0][(row * stride) + column] = result[0];
         //             dst[1][(row * stride) + column] = result[1];
@@ -318,7 +330,7 @@ fn CCD(comptime T: type) type {
         //     }
         // }
 
-        fn processPlanesVector(threshold: BUAT, scale: f32, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_min: T, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+        fn processPlanesVector(threshold: BUAT, scale: f32, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // We make some assumptions in this code in order to make processing with vectors simpler.
             std.debug.assert(width >= vector_len);
             std.debug.assert(radius < vector_len);
@@ -330,7 +342,7 @@ fn CCD(comptime T: type) type {
             // Top rows - mirrored
             for (0..scaled_radius) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -342,7 +354,7 @@ fn CCD(comptime T: type) type {
             for (scaled_radius..height - scaled_radius) |row| {
                 // First columns - mirrored
                 for (0..scaled_radius) |column| {
-                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -352,7 +364,7 @@ fn CCD(comptime T: type) type {
                 // Middle columns - not mirrored
                 var column: usize = scaled_radius;
                 while (column < width_simd + scaled_radius) : (column += vector_len) {
-                    const result = ccdVector(threshold, points, temporal_radius, weights, format_min, format_max, row, column, stride, src);
+                    const result = ccdVector(threshold, points, temporal_radius, weights, format_max, row, column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + column, result[0]);
                     vec.store(VT, dst[1], row * stride + column, result[1]);
@@ -363,7 +375,7 @@ fn CCD(comptime T: type) type {
                 // We do this to minimize the use of scalar mirror code.
                 if (width_simd + scaled_radius < width) {
                     const adjusted_column = width - vector_len - scaled_radius;
-                    const result = ccdVector(threshold, points, temporal_radius, weights, format_min, format_max, row, adjusted_column, stride, src);
+                    const result = ccdVector(threshold, points, temporal_radius, weights, format_max, row, adjusted_column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + adjusted_column, result[0]);
                     vec.store(VT, dst[1], row * stride + adjusted_column, result[1]);
@@ -372,7 +384,7 @@ fn CCD(comptime T: type) type {
 
                 // Last columns - mirrored
                 for (width - scaled_radius..width) |c| {
-                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_min, format_max, row, c, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_max, row, c, width, height, stride, src);
 
                     dst[0][(row * stride) + c] = result[0];
                     dst[1][(row * stride) + c] = result[1];
@@ -383,7 +395,7 @@ fn CCD(comptime T: type) type {
             // Bottom rows - mirrored
             for (height - scaled_radius..height) |row| {
                 for (0..width) |column| {
-                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_min, format_max, row, column, width, height, stride, src);
+                    const result = ccdScalar(true, threshold, points, temporal_radius, weights, format_max, row, column, width, height, stride, src);
 
                     dst[0][(row * stride) + column] = result[0];
                     dst[1][(row * stride) + column] = result[1];
@@ -412,9 +424,8 @@ fn CCD(comptime T: type) type {
             };
 
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
-            const format_min = vscmn.getFormatMinimum2(T, chroma);
 
-            processPlanesVector(threshold, scale, points, temporal_radius, weights, format_min, format_max, srcp, dstp, width, height, stride);
+            processPlanesVector(threshold, scale, points, temporal_radius, weights, format_max, srcp, dstp, width, height, stride);
         }
     };
 }
@@ -536,13 +547,10 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         const fr: f32 = @floatFromInt(r);
         d.weights[d.temporal_radius - 1 - r] = @sqrt((tr + 1 - fr) / ((tr + 1) * 2));
         d.weights[d.temporal_radius + 1 + r] = @sin((tr + 2 - fr) / ((tr + 1) * 2));
-        // d.weights[d.temporal_radius + 1 + r] = d.weights[d.temporal_radius - 1 - r];
-        // d.weights[d.temporal_radius - 1 - r] = @sin((tr + 2 - fr) / ((tr + 1) * 2));
-        // d.weights[d.temporal_radius + 1 + r] = @sqrt((tr + 1 - fr) / ((tr + 1) * 2));
     }
     // Ensure current/center frame is maximally weighted at 1.0;
     d.weights[d.temporal_radius] = 1.0;
-    std.debug.print("weights: {any}\n", .{d.weights});
+    // std.debug.print("weights: {any}\n", .{d.weights});
 
     d.scale = inz.getFloat(f32, "scale") orelse @as(f32, @floatFromInt(d.vi.height)) / 240.0;
 

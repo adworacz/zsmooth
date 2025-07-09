@@ -165,6 +165,8 @@ fn CCD(comptime T: type) type {
                 // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
                     // Average the SSD across the number of frames.
+                    // TODO: optimize this division using the "multiply by reciprocal" technique. See TemporalSoften for an example.
+                    // TODO: This likely needs "+ (temporal_diameter/2)" to round integers properly...
                     ssd = ssd / lossyCast(T, temporal_diameter);
                 }
 
@@ -181,9 +183,9 @@ fn CCD(comptime T: type) type {
             const calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + 1.0);
 
             return if (types.isFloat(T)) .{
-                lossyCast(T, calculated_r),
-                lossyCast(T, calculated_g),
-                lossyCast(T, calculated_b),
+                calculated_r,
+                calculated_g,
+                calculated_b,
             } else .{
                 // Round and clamp integer formats so that we can handle things like 10-bit.
                 std.math.clamp(lossyCast(T, @round(calculated_r)), 0, format_max),
@@ -271,9 +273,9 @@ fn CCD(comptime T: type) type {
             const calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + one_point_zero);
 
             return if (types.isFloat(T)) .{
-                lossyCast(VT, calculated_r),
-                lossyCast(VT, calculated_g),
-                lossyCast(VT, calculated_b),
+                calculated_r,
+                calculated_g,
+                calculated_b,
             } else .{
                 // Round and clamp integer formats so that we can handle things like 10-bit.
                 std.math.clamp(lossyCast(VT, @round(calculated_r)), zero, format_max),

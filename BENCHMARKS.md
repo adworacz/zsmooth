@@ -5,6 +5,7 @@ to provided the greatest stability of FPS numbers between runs.
 So while the benchmarks show fast results, you'll see even faster by using Zsmooth when using a fully threaded VapourSynth script.
 
 ## Table of Contents
+* [0.12 - Zig 0.14.1 - AVX512](#010---zig-0141---avx512)
 * [0.10 - Zig 0.14.1 - ARM NEON](#010---zig-0141---arm-neon-aarch64-macos)
 * [0.10 - Zig 0.14.1 - AVX512](#010---zig-0141---avx512)
 * [0.10 - Zig 0.14.1 - AVX2](#010---zig-0141---avx2)
@@ -12,6 +13,259 @@ So while the benchmarks show fast results, you'll see even faster by using Zsmoo
 * [0.9 - Zig 0.14.0 - AVX512](#09---zig-0140---avx512-znver4)
 * [0.9 - Zig 0.14.0 - AVX2](#09---zig-0140---avx2)
 * [0.9 - Zig 0.12.1 - AVX2](#09---zig-0121---avx2)
+
+## 0.12 - Zig 0.14.1 - AVX512
+Source: BlankClip YUV420*, 1920x1080
+
+Machine: AMD Ryzen 9 9950X, 64 GB DDR5 6200 
+
+OS: Linux fedora 6.14.9-300.fc42.x86_64 #1 SMP PREEMPT_DYNAMIC Thu May 29 14:27:53 UTC 2025 x86_64 GNU/Linux 
+
+CPU tuning: AVX512 (znver4)
+
+\* Some filters (CCD) require RGB input, so bit depth-specific RGB is used in those cases.
+
+| Filter | Plugin | Format | Args | Min | Max | Median | Average | Standard Deviation |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| CCD | zsmooth | u8 | temporal_radius=0 | 269.66 | 270.61 | 270.32 | 270.197 | 0.398 |
+| CCD | zsmooth | u8 | temporal_radius=3 | 50.22 | 50.56 | 50.43 | 50.403 | 0.140 |
+| CCD | zsmooth | u16 | temporal_radius=0 | 196.22 | 198.78 | 197.09 | 197.363 | 1.063 |
+| CCD | zsmooth | u16 | temporal_radius=3 | 19.36 | 19.44 | 19.39 | 19.397 | 0.033 |
+| CCD | zsmooth | f32 | temporal_radius=0 | 208.94 | 209.81 | 209.2 | 209.317 | 0.365 |
+| CCD | zsmooth | f32 | temporal_radius=3 | 32.8 | 32.88 | 32.85 | 32.843 | 0.033 |
+| CCD | ccd | f32 | temporal_radius=0 | 28.54 | 28.63 | 28.62 | 28.597 | 0.040 |
+| CCD | jetpack | f32 | temporal_radius=0 | 3.61 | 3.61 | 3.61 | 3.610 | 0.000 |
+| Clense | zsmooth | u8 | function=Clense | 6874.49 | 6890.61 | 6886.11 | 6883.737 | 6.792 |
+| Clense | rg | u8 | function=Clense | 6356.92 | 6399.51 | 6381.76 | 6379.397 | 17.467 |
+| Clense | zsmooth | u8 | function=ForwardClense | 6820.88 | 6837.75 | 6837.42 | 6832.017 | 7.876 |
+| Clense | rg | u8 | function=ForwardClense | 871.64 | 871.88 | 871.82 | 871.780 | 0.102 |
+| Clense | zsmooth | u8 | function=BackwardClense | 6831.56 | 6836.82 | 6835.2 | 6834.527 | 2.200 |
+| Clense | rg | u8 | function=BackwardClense | 872.75 | 873.49 | 873.34 | 873.193 | 0.319 |
+| Clense | zsmooth | u16 | function=Clense | 1881.77 | 1884.83 | 1883.1 | 1883.233 | 1.253 |
+| Clense | rg | u16 | function=Clense | 1469.6 | 1470.2 | 1469.67 | 1469.823 | 0.268 |
+| Clense | zsmooth | u16 | function=ForwardClense | 1826.33 | 1832.74 | 1827.66 | 1828.910 | 2.762 |
+| Clense | rg | u16 | function=ForwardClense | 546.23 | 546.55 | 546.51 | 546.430 | 0.142 |
+| Clense | zsmooth | u16 | function=BackwardClense | 1830.82 | 1846.66 | 1838.81 | 1838.763 | 6.467 |
+| Clense | rg | u16 | function=BackwardClense | 546.78 | 547.29 | 547.22 | 547.097 | 0.226 |
+| Clense | zsmooth | f32 | function=Clense | 882.19 | 885.91 | 883.85 | 883.983 | 1.522 |
+| Clense | rg | f32 | function=Clense | 822.92 | 824.23 | 823.19 | 823.447 | 0.565 |
+| Clense | zsmooth | f32 | function=ForwardClense | 886.49 | 895.49 | 895.24 | 892.407 | 4.185 |
+| Clense | rg | f32 | function=ForwardClense | 252.2 | 252.38 | 252.24 | 252.273 | 0.077 |
+| Clense | zsmooth | f32 | function=BackwardClense | 897.81 | 899.15 | 898.24 | 898.400 | 0.559 |
+| Clense | rg | f32 | function=BackwardClense | 251.25 | 252.44 | 252.34 | 252.010 | 0.539 |
+| DegrainMedian | zsmooth | u8 | mode=0 | 1857.05 | 1886.14 | 1883.27 | 1875.487 | 13.089 |
+| DegrainMedian | dgm | u8 | mode=0 | 178.67 | 178.73 | 178.69 | 178.697 | 0.025 |
+| DegrainMedian | zsmooth | u8 | mode=1 | 776.05 | 776.94 | 776.44 | 776.477 | 0.364 |
+| DegrainMedian | dgm | u8 | mode=1 | 458.43 | 458.72 | 458.66 | 458.603 | 0.125 |
+| DegrainMedian | zsmooth | u8 | mode=2 | 776.6 | 777.72 | 777.4 | 777.240 | 0.471 |
+| DegrainMedian | dgm | u8 | mode=2 | 491.04 | 491.51 | 491.28 | 491.277 | 0.192 |
+| DegrainMedian | zsmooth | u8 | mode=3 | 793.65 | 803.28 | 794.82 | 797.250 | 4.291 |
+| DegrainMedian | dgm | u8 | mode=3 | 517.92 | 518.56 | 518.22 | 518.233 | 0.261 |
+| DegrainMedian | zsmooth | u8 | mode=4 | 786.09 | 787.96 | 787.08 | 787.043 | 0.764 |
+| DegrainMedian | dgm | u8 | mode=4 | 482.95 | 483.01 | 482.96 | 482.973 | 0.026 |
+| DegrainMedian | zsmooth | u8 | mode=5 | 537.6 | 538.23 | 538.09 | 537.973 | 0.270 |
+| DegrainMedian | dgm | u8 | mode=5 | 572.22 | 573.27 | 573.12 | 572.870 | 0.464 |
+| DegrainMedian | zsmooth | u16 | mode=0 | 763.79 | 765.28 | 764.95 | 764.673 | 0.639 |
+| DegrainMedian | dgm | u16 | mode=0 | 85.22 | 85.24 | 85.22 | 85.227 | 0.009 |
+| DegrainMedian | zsmooth | u16 | mode=1 | 325.41 | 325.82 | 325.51 | 325.580 | 0.175 |
+| DegrainMedian | dgm | u16 | mode=1 | 95.98 | 96.06 | 96 | 96.013 | 0.034 |
+| DegrainMedian | zsmooth | u16 | mode=2 | 325.48 | 326.49 | 325.69 | 325.887 | 0.435 |
+| DegrainMedian | dgm | u16 | mode=2 | 110.21 | 110.26 | 110.24 | 110.237 | 0.021 |
+| DegrainMedian | zsmooth | u16 | mode=3 | 332.28 | 332.73 | 332.72 | 332.577 | 0.210 |
+| DegrainMedian | dgm | u16 | mode=3 | 126.54 | 126.61 | 126.55 | 126.567 | 0.031 |
+| DegrainMedian | zsmooth | u16 | mode=4 | 314.04 | 314.97 | 314.49 | 314.500 | 0.380 |
+| DegrainMedian | dgm | u16 | mode=4 | 106.1 | 106.15 | 106.11 | 106.120 | 0.022 |
+| DegrainMedian | zsmooth | u16 | mode=5 | 245.01 | 245.56 | 245.19 | 245.253 | 0.229 |
+| DegrainMedian | dgm | u16 | mode=5 | 162.79 | 162.83 | 162.82 | 162.813 | 0.017 |
+| DegrainMedian | zsmooth | f32 | mode=0 | 368.47 | 371.99 | 371.84 | 370.767 | 1.625 |
+| DegrainMedian | zsmooth | f32 | mode=1 | 140.33 | 148.19 | 141.04 | 143.187 | 3.550 |
+| DegrainMedian | zsmooth | f32 | mode=2 | 145.47 | 147.8 | 147.58 | 146.950 | 1.050 |
+| DegrainMedian | zsmooth | f32 | mode=3 | 141.35 | 155.34 | 148.34 | 148.343 | 5.711 |
+| DegrainMedian | zsmooth | f32 | mode=4 | 139.04 | 145.74 | 143.42 | 142.733 | 2.778 |
+| DegrainMedian | zsmooth | f32 | mode=5 | 176.3 | 181.07 | 178.87 | 178.747 | 1.949 |
+| FluxSmooth | zsmooth | u8 | function=FluxSmoothT | 2908.19 | 2917.16 | 2909.08 | 2911.477 | 4.035 |
+| FluxSmooth | flux | u8 | function=FluxSmoothT | 1532.06 | 1535.22 | 1533.02 | 1533.433 | 1.323 |
+| FluxSmooth | zsmooth | u8 | function=FluxSmoothST | 1559.35 | 1604.26 | 1602.95 | 1588.853 | 20.869 |
+| FluxSmooth | flux | u8 | function=FluxSmoothST | 409.22 | 409.73 | 409.61 | 409.520 | 0.218 |
+| FluxSmooth | zsmooth | u16 | function=FluxSmoothT | 1464.39 | 1464.74 | 1464.58 | 1464.570 | 0.143 |
+| FluxSmooth | flux | u16 | function=FluxSmoothT | 589.59 | 590.52 | 590.33 | 590.147 | 0.401 |
+| FluxSmooth | zsmooth | u16 | function=FluxSmoothST | 746.03 | 747.44 | 746.81 | 746.760 | 0.577 |
+| FluxSmooth | flux | u16 | function=FluxSmoothST | 400.81 | 402.1 | 401.37 | 401.427 | 0.528 |
+| FluxSmooth | zsmooth | f32 | function=FluxSmoothT | 862.46 | 863.71 | 862.57 | 862.913 | 0.565 |
+| FluxSmooth | zsmooth | f32 | function=FluxSmoothST | 549.92 | 550.6 | 550.58 | 550.367 | 0.316 |
+| InterQuartileMean | zsmooth | u8 | radius=1 | 3290.56 | 3362.8 | 3357.17 | 3336.843 | 32.808 |
+| InterQuartileMean | zsmooth | u8 | radius=2 | 622.35 | 625.39 | 625.25 | 624.330 | 1.401 |
+| InterQuartileMean | zsmooth | u8 | radius=3 | 152.6 | 152.78 | 152.62 | 152.667 | 0.081 |
+| InterQuartileMean | zsmooth | u16 | radius=1 | 1152.05 | 1154.28 | 1154.02 | 1153.450 | 0.996 |
+| InterQuartileMean | zsmooth | u16 | radius=2 | 374.22 | 374.35 | 374.29 | 374.287 | 0.053 |
+| InterQuartileMean | zsmooth | u16 | radius=3 | 96.32 | 96.5 | 96.45 | 96.423 | 0.076 |
+| InterQuartileMean | zsmooth | f32 | radius=1 | 844.7 | 848.84 | 847.63 | 847.057 | 1.738 |
+| InterQuartileMean | zsmooth | f32 | radius=2 | 143.35 | 143.43 | 143.37 | 143.383 | 0.034 |
+| InterQuartileMean | zsmooth | f32 | radius=3 | 45.06 | 45.6 | 45.07 | 45.243 | 0.252 |
+| Median | zsmooth | u8 | radius=1 | 6792.74 | 6840.95 | 6823.14 | 6818.943 | 19.904 |
+| Median | std | u8 | radius=1 | 5709.81 | 5838.01 | 5816.91 | 5788.243 | 56.126 |
+| Median | ctmf | u8 | radius=1 | 45.55 | 45.71 | 45.67 | 45.643 | 0.068 |
+| Median | zsmooth | u8 | radius=2 | 1107.57 | 1114.37 | 1110.53 | 1110.823 | 2.784 |
+| Median | ctmf | u8 | radius=2 | 875 | 878.83 | 875.21 | 876.347 | 1.758 |
+| Median | zsmooth | u8 | radius=3 | 246.17 | 246.41 | 246.32 | 246.300 | 0.099 |
+| Median | ctmf | u8 | radius=3 | 45.88 | 45.9 | 45.89 | 45.890 | 0.008 |
+| Median | zsmooth | u16 | radius=1 | 1852.11 | 1870.46 | 1867.5 | 1863.357 | 8.044 |
+| Median | std | u16 | radius=1 | 1734.38 | 1752.32 | 1751.95 | 1746.217 | 8.371 |
+| Median | ctmf | u16 | radius=1 | 0.77 | 0.78 | 0.77 | 0.773 | 0.005 |
+| Median | zsmooth | u16 | radius=2 | 664.53 | 665.71 | 665 | 665.080 | 0.485 |
+| Median | ctmf | u16 | radius=2 | 403.33 | 404.78 | 403.42 | 403.843 | 0.663 |
+| Median | zsmooth | u16 | radius=3 | 161.91 | 162.21 | 162.13 | 162.083 | 0.127 |
+| Median | ctmf | u16 | radius=3 | 0.17 | 0.17 | 0.17 | 0.170 | 0.000 |
+| Median | zsmooth | f32 | radius=1 | 1049.98 | 1056.65 | 1055.77 | 1054.133 | 2.959 |
+| Median | std | f32 | radius=1 | 727.24 | 727.66 | 727.51 | 727.470 | 0.174 |
+| Median | zsmooth | f32 | radius=2 | 211.51 | 212.04 | 211.71 | 211.753 | 0.219 |
+| Median | ctmf | f32 | radius=2 | 146.05 | 146.2 | 146.15 | 146.133 | 0.062 |
+| Median | zsmooth | f32 | radius=3 | 68.92 | 69.99 | 69.92 | 69.610 | 0.489 |
+| RemoveGrain | zsmooth | u8 | mode=1 | 4519.87 | 4530.52 | 4529.53 | 4526.640 | 4.804 |
+| RemoveGrain | rg | u8 | mode=1 | 1401.38 | 1402.59 | 1402.07 | 1402.013 | 0.496 |
+| RemoveGrain | zsmooth | u8 | mode=4 | 3223.08 | 3256.54 | 3250.57 | 3243.397 | 14.571 |
+| RemoveGrain | rg | u8 | mode=4 | 910.28 | 925.77 | 917.57 | 917.873 | 6.327 |
+| RemoveGrain | std | u8 | mode=4 | 5704.08 | 5857.87 | 5741.48 | 5767.810 | 65.487 |
+| RemoveGrain | zsmooth | u8 | mode=12 | 5417.87 | 5470.28 | 5469.66 | 5452.603 | 24.561 |
+| RemoveGrain | rg | u8 | mode=12 | 2389.01 | 2403.9 | 2390.28 | 2394.397 | 6.740 |
+| RemoveGrain | std | u8 | mode=12 | 1995.79 | 2000.02 | 1995.94 | 1997.250 | 1.960 |
+| RemoveGrain | zsmooth | u8 | mode=17 | 4099.58 | 4118.22 | 4103.27 | 4107.023 | 8.059 |
+| RemoveGrain | rg | u8 | mode=17 | 1256.26 | 1259.88 | 1258.83 | 1258.323 | 1.521 |
+| RemoveGrain | zsmooth | u8 | mode=20 | 5436.72 | 5549.63 | 5506.75 | 5497.700 | 46.537 |
+| RemoveGrain | rg | u8 | mode=20 | 774.29 | 775.74 | 775.27 | 775.100 | 0.604 |
+| RemoveGrain | std | u8 | mode=20 | 2000.24 | 2006.5 | 2001.81 | 2002.850 | 2.659 |
+| RemoveGrain | zsmooth | u8 | mode=22 | 5011.94 | 5031.21 | 5029.76 | 5024.303 | 8.762 |
+| RemoveGrain | rg | u8 | mode=22 | 1683.47 | 1693.88 | 1684.58 | 1687.310 | 4.668 |
+| RemoveGrain | zsmooth | u16 | mode=1 | 1843.3 | 1849.78 | 1843.62 | 1845.567 | 2.982 |
+| RemoveGrain | rg | u16 | mode=1 | 1166.63 | 1168.81 | 1167.7 | 1167.713 | 0.890 |
+| RemoveGrain | zsmooth | u16 | mode=4 | 1722.09 | 1726.14 | 1724.15 | 1724.127 | 1.653 |
+| RemoveGrain | rg | u16 | mode=4 | 835.01 | 843.43 | 836.06 | 838.167 | 3.746 |
+| RemoveGrain | std | u16 | mode=4 | 1734.21 | 1751.29 | 1748.66 | 1744.720 | 7.509 |
+| RemoveGrain | zsmooth | u16 | mode=12 | 1735.69 | 1742.04 | 1740.43 | 1739.387 | 2.695 |
+| RemoveGrain | rg | u16 | mode=12 | 1481.29 | 1484.38 | 1482.75 | 1482.807 | 1.262 |
+| RemoveGrain | std | u16 | mode=12 | 1323.91 | 1324.18 | 1323.94 | 1324.010 | 0.121 |
+| RemoveGrain | zsmooth | u16 | mode=17 | 1803.82 | 1811.85 | 1804.82 | 1806.830 | 3.573 |
+| RemoveGrain | rg | u16 | mode=17 | 1119.47 | 1120.38 | 1120.38 | 1120.077 | 0.429 |
+| RemoveGrain | zsmooth | u16 | mode=20 | 1679.45 | 1682.65 | 1681.98 | 1681.360 | 1.378 |
+| RemoveGrain | rg | u16 | mode=20 | 695.26 | 695.86 | 695.78 | 695.633 | 0.266 |
+| RemoveGrain | std | u16 | mode=20 | 1320.29 | 1324.54 | 1323.4 | 1322.743 | 1.796 |
+| RemoveGrain | zsmooth | u16 | mode=22 | 1797.74 | 1816.38 | 1809.27 | 1807.797 | 7.681 |
+| RemoveGrain | rg | u16 | mode=22 | 1440.75 | 1446.74 | 1443.18 | 1443.557 | 2.460 |
+| RemoveGrain | zsmooth | f32 | mode=1 | 807.24 | 808.8 | 808.2 | 808.080 | 0.642 |
+| RemoveGrain | rg | f32 | mode=1 | 213.5 | 213.64 | 213.62 | 213.587 | 0.062 |
+| RemoveGrain | zsmooth | f32 | mode=4 | 682.48 | 693.08 | 686.96 | 687.507 | 4.345 |
+| RemoveGrain | rg | f32 | mode=4 | 64.99 | 65.03 | 64.99 | 65.003 | 0.019 |
+| RemoveGrain | std | f32 | mode=4 | 727.2 | 727.97 | 727.82 | 727.663 | 0.333 |
+| RemoveGrain | zsmooth | f32 | mode=12 | 1133.53 | 1145.79 | 1140.09 | 1139.803 | 5.009 |
+| RemoveGrain | rg | f32 | mode=12 | 341.39 | 342.31 | 342.3 | 342.000 | 0.431 |
+| RemoveGrain | std | f32 | mode=12 | 1139.07 | 1143.32 | 1142.14 | 1141.510 | 1.791 |
+| RemoveGrain | zsmooth | f32 | mode=17 | 896.48 | 941.28 | 904.95 | 914.237 | 19.433 |
+| RemoveGrain | rg | f32 | mode=17 | 191.4 | 191.54 | 191.48 | 191.473 | 0.057 |
+| RemoveGrain | zsmooth | f32 | mode=20 | 1164.5 | 1182.62 | 1166 | 1171.040 | 8.211 |
+| RemoveGrain | rg | f32 | mode=20 | 357.96 | 358.24 | 358.23 | 358.143 | 0.130 |
+| RemoveGrain | std | f32 | mode=20 | 1140.82 | 1144.07 | 1140.84 | 1141.910 | 1.527 |
+| RemoveGrain | zsmooth | f32 | mode=22 | 1124.27 | 1133.5 | 1126.53 | 1128.100 | 3.928 |
+| RemoveGrain | rg | f32 | mode=22 | 158.64 | 158.73 | 158.72 | 158.697 | 0.040 |
+| Repair | zsmooth | u8 | mode=1 | 4279.09 | 4314.86 | 4301.39 | 4298.447 | 14.751 |
+| Repair | rg | u8 | mode=1 | 1222.92 | 1223.66 | 1223.66 | 1223.413 | 0.349 |
+| Repair | zsmooth | u8 | mode=12 | 3017.21 | 3025.96 | 3025.4 | 3022.857 | 3.999 |
+| Repair | rg | u8 | mode=12 | 810.11 | 813.62 | 812.49 | 812.073 | 1.463 |
+| Repair | zsmooth | u8 | mode=13 | 3013.75 | 3024.21 | 3020.57 | 3019.510 | 4.336 |
+| Repair | rg | u8 | mode=13 | 807.9 | 820.44 | 809.24 | 812.527 | 5.622 |
+| Repair | zsmooth | u16 | mode=1 | 1832.1 | 1846.15 | 1839.05 | 1839.100 | 5.736 |
+| Repair | rg | u16 | mode=1 | 1123.57 | 1125.12 | 1124.25 | 1124.313 | 0.634 |
+| Repair | zsmooth | u16 | mode=12 | 1697.8 | 1700.3 | 1699.73 | 1699.277 | 1.070 |
+| Repair | rg | u16 | mode=12 | 775.61 | 777.72 | 776.46 | 776.597 | 0.867 |
+| Repair | zsmooth | u16 | mode=13 | 1699.18 | 1703.51 | 1700.03 | 1700.907 | 1.873 |
+| Repair | rg | u16 | mode=13 | 766.29 | 766.8 | 766.59 | 766.560 | 0.209 |
+| Repair | zsmooth | f32 | mode=1 | 742.76 | 764.29 | 760.63 | 755.893 | 9.406 |
+| Repair | rg | f32 | mode=1 | 191.86 | 192.07 | 191.95 | 191.960 | 0.086 |
+| Repair | zsmooth | f32 | mode=12 | 613.7 | 628.36 | 614.18 | 618.747 | 6.800 |
+| Repair | rg | f32 | mode=12 | 63.34 | 63.43 | 63.4 | 63.390 | 0.037 |
+| Repair | zsmooth | f32 | mode=13 | 614.65 | 637.84 | 635.37 | 629.287 | 10.399 |
+| Repair | rg | f32 | mode=13 | 63.6 | 63.78 | 63.63 | 63.670 | 0.079 |
+| SmartMedian | zsmooth | u8 | radius=1 | 1636.49 | 1642 | 1641.91 | 1640.133 | 2.576 |
+| SmartMedian | zsmooth | u8 | radius=2 | 547.17 | 551.28 | 547.34 | 548.597 | 1.899 |
+| SmartMedian | zsmooth | u8 | radius=3 | 146.01 | 146.15 | 146.13 | 146.097 | 0.062 |
+| SmartMedian | zsmooth | u16 | radius=1 | 925.58 | 926.08 | 925.92 | 925.860 | 0.208 |
+| SmartMedian | zsmooth | u16 | radius=2 | 332.32 | 332.69 | 332.42 | 332.477 | 0.156 |
+| SmartMedian | zsmooth | u16 | radius=3 | 91.82 | 91.95 | 91.85 | 91.873 | 0.056 |
+| SmartMedian | zsmooth | f32 | radius=1 | 846.97 | 848.45 | 847.78 | 847.733 | 0.605 |
+| SmartMedian | zsmooth | f32 | radius=2 | 183.6 | 183.98 | 183.79 | 183.790 | 0.155 |
+| SmartMedian | zsmooth | f32 | radius=3 | 44.22 | 44.24 | 44.24 | 44.233 | 0.009 |
+| TemporalMedian | zsmooth | u8 | radius=1 | 6805.4 | 6849.66 | 6813.6 | 6822.887 | 19.225 |
+| TemporalMedian | tmedian | u8 | radius=1 | 6079 | 6267.17 | 6206.73 | 6184.300 | 78.440 |
+| TemporalMedian | neo_tmedian | u8 | radius=1 | 2324.43 | 2349.2 | 2340.6 | 2338.077 | 10.269 |
+| TemporalMedian | zsmooth | u8 | radius=10 | 960.71 | 969.47 | 968.37 | 966.183 | 3.896 |
+| TemporalMedian | tmedian | u8 | radius=10 | 19.96 | 20.07 | 20.01 | 20.013 | 0.045 |
+| TemporalMedian | neo_tmedian | u8 | radius=10 | 13.85 | 13.87 | 13.86 | 13.860 | 0.008 |
+| TemporalMedian | zsmooth | u16 | radius=1 | 1890.48 | 1893.85 | 1891.92 | 1892.083 | 1.381 |
+| TemporalMedian | tmedian | u16 | radius=1 | 1702.38 | 1710.56 | 1706.98 | 1706.640 | 3.348 |
+| TemporalMedian | neo_tmedian | u16 | radius=1 | 932.1 | 935.57 | 934.25 | 933.973 | 1.430 |
+| TemporalMedian | zsmooth | u16 | radius=10 | 398.04 | 405.86 | 404.83 | 402.910 | 3.469 |
+| TemporalMedian | tmedian | u16 | radius=10 | 17.02 | 17.37 | 17.24 | 17.210 | 0.144 |
+| TemporalMedian | neo_tmedian | u16 | radius=10 | 13.58 | 13.74 | 13.65 | 13.657 | 0.065 |
+| TemporalMedian | zsmooth | f32 | radius=1 | 929.16 | 937.53 | 930.88 | 932.523 | 3.609 |
+| TemporalMedian | tmedian | f32 | radius=1 | 859.42 | 862.04 | 861.72 | 861.060 | 1.167 |
+| TemporalMedian | neo_tmedian | f32 | radius=1 | 473.82 | 475.88 | 474.01 | 474.570 | 0.930 |
+| TemporalMedian | zsmooth | f32 | radius=10 | 195.9 | 196.39 | 196.26 | 196.183 | 0.207 |
+| TemporalMedian | tmedian | f32 | radius=10 | 17.97 | 18.33 | 18.31 | 18.203 | 0.165 |
+| TemporalMedian | neo_tmedian | f32 | radius=10 | 14.45 | 14.49 | 14.49 | 14.477 | 0.019 |
+| TemporalRepair | zsmooth | u8 | mode=0 | 6811.17 | 6864.48 | 6817.66 | 6831.103 | 23.749 |
+| TemporalRepair | zsmooth | u8 | mode=1 | 940.41 | 951.28 | 950.84 | 947.510 | 5.024 |
+| TemporalRepair | zsmooth | u8 | mode=2 | 995.77 | 998.63 | 998.46 | 997.620 | 1.310 |
+| TemporalRepair | zsmooth | u8 | mode=3 | 1064.85 | 1071.13 | 1070.35 | 1068.777 | 2.795 |
+| TemporalRepair | zsmooth | u8 | mode=4 | 6873.6 | 6890.03 | 6883.79 | 6882.473 | 6.772 |
+| TemporalRepair | zsmooth | u16 | mode=0 | 1853.32 | 1859.06 | 1855.19 | 1855.857 | 2.390 |
+| TemporalRepair | zsmooth | u16 | mode=1 | 1057.77 | 1064.13 | 1063.8 | 1061.900 | 2.923 |
+| TemporalRepair | zsmooth | u16 | mode=2 | 975.7 | 991.92 | 977.75 | 981.790 | 7.212 |
+| TemporalRepair | zsmooth | u16 | mode=3 | 946.14 | 973.64 | 952.38 | 957.387 | 11.772 |
+| TemporalRepair | zsmooth | u16 | mode=4 | 1820.11 | 1826.62 | 1821.08 | 1822.603 | 2.868 |
+| TemporalRepair | zsmooth | f32 | mode=0 | 870.13 | 877.09 | 876.78 | 874.667 | 3.210 |
+| TemporalRepair | zsmooth | f32 | mode=1 | 455.85 | 461.24 | 456.65 | 457.913 | 2.375 |
+| TemporalRepair | zsmooth | f32 | mode=2 | 451.01 | 454.14 | 453.95 | 453.033 | 1.433 |
+| TemporalRepair | zsmooth | f32 | mode=3 | 490.3 | 511.37 | 504.05 | 501.907 | 8.734 |
+| TemporalRepair | zsmooth | f32 | mode=4 | 765.78 | 767.45 | 766.95 | 766.727 | 0.700 |
+| TemporalSoften | zsmooth | u8 | radius=1 | 4989.06 | 5029.19 | 5023.43 | 5013.893 | 17.717 |
+| TemporalSoften | focus2 | u8 | radius=1 | 1624.05 | 1637.48 | 1629.71 | 1630.413 | 5.505 |
+| TemporalSoften | std | u8 | radius=1 | 1684.02 | 1684.58 | 1684.5 | 1684.367 | 0.247 |
+| TemporalSoften | zsmooth | u8 | radius=7 | 1215.87 | 1253.4 | 1233.05 | 1234.107 | 15.340 |
+| TemporalSoften | focus2 | u8 | radius=7 | 433.24 | 433.79 | 433.59 | 433.540 | 0.227 |
+| TemporalSoften | std | u8 | radius=7 | 526.82 | 530.3 | 526.87 | 527.997 | 1.629 |
+| TemporalSoften | zsmooth | u16 | radius=1 | 1563.41 | 1566.99 | 1564.33 | 1564.910 | 1.518 |
+| TemporalSoften | focus2 | u16 | radius=1 | 333.98 | 334.24 | 334.14 | 334.120 | 0.107 |
+| TemporalSoften | std | u16 | radius=1 | 836.61 | 877.01 | 843.26 | 852.293 | 17.687 |
+| TemporalSoften | zsmooth | u16 | radius=7 | 516.78 | 519.74 | 518.61 | 518.377 | 1.220 |
+| TemporalSoften | focus2 | u16 | radius=7 | 124.14 | 124.61 | 124.17 | 124.307 | 0.215 |
+| TemporalSoften | std | u16 | radius=7 | 318.4 | 318.69 | 318.52 | 318.537 | 0.119 |
+| TemporalSoften | zsmooth | f32 | radius=1 | 936.62 | 941.2 | 940.14 | 939.320 | 1.958 |
+| TemporalSoften | std | f32 | radius=1 | 613.02 | 628.43 | 614.52 | 618.657 | 6.938 |
+| TemporalSoften | zsmooth | f32 | radius=7 | 273.14 | 275.46 | 274.88 | 274.493 | 0.986 |
+| TemporalSoften | std | f32 | radius=7 | 209.43 | 216.86 | 215.28 | 213.857 | 3.196 |
+| TTempSmooth | zsmooth | u8 | radius=1 threshold=4 mdiff=2 | 457.55 | 458.25 | 457.62 | 457.807 | 0.315 |
+| TTempSmooth | ttmpsm | u8 | radius=1 threshold=4 mdiff=2 | 163.19 | 164.04 | 163.72 | 163.650 | 0.351 |
+| TTempSmooth | zsmooth | u8 | radius=1 threshold=4 mdiff=4 | 1367.19 | 1376.36 | 1373.83 | 1372.460 | 3.867 |
+| TTempSmooth | ttmpsm | u8 | radius=1 threshold=4 mdiff=4 | 196.83 | 197.55 | 197.55 | 197.310 | 0.339 |
+| TTempSmooth | zsmooth | u16 | radius=1 threshold=4 mdiff=2 | 426.38 | 428.86 | 427.42 | 427.553 | 1.017 |
+| TTempSmooth | ttmpsm | u16 | radius=1 threshold=4 mdiff=2 | 152.93 | 155.5 | 155.14 | 154.523 | 1.136 |
+| TTempSmooth | zsmooth | u16 | radius=1 threshold=4 mdiff=4 | 1363.85 | 1365.13 | 1364.36 | 1364.447 | 0.526 |
+| TTempSmooth | ttmpsm | u16 | radius=1 threshold=4 mdiff=4 | 186.5 | 187.31 | 187.05 | 186.953 | 0.338 |
+| TTempSmooth | zsmooth | f32 | radius=1 threshold=4 mdiff=2 | 351.24 | 351.68 | 351.45 | 351.457 | 0.180 |
+| TTempSmooth | ttmpsm | f32 | radius=1 threshold=4 mdiff=2 | 155.03 | 155.66 | 155.08 | 155.257 | 0.286 |
+| TTempSmooth | zsmooth | f32 | radius=1 threshold=4 mdiff=4 | 940.1 | 942.01 | 941.55 | 941.220 | 0.814 |
+| TTempSmooth | ttmpsm | f32 | radius=1 threshold=4 mdiff=4 | 177.7 | 180.07 | 178.65 | 178.807 | 0.974 |
+| VerticalCleaner | zsmooth | u8 | mode=1 | 11356.27 | 11423.94 | 11384.78 | 11388.330 | 27.740 |
+| VerticalCleaner | rg | u8 | mode=1 | 9082.65 | 9680.6 | 9671.67 | 9478.307 | 279.795 |
+| VerticalCleaner | zsmooth | u8 | mode=2 | 9023.06 | 9059.32 | 9058.01 | 9046.797 | 16.793 |
+| VerticalCleaner | rg | u8 | mode=2 | 178.47 | 178.81 | 178.8 | 178.693 | 0.158 |
+| VerticalCleaner | zsmooth | u16 | mode=1 | 2034.62 | 2053.64 | 2036.09 | 2041.450 | 8.640 |
+| VerticalCleaner | rg | u16 | mode=1 | 1735.18 | 1737.93 | 1736.07 | 1736.393 | 1.146 |
+| VerticalCleaner | zsmooth | u16 | mode=2 | 1994.08 | 2003.05 | 1998.36 | 1998.497 | 3.663 |
+| VerticalCleaner | rg | u16 | mode=2 | 182.67 | 182.77 | 182.77 | 182.737 | 0.047 |
+| VerticalCleaner | zsmooth | f32 | mode=1 | 1343.32 | 1357.15 | 1353.98 | 1351.483 | 5.916 |
+| VerticalCleaner | rg | f32 | mode=1 | 1277.59 | 1281.72 | 1278.09 | 1279.133 | 1.840 |
+| VerticalCleaner | zsmooth | f32 | mode=2 | 1055.34 | 1060.41 | 1056.28 | 1057.343 | 2.202 |
+| VerticalCleaner | rg | f32 | mode=2 | 92.22 | 92.25 | 92.25 | 92.240 | 0.014 |
 
 ## 0.10 - Zig 0.14.1 - ARM NEON (aarch64-macos)
 Source: BlankClip YUV420, 1920x1080

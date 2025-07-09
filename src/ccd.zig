@@ -165,7 +165,6 @@ fn CCD(comptime T: type) type {
                 // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
                     // Average the SSD across the number of frames.
-                    // TODO: This likely needs "+ (temporal_diameter/2)" to round integers properly...
                     ssd = if (types.isFloat(T))
                         ssd / temporal_diameter
                     else

@@ -114,6 +114,8 @@ fn CCD(comptime T: type) type {
 
             const F = if (types.isInt(T)) f32 else T;
 
+            const temporal_diameter = temporal_radius * 2 + 1;
+
             const center_r = src[temporal_radius * 3 + 0][row * stride + column];
             const center_g = src[temporal_radius * 3 + 1][row * stride + column];
             const center_b = src[temporal_radius * 3 + 2][row * stride + column];
@@ -124,44 +126,55 @@ fn CCD(comptime T: type) type {
 
             var count: u8 = 0;
 
-            for (0..temporal_radius * 2 + 1) |i| {
-                for (points) |point| {
-                    const y: isize = @as(isize, @intCast(row)) + point[1];
-                    const x: isize = @as(isize, @intCast(column)) + point[0];
+            for (points) |point| {
+                const y: isize = @as(isize, @intCast(row)) + point[1];
+                const x: isize = @as(isize, @intCast(column)) + point[0];
 
-                    const absolute_y: usize = if (mirror) math.mirrorIndex(y, height) else @intCast(y);
-                    const absolute_x: usize = if (mirror) math.mirrorIndex(x, width) else @intCast(x);
+                const absolute_y: usize = if (mirror) math.mirrorIndex(y, height) else @intCast(y);
+                const absolute_x: usize = if (mirror) math.mirrorIndex(x, width) else @intCast(x);
 
-                    const neighbor_r = src[i * 3 + 0][absolute_y * stride + absolute_x];
-                    const neighbor_g = src[i * 3 + 1][absolute_y * stride + absolute_x];
-                    const neighbor_b = src[i * 3 + 2][absolute_y * stride + absolute_x];
+                const current_neighbor_r = src[temporal_radius * 3 + 0][absolute_y * stride + absolute_x];
+                const current_neighbor_g = src[temporal_radius * 3 + 1][absolute_y * stride + absolute_x];
+                const current_neighbor_b = src[temporal_radius * 3 + 2][absolute_y * stride + absolute_x];
 
-                    const diff_r: BSAT = lossyCast(BSAT, neighbor_r) - center_r;
-                    const diff_g: BSAT = lossyCast(BSAT, neighbor_g) - center_g;
-                    const diff_b: BSAT = lossyCast(BSAT, neighbor_b) - center_b;
+                var ssd: BUAT = 0;
+
+                for (0..temporal_diameter) |i| {
+                    const temporal_neighbor_r = src[i * 3 + 0][absolute_y * stride + absolute_x];
+                    const temporal_neighbor_g = src[i * 3 + 1][absolute_y * stride + absolute_x];
+                    const temporal_neighbor_b = src[i * 3 + 2][absolute_y * stride + absolute_x];
+
+                    const diff_r: BSAT = lossyCast(BSAT, temporal_neighbor_r) - center_r;
+                    const diff_g: BSAT = lossyCast(BSAT, temporal_neighbor_g) - center_g;
+                    const diff_b: BSAT = lossyCast(BSAT, temporal_neighbor_b) - center_b;
 
                     // sum of squared differences
-                    var ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
+                    const frame_ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
 
-                    // temporal weight ssd (greater differences in temporal neighbors will be tolerated)
-                    // to be honest, I'm not entirely sure I like this approach, but its what vsjetpack's CCD does.
-                    ssd = if (types.isFloat(T))
-                        ssd * @as(T, @floatCast(weights[i]))
+                    ssd += if (types.isFloat(T))
+                        frame_ssd * lossyCast(F, weights[i])
                     else
-                        @intFromFloat(@round(@as(f32, @floatFromInt(ssd)) * weights[i]));
+                        @intFromFloat(@round(lossyCast(f32, frame_ssd) * weights[i]));
+                }
 
-                    if (ssd < threshold) {
-                        total_r += neighbor_r;
-                        total_g += neighbor_g;
-                        total_b += neighbor_b;
-                        count += 1;
-                    }
+                // Average the SSD across the number of frames.
+                if (temporal_radius > 0) {
+                    // using a branch to avoid expensive integer division
+                    // when temporal_radius = 0
+                    ssd  = ssd / lossyCast(T, temporal_diameter);
+                }
+
+                if (ssd < threshold) {
+                    total_r += current_neighbor_r;
+                    total_g += current_neighbor_g;
+                    total_b += current_neighbor_b;
+                    count += 1;
                 }
             }
 
-            var calculated_r: F = lossyCast(F, total_r) * (1.0 / (lossyCast(F, count) + 1.0));
-            var calculated_g: F = lossyCast(F, total_g) * (1.0 / (lossyCast(F, count) + 1.0));
-            var calculated_b: F = lossyCast(F, total_b) * (1.0 / (lossyCast(F, count) + 1.0));
+            var calculated_r: F = lossyCast(F, total_r) / (lossyCast(F, count) + 1.0);
+            var calculated_g: F = lossyCast(F, total_g) / (lossyCast(F, count) + 1.0);
+            var calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + 1.0);
 
             if (types.isInt(T)) {
                 // Round int formats before we cast back.
@@ -434,8 +447,6 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     // Assign frame_data to nothing to stop compiler complaints
     _ = frame_data;
 
-    //TODO: Consider making srcp uncapped in terms of temporal radius.
-
     const zapi = ZAPI.init(vsapi, core);
     const d: *CCDData = @ptrCast(@alignCast(instance_data));
 
@@ -515,10 +526,6 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     const zapi = ZAPI.init(vsapi, core);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
-    //
-    // TODO:
-    // 2. Add temporal support.
-    // 3. Add different points support.
 
     var d: CCDData = undefined;
 

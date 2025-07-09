@@ -12,11 +12,12 @@ differences found. Note that float formats might be slightly incorrect due to th
 to remove said clamping in the future.
 * Add CCD (CamCorderDenoise), modeled off of a mix of two other implementations (`vs-jetpack` and EndOfEternity's plugin).
 Note that the spatial-only output is identical to `vs-jetpack`, but the temporal output (`temporal_radius > 0`) is
-*similar* to `vs-jetpack` but not exactly the same. The algorithms should be producing identical output with
+*similar* to `vs-jetpack` but not exactly the same. ~~The algorithms should be producing identical output with
 `temporal_radius = 3` (other radii are different due to modifications I made to support wider radii than `vs-jetpack`).
 I'm honestly not sure why. The approaches should be effectively identical, but I may have misunderstood the Expr-foo that vs-jetpack's version engages in. Or it's all due to rounding
 differences, but I think the changes are too great to be the result of just rounding differences. Still, we're 20-30x
-faster than `vs-jetpack`.
+faster than `vs-jetpack`.~~ Update: In further testing, it actually looks like my implementation is preserving more
+detail, sometimes substantially so, particularly around edges or high contrast areas. There might be a bug in `vs-jetpack`'s version...
 
 ## 0.11
 * Fix default radius for InterQuartileMean and Median.

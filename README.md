@@ -22,6 +22,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
 
 ## Table of Contents
 * [Function Documentation](#function-documentation)
+  * [CCD](#ccd)
   * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
   * [DegrainMedian](#degrainmedian)
   * [FluxSmooth(S|ST)](#fluxsmoothsst)
@@ -31,6 +32,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
   * [Repair](#repair)
   * [Smart Median](#smart-median)
   * [Temporal Median](#temporal-median)
+  * [Temporal Repair](#temporal-repair)
   * [Temporal Soften](#temporal-soften)
   * [TTempSmooth](#ttempsmooth)
   * [VerticalCleaner](#verticalcleaner)
@@ -40,6 +42,66 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
 * [References](#references)
 
 ## Function Documentation
+### CCD
+CCD, aka CamCorder Denoise, is an excellent chroma denoiser originally written by 
+Sergey Stolyarevsky for VirtualDub.
+
+It's a chroma denoiser that works great on old sources such as VHSes and DVDs.
+
+CCD works as a convolution (weighted average) of near pixels governed by the `ref_points` and `scale` parameters.
+
+If the Euclidean distance between the RGB values of the center pixel and a given pixel in the convolution
+matrix is less than the threshold, then this pixel is considered in the average. 
+
+After denoising, the clip should be converted back to YUV / YCoCg, and the luma channel should
+be copied from the input. This plugin only denoises, it does no YUV->RGB->YUV conversion nor luma copying.
+
+```py
+core.zsmooth.CCD(clip clip, [float threshold = 4, int temporal_radius = 0, scale = auto, points=[True, True, False]])
+```
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, RGB | | Clip to process |
+| threshold | float | 0-inf (4) | Euclidean distance threshold for including pixels in the convolution. Higher values result in more denoising. Automatically scaled to all bit depths internally. |
+| temporal_radius | int | 0-10 (0) | Temporal radius of processing. Higher values result in more denoising. |
+| points | bool[3] | ([True, True, False]) | Specifies whether to use the low, medium, or high reference points (or any combination), respectively, in the processing matrix. See the note on points below for more information. The default uses the low and medium, but excludes the high points. Feel free to adjust based on your source. |
+| scale | float | 0-inf (auto) | Multiplier for the size of the matrix. `scale=1` corresponds with a 25x25 matrix (just like the original CCD implementation by Sergey). `scale=2` is a 50x50 matrix, and so on. The default is automatic, which calculates a multiplier based off of the source height, as the original CCD was implemented for 240p content. It's recommended to use the auto calculation and/or adjust `points` to suit your source |
+
+#### Points
+This implementation of CCD supports a configurable set of reference points in the NxN matrix (25x25 for `scale=1`).
+
+Using a 25x25 matrix as an example, low, medium, and high reference points (roughly) correspond to a spatial radius
+of 4, 8, and 12 pixels, respectively.
+
+Graph of all the points:
+
+x => center pixel
+^ => low
+' => medium
+° => high
+```
+°     °     °     °
+   '     '     '
+°     ^     ^     °
+   '     x     '
+°     ^     ^     °
+   '     '     '
+°     °     °     °
+```
+
+#### Implementation Note
+This implementation of CCD is heavily inspired by End-of-Eternity's and `vs-jetpack`'s corresponding 
+implementations, particularly the latter. Many many thanks to those authors.
+
+Output is identical to `vs-jetpack` in spatial only mode (`temporal_radius = 0`). Output differs from 
+the current version of `vs-jetpack` when temporal processing is engaged. In my testing, Zsmooth's implementation
+retains more detail the `vs-jetpack`'s, almost to the degree that it seems like `vs-jetpack`'s version has a bug.
+
+Also note that Zsmooth's `scale` param behaves differently that `vs-jetpack`'s. `vs-jetpack`'s `scale=0` is equivalent
+to Zsmooth's `scale=1`, which results in the use of the original 25x25 matrix. `vs-jetpack`'s `scale=1` is equivalent 
+to Zsmooth's auto scale (or `scale=None`), which computes a scale based on the input height. `scale > 1` behaves the
+same for both.
+
 ### Clense / ForwardClense / BackwardClense
 
 Clense is a temporal median of three frames. (previous, current and next)
@@ -535,6 +597,8 @@ without the hard work of their authors.
 * Neo Temporal Median: https://github.com/HomeOfAviSynthPlusEvolution/neo_TMedian
 * Vapoursynth FluxSmooth: https://github.com/dubhater/vapoursynth-fluxsmooth/
 * Dogway's `ex_median` functions: https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L2456
+* End-of-Eternity's CCD implementation: https://github.com/End-of-Eternity/vs-ccd
+* `vs-jetpack`'s CCD implementation: https://github.com/Jaded-Encoding-Thaumaturgy/vs-jetpack/blob/e0f47d86930150fd0bf92b0845ccc2b0491f7807/vsdenoise/ccd.py#L95
 
 ## 1.0 Release TODO
 Things to do for the 1.0 release

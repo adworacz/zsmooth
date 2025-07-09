@@ -571,6 +571,13 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         return;
     }
 
+
+    if ((inz.numElements("points") orelse 3) != 3) {
+        outz.setError("CCD: The points array must have 3 boolean elements.");
+        zapi.freeNode(d.node);
+        return;
+    }
+
     const low, const medium, const high = .{
         inz.getBool2("points", 0) orelse true, // low
         inz.getBool2("points", 1) orelse true, // medium
@@ -627,5 +634,5 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;temporal_radius:int:opt;scale:float:opt;points:int[]:opt;", "clip:vnode;", ccdCreate, null, plugin);
+    _ = vsapi.registerFunction.?("CCD", "clip:vnode;threshold:float:opt;temporal_radius:int:opt;points:int[]:opt;scale:float:opt;", "clip:vnode;", ccdCreate, null, plugin);
 }

@@ -5,13 +5,13 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-threshold = 20 
+threshold = 100
 length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    temporal_radius = 0
+    temporal_radius = 3
     # format = 'u8'
 
 # Handle strings passed in by vspipe args.
@@ -29,7 +29,8 @@ match format:
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         # clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
-        clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
+        # clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
+        clip = core.bs.VideoSource("/home/adub/Videos/test.mp4")
         from vstools import initialize_clip
         clip = initialize_clip(clip)
         # clip = clip.resize.Point(format=vs.RGB24)

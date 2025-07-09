@@ -43,7 +43,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
 
 ## Function Documentation
 ### CCD
-CCD, aka CamCorder Denoise, is an excellent chroma denoiser originally written by 
+CCD, aka Camcorder Color Denoiser, is an excellent chroma denoiser originally written by 
 Sergey Stolyarevsky for VirtualDub.
 
 It's a chroma denoiser that works great on old sources such as VHSes and DVDs.

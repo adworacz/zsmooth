@@ -97,7 +97,6 @@ const CCDData = struct {
 
 fn CCD(comptime T: type) type {
     const diameter = 25;
-    const radius = diameter / 2;
 
     const vector_len = vec.getVecSize(T);
     const VT = @Vector(vector_len, T);
@@ -340,10 +339,6 @@ fn CCD(comptime T: type) type {
         // }
 
         fn processPlanesVector(threshold: BUAT, scale: f32, points: []const Point, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
-            // We make some assumptions in this code in order to make processing with vectors simpler.
-            std.debug.assert(width >= vector_len);
-            std.debug.assert(radius < vector_len);
-
             const scaled_diameter: usize = @intFromFloat(@round(diameter * scale));
             const scaled_radius: usize = scaled_diameter / 2;
             const width_simd = (width - scaled_radius) / vector_len * vector_len;

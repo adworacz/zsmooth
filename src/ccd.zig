@@ -77,7 +77,7 @@ test less_than_points {
 // specifically the filter data between the Create and GetFrame functions.
 const allocator = std.heap.c_allocator;
 
-const MAX_TEMPORAL_RADIUS = 5;
+const MAX_TEMPORAL_RADIUS = 10;
 const MAX_TEMPORAL_DIAMETER = MAX_TEMPORAL_RADIUS * 2 + 1;
 // number of planes involved to hold all frames in the temporal radius.
 const MAX_TEMPORAL_DIAMETER_PLANES = MAX_TEMPORAL_DIAMETER * 3;
@@ -533,14 +533,11 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     d.temporal_radius = inz.getInt(u8, "temporal_radius") orelse 0;
 
     if (d.temporal_radius > MAX_TEMPORAL_RADIUS) {
-        outz.setError("CCD: temporal radius must be less than 5");
+        outz.setError("CCD: temporal radius must be less than 10");
         return;
     }
 
     // Weight temporal neighbors.
-    // Similar (but not identical to) vsjetpack's CCD implementation.
-    // They unevenly weight backwards vs forward frames. I'm not sure why.
-    // I've gone with even weights for now.
     // https://github.com/Jaded-Encoding-Thaumaturgy/vs-jetpack/blob/b524ceb8760b03fd13bad2bf08ca42369459f788/vsdenoise/ccd.py#L241
     for (0..d.temporal_radius) |r| {
         const tr: f32 = @floatFromInt(d.temporal_radius);

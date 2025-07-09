@@ -531,6 +531,12 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     d.node, d.vi = inz.getNodeVi("clip").?;
 
+    if (d.vi.format.colorFamily != vs.ColorFamily.RGB) {
+        outz.setError("CCD: only RGB color formats are supported");
+        zapi.freeNode(d.node);
+        return;
+    }
+
     const format_max = vscmn.getFormatMaximum(f32, d.vi.format, false);
 
     d.threshold = inz.getFloat(f32, "threshold") orelse 4;
@@ -541,6 +547,7 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     if (d.temporal_radius > MAX_TEMPORAL_RADIUS) {
         outz.setError("CCD: temporal radius must be less than 10");
+        zapi.freeNode(d.node);
         return;
     }
 
@@ -560,6 +567,7 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     if (d.scale < 1.0) {
         outz.setError("CCD: scale must be greater than or equal to 1.0");
+        zapi.freeNode(d.node);
         return;
     }
 
@@ -573,6 +581,7 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     if (points_len == 0) {
         outz.setError("CCD: A minimum of one set of points must be used.");
+        zapi.freeNode(d.node);
         return;
     }
 

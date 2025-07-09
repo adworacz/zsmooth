@@ -151,16 +151,21 @@ fn CCD(comptime T: type) type {
                     // sum of squared differences
                     const frame_ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
 
-                    ssd += if (types.isFloat(T))
-                        frame_ssd * lossyCast(F, weights[i])
-                    else
-                        @intFromFloat(@round(lossyCast(f32, frame_ssd) * weights[i]));
+                    if (temporal_radius == 0) {
+                        // optimization: Bypass weight calculation for temporal_radius 0 (spatial only),
+                        // since we know that the weight is always 1. This avoids a lookup, multiplication, and casting.
+                        ssd += frame_ssd;
+                    } else {
+                        ssd += if (types.isFloat(T))
+                            frame_ssd * lossyCast(F, weights[i])
+                        else
+                            @intFromFloat(@round(lossyCast(f32, frame_ssd) * weights[i]));
+                    }
                 }
 
-                // Average the SSD across the number of frames.
+                // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
-                    // using a branch to avoid expensive integer division
-                    // when temporal_radius = 0
+                    // Average the SSD across the number of frames.
                     ssd = ssd / lossyCast(T, temporal_diameter);
                 }
 
@@ -206,8 +211,8 @@ fn CCD(comptime T: type) type {
             const temporal_diameter = temporal_radius * 2 + 1;
 
             const one: @Vector(vector_len, u8) = @splat(1);
-            const zero: @Vector(vector_len, T) = @splat(0);
-            const vtemporal_diameter: @Vector(vector_len, T) = @splat(lossyCast(T, temporal_diameter));
+            const zero: VT = @splat(0);
+            const vtemporal_diameter: VT = @splat(lossyCast(T, temporal_diameter));
 
             const center_r = vec.load(VT, src[temporal_radius * 3 + 0], row * stride + column);
             const center_g = vec.load(VT, src[temporal_radius * 3 + 1], row * stride + column);
@@ -241,18 +246,23 @@ fn CCD(comptime T: type) type {
                     // sum of squared differences
                     const frame_ssd: VBUAT = lossyCast(VBUAT, diff_r * diff_r) + lossyCast(VBUAT, diff_g * diff_g) + lossyCast(VBUAT, diff_b * diff_b);
 
-                    // Add the weighted SSD to the total SSD.
-                    const weight: F = @splat(@floatCast(weights[i]));
-                    ssd += if (types.isFloat(T))
-                        frame_ssd * weight
-                    else
-                        @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd)) * weight));
+                    if (temporal_radius == 0) {
+                        // optimization: Bypass weight calculation for temporal_radius 0 (spatial only),
+                        // since we know that the weight is always 1. This avoids a lookup, multiplication, and casting.
+                        ssd += frame_ssd;
+                    } else {
+                        // Add the weighted SSD to the total SSD.
+                        const weight: F = @splat(@floatCast(weights[i]));
+                        ssd += if (types.isFloat(T))
+                            frame_ssd * weight
+                        else
+                            @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd)) * weight));
+                    }
                 }
 
-                // Average the SSD across the number of frames.
+                //optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
-                    // using a branch to avoid expensive integer division
-                    // when temporal_radius = 0
+                    // Average the SSD across the number of frames.
                     ssd = ssd / vtemporal_diameter;
                 }
 

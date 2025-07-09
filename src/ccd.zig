@@ -109,7 +109,7 @@ fn CCD(comptime T: type) type {
     const VBUAT = @Vector(vector_len, BUAT);
 
     return struct {
-        fn ccdScalar(comptime mirror: bool, threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { T, T, T } {
+        fn ccdScalar(comptime mirror: bool, threshold: BUAT, points: []const Point, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, row: usize, column: usize, width: usize, height: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { T, T, T } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) f32 else T;
@@ -161,7 +161,7 @@ fn CCD(comptime T: type) type {
                 if (temporal_radius > 0) {
                     // using a branch to avoid expensive integer division
                     // when temporal_radius = 0
-                    ssd  = ssd / lossyCast(T, temporal_diameter);
+                    ssd = ssd / lossyCast(T, temporal_diameter);
                 }
 
                 if (ssd < threshold) {
@@ -196,7 +196,7 @@ fn CCD(comptime T: type) type {
         }
 
         // Only handles non-mirrored content, since mirroring is much more difficult to implement for vectors.
-        fn ccdVector(_threshold: BUAT, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, _format_max: T, row: usize, column: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { VT, VT, VT } {
+        fn ccdVector(_threshold: BUAT, points: []const Point, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, _format_max: T, row: usize, column: usize, stride: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T) struct { VT, VT, VT } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
@@ -343,7 +343,7 @@ fn CCD(comptime T: type) type {
         //     }
         // }
 
-        fn processPlanesVector(threshold: BUAT, scale: f32, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+        fn processPlanesVector(threshold: BUAT, scale: f32, points: []const Point, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // We make some assumptions in this code in order to make processing with vectors simpler.
             std.debug.assert(width >= vector_len);
             std.debug.assert(radius < vector_len);
@@ -438,7 +438,10 @@ fn CCD(comptime T: type) type {
 
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
 
-            processPlanesVector(threshold, scale, points, temporal_radius, weights, format_max, srcp, dstp, width, height, stride);
+            switch (temporal_radius) {
+                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(threshold, scale, points, r, weights, format_max, srcp, dstp, width, height, stride),
+                else => unreachable,
+            }
         }
     };
 }
@@ -570,7 +573,6 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         zapi.freeNode(d.node);
         return;
     }
-
 
     if ((inz.numElements("points") orelse 3) != 3) {
         outz.setError("CCD: The points array must have 3 boolean elements.");

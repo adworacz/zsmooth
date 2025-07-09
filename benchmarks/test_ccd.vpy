@@ -5,13 +5,13 @@ core.max_cache_size = 1024
 core.num_threads = 1
 
 # format = 'u8'
-threshold = 100
+threshold = 20
 length = 30000
 
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    temporal_radius = 3
+    temporal_radius = 0
     # format = 'u8'
 
 # Handle strings passed in by vspipe args.

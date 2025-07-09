@@ -165,9 +165,12 @@ fn CCD(comptime T: type) type {
                 // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
                     // Average the SSD across the number of frames.
-                    // TODO: optimize this division using the "multiply by reciprocal" technique. See TemporalSoften for an example.
                     // TODO: This likely needs "+ (temporal_diameter/2)" to round integers properly...
-                    ssd = ssd / lossyCast(T, temporal_diameter);
+                    ssd = if (types.isFloat(T))
+                        ssd / temporal_diameter
+                    else
+                        // + (temporal_diameter / 2) to round integers properly.
+                        (ssd + (temporal_diameter / 2)) / temporal_diameter;
                 }
 
                 if (ssd < threshold) {
@@ -178,9 +181,9 @@ fn CCD(comptime T: type) type {
                 }
             }
 
-            const calculated_r: F = lossyCast(F, total_r) / (lossyCast(F, count) + 1.0);
-            const calculated_g: F = lossyCast(F, total_g) / (lossyCast(F, count) + 1.0);
-            const calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + 1.0);
+            const calculated_r: F = lossyCast(F, total_r) / lossyCast(F, count + 1);
+            const calculated_g: F = lossyCast(F, total_g) / lossyCast(F, count + 1);
+            const calculated_b: F = lossyCast(F, total_b) / lossyCast(F, count + 1);
 
             return if (types.isFloat(T)) .{
                 calculated_r,
@@ -206,7 +209,8 @@ fn CCD(comptime T: type) type {
 
             const one: @Vector(vector_len, u8) = @splat(1);
             const zero: VT = @splat(0);
-            const vtemporal_diameter: VT = @splat(lossyCast(T, temporal_diameter));
+            const vtemporal_diameter: VT = @splat(temporal_diameter);
+            const vhalf_temporal_diameter: VT = @splat(temporal_diameter / 2);
 
             const center_r = vec.load(VT, src[temporal_radius * 3 + 0], row * stride + column);
             const center_g = vec.load(VT, src[temporal_radius * 3 + 1], row * stride + column);
@@ -257,7 +261,11 @@ fn CCD(comptime T: type) type {
                 //optimization: using a branch to avoid expensive integer division when temporal_radius = 0
                 if (temporal_radius > 0) {
                     // Average the SSD across the number of frames.
-                    ssd = ssd / vtemporal_diameter;
+                    ssd = if (types.isFloat(T))
+                        ssd / vtemporal_diameter
+                    else
+                        // + (temporal_diameter / 2) for proper integer rounding
+                        (ssd + vhalf_temporal_diameter) / vtemporal_diameter;
                 }
 
                 const ssd_lt_threshold = ssd < threshold;
@@ -267,10 +275,9 @@ fn CCD(comptime T: type) type {
                 count = @select(u8, ssd_lt_threshold, count + one, count);
             }
 
-            const one_point_zero: F = @splat(1.0);
-            const calculated_r: F = lossyCast(F, total_r) / (lossyCast(F, count) + one_point_zero);
-            const calculated_g: F = lossyCast(F, total_g) / (lossyCast(F, count) + one_point_zero);
-            const calculated_b: F = lossyCast(F, total_b) / (lossyCast(F, count) + one_point_zero);
+            const calculated_r: F = lossyCast(F, total_r) / lossyCast(F, count + one);
+            const calculated_g: F = lossyCast(F, total_g) / lossyCast(F, count + one);
+            const calculated_b: F = lossyCast(F, total_b) / lossyCast(F, count + one);
 
             return if (types.isFloat(T)) .{
                 calculated_r,

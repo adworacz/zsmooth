@@ -271,12 +271,12 @@ CPU tuning: AVX512 (znver4)
 
 | Filter | Plugin | Format | Args | Min | Max | Median | Average | Standard Deviation |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| CCD | zsmooth | u8 | temporal_radius=0 | 269.66 | 270.61 | 270.32 | 270.197 | 0.398 |
-| CCD | zsmooth | u8 | temporal_radius=3 | 50.22 | 50.56 | 50.43 | 50.403 | 0.140 |
-| CCD | zsmooth | u16 | temporal_radius=0 | 196.22 | 198.78 | 197.09 | 197.363 | 1.063 |
-| CCD | zsmooth | u16 | temporal_radius=3 | 19.36 | 19.44 | 19.39 | 19.397 | 0.033 |
-| CCD | zsmooth | f32 | temporal_radius=0 | 208.94 | 209.81 | 209.2 | 209.317 | 0.365 |
-| CCD | zsmooth | f32 | temporal_radius=3 | 32.8 | 32.88 | 32.85 | 32.843 | 0.033 |
+| CCD | zsmooth | u8 | temporal_radius=0 | 270.31 | 270.58 | 270.56 | 270.483 | 0.123 |
+| CCD | zsmooth | u8 | temporal_radius=3 | 49.54 | 49.76 | 49.65 | 49.650 | 0.090 |
+| CCD | zsmooth | u16 | temporal_radius=0 | 199.03 | 199.31 | 199.22 | 199.187 | 0.117 |
+| CCD | zsmooth | u16 | temporal_radius=3 | 19.32 | 19.34 | 19.32 | 19.327 | 0.009 |
+| CCD | zsmooth | f32 | temporal_radius=0 | 209.98 | 211.24 | 211.12 | 210.780 | 0.568 |
+| CCD | zsmooth | f32 | temporal_radius=3 | 32.6 | 32.81 | 32.7 | 32.703 | 0.086 |
 | CCD | ccd | f32 | temporal_radius=0 | 28.54 | 28.63 | 28.62 | 28.597 | 0.040 |
 | CCD | jetpack | f32 | temporal_radius=0 | 3.61 | 3.61 | 3.61 | 3.610 | 0.000 |
 | Clense | zsmooth | u8 | function=Clense | 6874.49 | 6890.61 | 6886.11 | 6883.737 | 6.792 |

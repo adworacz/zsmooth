@@ -163,6 +163,8 @@ fn CCD(comptime T: type) type {
                 }
 
                 // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
+                // TODO: This branching might not be needed any more, since temporal diameter is comptime known now,
+                // so the compiler should remove it... test without the branch, speeds should be identical.
                 if (temporal_radius > 0) {
                     // Average the SSD across the number of frames.
                     ssd = if (types.isFloat(T))

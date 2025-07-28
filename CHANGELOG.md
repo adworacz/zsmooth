@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13
+* TBD
+
 ## 0.12
 * Migrate Median and InterQuartileMean to ZAPI and compartmentalized filter modules to reduce binary
 size, improve compatibility, and surprisingly slightly improve performance.

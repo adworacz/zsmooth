@@ -1,8 +1,22 @@
 const std = @import("std");
+const x86 = std.Target.x86;
 
 pub const min_zig_version = std.SemanticVersion{ .major = 0, .minor = 14, .patch = 0 };
 
-pub fn build(b: *std.Build) void {
+const targets = [_]std.Target.Query{
+    .{ .os_tag = .macos, .cpu_arch = .aarch64 },
+    .{ .os_tag = .macos, .cpu_arch = .x86_64 },
+    .{ .os_tag = .linux, .cpu_arch = .aarch64, .abi = .gnu },
+    .{ .os_tag = .linux, .cpu_arch = .aarch64, .abi = .musl },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 }, .abi = .gnu },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 }, .abi = .musl },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .abi = .gnu },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .abi = .musl },
+    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 } },
+    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 } },
+};
+
+pub fn build(b: *std.Build) !void {
     ensureZigVersion() catch return;
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -11,7 +25,12 @@ pub fn build(b: *std.Build) void {
     const options = b.addOptions();
     options.addOption(bool, "optimize_float", optimize_float);
 
-    const lib = b.addSharedLibrary(.{
+    const vapoursynth_dep = b.dependency("vapoursynth", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const zsmooth_options: std.Build.SharedLibraryOptions = .{
         .name = "zsmooth",
         .root_source_file = b.path("src/zsmooth.zig"),
         .target = target,
@@ -27,22 +46,47 @@ pub fn build(b: *std.Build) void {
         // in which case setting this value will optimize out any threading
         // or locking constructs.
         .single_threaded = true,
-    });
+    };
 
-    const vapoursynth_dep = b.dependency("vapoursynth", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    const lib = b.addSharedLibrary(zsmooth_options);
 
     lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
     lib.root_module.addOptions("config", options);
+    lib.root_module.strip = lib.root_module.optimize == .ReleaseFast; //Strip debug symbols in ReleaseFast.
     lib.linkLibC(); // Necessary to use the C memory allocator.
 
-    if (lib.root_module.optimize == .ReleaseFast) {
-        lib.root_module.strip = true;
-    }
-
     b.installArtifact(lib);
+
+    // Release (build all platforms)
+    const release = b.step("release", "Build release artifacts for all supported platforms");
+    for (targets) |t| {
+        var opts = zsmooth_options;
+        opts.target = b.resolveTargetQuery(t);
+        const release_lib = b.addSharedLibrary(opts);
+
+        release_lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
+        release_lib.root_module.addOptions("config", options);
+        release_lib.root_module.strip = release_lib.root_module.optimize == .ReleaseFast;
+        release_lib.linkLibC(); // Necessary to use the C memory allocator.
+
+        const cpu_model_name = switch(t.cpu_model){
+            .baseline => "baseline",
+            .determined_by_arch_os => "default",
+            .native => "native",
+            .explicit => t.cpu_model.explicit.name,
+        };
+        const output_dir = try std.fmt.allocPrint(b.allocator, "{s}-{s}", .{ try t.zigTriple(b.allocator), cpu_model_name });
+
+        const target_output = b.addInstallArtifact(release_lib, .{
+            .dest_dir = .{ //
+                .override = .{ //
+                    .custom = output_dir,
+                },
+            },
+        });
+
+        release.dependOn(&target_output.step);
+    }
 
     // Test setup
     // Creates a step for unit testing. This only builds the test executable

@@ -30,15 +30,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const zsmooth_options: std.Build.SharedLibraryOptions = .{
-        .name = "zsmooth",
+    const root_module = b.createModule(.{
         .root_source_file = b.path("src/zsmooth.zig"),
         .target = target,
         .optimize = optimize,
-
-        // Improve build times by giving an upper bound to memory,
-        // thus enabling multi-threaded builds.
-        .max_rss = 1024 * 1024 * 1024 * 2, // 2GB
 
         // This application is single threaded (as VapourSynth handles the threading for us)
         // so might as well mark it so in case we ever import data
@@ -46,9 +41,19 @@ pub fn build(b: *std.Build) !void {
         // in which case setting this value will optimize out any threading
         // or locking constructs.
         .single_threaded = true,
+    });
+
+    // const zsmooth_options: std.Build.SharedLibraryOptions = .{
+    const zsmooth_options: std.Build.LibraryOptions = .{
+        .name = "zsmooth",
+        .root_module = root_module,
+
+        // Improve build times by giving an upper bound to memory,
+        // thus enabling multi-threaded builds.
+        .max_rss = 1024 * 1024 * 1024 * 2, // 2GB
     };
 
-    const lib = b.addSharedLibrary(zsmooth_options);
+    const lib = b.addLibrary(zsmooth_options);
 
     lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
     lib.root_module.addOptions("config", options);
@@ -61,15 +66,15 @@ pub fn build(b: *std.Build) !void {
     const release = b.step("release", "Build release artifacts for all supported platforms");
     for (targets) |t| {
         var opts = zsmooth_options;
-        opts.target = b.resolveTargetQuery(t);
-        const release_lib = b.addSharedLibrary(opts);
+        opts.root_module.resolved_target = b.resolveTargetQuery(t);
+        const release_lib = b.addLibrary(opts);
 
         release_lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
         release_lib.root_module.addOptions("config", options);
         release_lib.root_module.strip = release_lib.root_module.optimize == .ReleaseFast;
         release_lib.linkLibC(); // Necessary to use the C memory allocator.
 
-        const cpu_model_name = switch(t.cpu_model){
+        const cpu_model_name = switch (t.cpu_model) {
             .baseline => "baseline",
             .determined_by_arch_os => "default",
             .native => "native",
@@ -92,9 +97,7 @@ pub fn build(b: *std.Build) !void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/zsmooth.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = root_module,
     });
     lib_unit_tests.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
     lib_unit_tests.root_module.addOptions("config", options);

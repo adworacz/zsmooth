@@ -11,6 +11,7 @@ const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) 
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
+const ZAPI = vapoursynth.ZAPI;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -32,10 +33,13 @@ const TemporalMedianData = struct {
     vi: *const vs.VideoInfo,
 
     // The temporal radius from which we'll build a median.
-    radius: i8,
+    radius: u8,
 
     // Which planes we will process.
     process: [3]bool,
+
+    // Whether to enable scene change handling.
+    scenechange: bool,
 };
 
 fn TemporalMedian(comptime T: type) type {
@@ -43,7 +47,7 @@ fn TemporalMedian(comptime T: type) type {
     const VecType = @Vector(vec_size, T);
 
     return struct {
-        fn processPlaneScalar(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn processPlaneScalar(comptime diameter: u8, from_frame_idx: u8, to_frame_idx: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             @setFloatMode(float_mode);
 
             var temp: [diameter]T = undefined;
@@ -52,7 +56,7 @@ fn TemporalMedian(comptime T: type) type {
                 for (0..width) |column| {
                     const current_pixel = row * stride + column;
 
-                    for (0..@intCast(diameter)) |i| {
+                    for (from_frame_idx..to_frame_idx + 1) |i| {
                         temp[i] = srcp[i][current_pixel];
                     }
 
@@ -66,20 +70,20 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
+        fn processPlaneVector(comptime diameter: u8, from_frame_idx: u8, to_frame_idx: u8, srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
                 var column: usize = 0;
                 while (column < width_simd) : (column += vec_size) {
                     const offset = row * stride + column;
-                    medianVector(diameter, srcp, dstp, offset);
+                    medianVector(diameter, from_frame_idx, to_frame_idx, srcp, dstp, offset);
                 }
 
                 // If the video width is not perfectly aligned with the vector width, do one
                 // last operation at the end of the plane to cover what's leftover from the loop above.
                 if (width_simd < width) {
-                    medianVector(diameter, srcp, dstp, (row * stride) + width - vec_size);
+                    medianVector(diameter, from_frame_idx, to_frame_idx, srcp, dstp, (row * stride) + width - vec_size);
                 }
             }
         }
@@ -93,6 +97,9 @@ fn TemporalMedian(comptime T: type) type {
             const radius = 4;
             const diameter = radius * 2 + 1;
             const expectedMedian = ([_]T{radius + 1} ** size)[0..];
+
+            const from_frame_idx: u8 = 0;
+            const to_frame_idx: u8 = radius * 2;
 
             var src: [diameter][]const T = undefined;
             for (0..diameter) |i| {
@@ -112,8 +119,8 @@ fn TemporalMedian(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            processPlaneScalar(diameter, &src, dstp_scalar, width, height, stride);
-            processPlaneVector(diameter, &src, dstp_vec, width, height, stride);
+            processPlaneScalar(diameter, from_frame_idx, to_frame_idx, &src, dstp_scalar, width, height, stride);
+            processPlaneVector(diameter, from_frame_idx, to_frame_idx, &src, dstp_vec, width, height, stride);
 
             for (0..height) |row| {
                 const start = row * stride;
@@ -123,12 +130,12 @@ fn TemporalMedian(comptime T: type) type {
             }
         }
 
-        fn medianVector(comptime diameter: u8, srcp: []const []const T, noalias dstp: []T, offset: usize) void {
+        fn medianVector(comptime diameter: u8, from_frame_idx: u8, to_frame_idx: u8, srcp: []const []const T, noalias dstp: []T, offset: usize) void {
             @setFloatMode(float_mode);
 
             var src: [diameter]VecType = undefined;
 
-            for (0..diameter) |r| {
+            for (from_frame_idx..to_frame_idx + 1) |r| {
                 src[r] = vec.load(VecType, srcp[r], offset);
             }
 
@@ -155,13 +162,14 @@ fn TemporalMedian(comptime T: type) type {
             _ = frame_data;
 
             const d: *TemporalMedianData = @ptrCast(@alignCast(instance_data));
+            const zapi: ZAPI = ZAPI.init(vsapi, core);
 
             if (activation_reason == ar.Initial) {
                 if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
                     vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
                 } else {
                     // Request previous, current, and next frames, based on the filter radius.
-                    var i = -d.radius;
+                    var i = -@as(i8, @intCast(d.radius));
                     while (i <= d.radius) : (i += 1) {
                         vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
                     }
@@ -178,14 +186,41 @@ fn TemporalMedian(comptime T: type) type {
 
                 // Retrieve all source frames within the filter radius.
                 {
-                    var i = -d.radius;
+                    var i = -@as(i8, @intCast(d.radius));
                     while (i <= d.radius) : (i += 1) {
-                        src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
+                        const fidx: usize = @intCast(i + @as(i8, @intCast(d.radius)));
+                        src_frames[fidx] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
                     }
                 }
                 defer for (0..diameter) |i| vsapi.?.freeFrame.?(src_frames[i]);
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[@intCast(d.radius)], d.vi, core, vsapi);
+                const dst = vscmn.newVideoFrame(&d.process, src_frames[d.radius], d.vi, core, vsapi);
+
+                // Handle scene changes by walking backwards/forwards from the radius (current frame).
+                var from_frame_idx: u8 = 0;
+                var to_frame_idx: u8 = d.radius * 2;
+                if (d.scenechange) {
+                    {
+                        var i = d.radius;
+                        while (i > 0) : (i -= 1) {
+                            const props = zapi.initZMap(zapi.getFramePropertiesRO(src_frames[i]));
+                            if (props.getInt(i32, "_SceneChangePrev") == 1) {
+                                from_frame_idx = i;
+                                break;
+                            }
+                        }
+                    }
+                    {
+                        var i = d.radius;
+                        while (i < diameter - 1) : (i += 1) {
+                            const props = zapi.initZMap(zapi.getFramePropertiesRO(src_frames[i]));
+                            if (props.getInt(i32, "_SceneChangeNext") == 1) {
+                                to_frame_idx = i;
+                                break;
+                            }
+                        }
+                    }
+                }
 
                 var plane: c_int = 0;
                 while (plane < d.vi.format.numPlanes) : (plane += 1) {
@@ -205,7 +240,7 @@ fn TemporalMedian(comptime T: type) type {
                     const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
 
                     switch (d.radius) {
-                        inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), srcp[0..(r * 2 + 1)], dstp, width, height, stride),
+                        inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), from_frame_idx, to_frame_idx, srcp[0..(r * 2 + 1)], dstp, width, height, stride),
                         else => unreachable,
                     }
                 }
@@ -229,9 +264,11 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     _ = user_data;
     var d: TemporalMedianData = undefined;
     var err: vs.MapPropertyError = undefined;
+    const zapi: ZAPI = ZAPI.init(vsapi, core);
 
     d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
     d.vi = vsapi.?.getVideoInfo.?(d.node);
+    const inz = zapi.initZMap(in);
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
         vsapi.?.mapSetError.?(out, "TemporalMedian: only constant format input supported");
@@ -239,13 +276,13 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         return;
     }
 
-    d.radius = vsh.mapGetN(i8, in, "radius", 0, vsapi) orelse 1;
-
+    const radius = inz.getInt(i8, "radius") orelse 1;
     if ((d.radius < 1) or (d.radius > MAX_RADIUS)) {
         vsapi.?.mapSetError.?(out, "TemporalMedian: Radius must be between 1 and 10 (inclusive)");
         vsapi.?.freeNode.?(d.node);
         return;
     }
+    d.radius = @intCast(radius);
 
     d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
         vsapi.?.freeNode.?(d.node);
@@ -256,6 +293,8 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         }
         return;
     };
+
+    d.scenechange = inz.getBool("scenechange") orelse false;
 
     const data: *TemporalMedianData = allocator.create(TemporalMedianData) catch unreachable;
     data.* = d;
@@ -278,5 +317,5 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;scenechange:int:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);
 }

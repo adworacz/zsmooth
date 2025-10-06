@@ -9,6 +9,8 @@ if is_preview():
     radius = 1
     output = 'all'
 #format = 'u8'
+radius = 1
+output = 'zsmooth'
 
 length = 30000
 match format:
@@ -22,7 +24,8 @@ match format:
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PS, color=[1.0, 0, 0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
-        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.lsmas.LWLibavSource("/home/adub/Videos/Downfall of The Democrats ｜ The Truth About The 2024 Election [UkUkEvf7Ma4].webm")
 
 #from vstools import depth
 # clip = depth(clip, 16)
@@ -41,7 +44,8 @@ if format != 'f16':
     if output in ['neo_tmedian', 'all']:
         neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 
-zsmooth = clip.zsmooth.TemporalMedian(radius=radius)
+# TODO actually use 
+zsmooth = clip.zsmooth.TemporalMedian(radius=radius, scenechange=True)
 
 match output:
     case 'zsmooth':

@@ -194,7 +194,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
@@ -290,13 +290,13 @@ fn TemporalSoften(comptime T: type) type {
     };
 }
 
-export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
-export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: TemporalSoftenData = undefined;
 
@@ -321,7 +321,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     }
 
     // Check radius param
-    if (vsh.mapGetN(i32, in, "radius", 0, vsapi)) |radius| {
+    if (vscmn.mapGetN(i32, in, "radius", 0, vsapi)) |radius| {
         if ((radius < 1) or (radius > MAX_RADIUS)) {
             return vscmn.reportError("TemporalSoften: Radius must be between 1 and 7 (inclusive)", vsapi, out, d.node);
         }
@@ -330,7 +330,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.radius = 4;
     }
 
-    const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
 
     // Check threshold param
     d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
@@ -339,7 +339,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         [_]f32{ vscmn.scaleToFormat(f32, d.vi.format, 4, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0) };
 
     for (0..3) |i| {
-        if (vsh.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
+        if (vscmn.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
             if (scalep and (_threshold < 0 or _threshold > 255)) {
                 return vscmn.reportError(string.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
             }
@@ -378,7 +378,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.threshold[2] > 0,
     };
 
-    const scene_change_threshold = if (vsh.mapGetN(i32, in, "scenechange", 0, vsapi)) |scene_change_threshold| blk: {
+    const scene_change_threshold = if (vscmn.mapGetN(i32, in, "scenechange", 0, vsapi)) |scene_change_threshold| blk: {
         if (scene_change_threshold < -1 or scene_change_threshold > 254) {
             return vscmn.reportError("TemporalSoften: scenechange must be between -1 and 254 (inclusive)", vsapi, out, d.node);
         }

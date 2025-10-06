@@ -564,7 +564,7 @@ fn DegrainMedian(comptime T: type) type {
             copy.copyLastNLines(T, dstp, srcp[1], width, height, stride, skip_rows);
         }
 
-        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
@@ -625,14 +625,14 @@ fn DegrainMedian(comptime T: type) type {
     };
 }
 
-export fn degrainMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn degrainMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *DegrainMedianData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
 
-export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: DegrainMedianData = undefined;
     var err: vs.MapPropertyError = undefined;
@@ -656,10 +656,10 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         , .{vector_len}), vsapi, out, d.node);
     }
 
-    d.interlaced = vsh.mapGetN(bool, in, "interlaced", 0, vsapi) orelse false;
-    d.norow = vsh.mapGetN(bool, in, "norow", 0, vsapi) orelse false;
+    d.interlaced = vscmn.mapGetN(bool, in, "interlaced", 0, vsapi) orelse false;
+    d.norow = vscmn.mapGetN(bool, in, "norow", 0, vsapi) orelse false;
 
-    const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
 
     const num_limits = vsapi.?.mapNumElements.?(in, "limit");
     if (num_limits > d.vi.format.numPlanes) {
@@ -669,7 +669,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
     d.limit = [3]f32{ 4, 4, 4 };
 
     for (0..3) |i| {
-        if (vsh.mapGetN(f32, in, "limit", @intCast(i), vsapi)) |_limit| {
+        if (vscmn.mapGetN(f32, in, "limit", @intCast(i), vsapi)) |_limit| {
             if (scalep and (_limit < 0 or _limit > 255)) {
                 return vscmn.reportError(string.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), vsapi, out, d.node);
             }
@@ -717,7 +717,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
     d.mode = [3]u3{ 1, 1, 1 };
 
     for (0..3) |i| {
-        if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+        if (vscmn.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
             if (mode < 0 or mode > 5) {
                 return vscmn.reportError("DegrainMedian: Mode cannot be less than 0 or greater than 5.", vsapi, out, d.node);
             }

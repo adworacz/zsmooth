@@ -191,8 +191,8 @@ fn Clense(comptime T: type) type {
     };
 }
 
-fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
-    const zapi = ZAPI.init(vsapi, core);
+fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
     const d: *ClenseData = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
@@ -200,28 +200,28 @@ fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, f
             .Normal => {
                 if (n >= 1 and n <= d.vi.numFrames - 2) {
                     frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                    zapi.requestFrameFilter(n - 1, d.pnode, frame_ctx);
-                    zapi.requestFrameFilter(n, d.cnode, frame_ctx);
-                    zapi.requestFrameFilter(n + 1, d.nnode, frame_ctx);
+                    zapi.requestFrameFilter(n - 1, d.pnode);
+                    zapi.requestFrameFilter(n, d.cnode);
+                    zapi.requestFrameFilter(n + 1, d.nnode);
                 } else {
-                    zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n, d.cnode);
                 }
             },
             .Forward => {
-                zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                zapi.requestFrameFilter(n, d.cnode);
                 if (n <= d.vi.numFrames - 3) {
                     frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                    zapi.requestFrameFilter(n + 1, d.cnode, frame_ctx);
-                    zapi.requestFrameFilter(n + 2, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n + 1, d.cnode);
+                    zapi.requestFrameFilter(n + 2, d.cnode);
                 }
             },
             .Backward => {
                 if (n >= 2) {
                     frame_data.?.* = @ptrCast(@as(*void, @ptrFromInt(1)));
-                    zapi.requestFrameFilter(n - 2, d.cnode, frame_ctx);
-                    zapi.requestFrameFilter(n - 1, d.cnode, frame_ctx);
+                    zapi.requestFrameFilter(n - 2, d.cnode);
+                    zapi.requestFrameFilter(n - 1, d.cnode);
                 }
-                zapi.requestFrameFilter(n, d.cnode, frame_ctx);
+                zapi.requestFrameFilter(n, d.cnode);
             },
         }
     } else if (activation_reason == ar.AllFramesReady) {
@@ -229,19 +229,19 @@ fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, f
         // Uses `framedata` to communicate state between getFrame calls, as the first call is for ar.Initial to request necessary frames, and the second call is for ar.AllFramesReady once said requested frames are available.
         // Nifty trick, taken from RGVS/SF + Vapoursynth's SelectEvery function.
         if (@intFromPtr(frame_data.?.*) != 1) {
-            return zapi.getFrameFilter(n, d.cnode, frame_ctx);
+            return zapi.getFrameFilter(n, d.cnode);
         }
 
         const ref1 = switch (d.mode) {
-            .Normal => zapi.initZFrame(d.pnode, n - 1, frame_ctx),
-            .Forward => zapi.initZFrame(d.cnode, n + 1, frame_ctx),
-            .Backward => zapi.initZFrame(d.cnode, n - 1, frame_ctx),
+            .Normal => zapi.initZFrame(d.pnode, n - 1),
+            .Forward => zapi.initZFrame(d.cnode, n + 1),
+            .Backward => zapi.initZFrame(d.cnode, n - 1),
         };
-        const src_frame = zapi.initZFrame(d.cnode, n, frame_ctx);
+        const src_frame = zapi.initZFrame(d.cnode, n);
         const ref2 = switch (d.mode) {
-            .Normal => zapi.initZFrame(d.nnode, n + 1, frame_ctx),
-            .Forward => zapi.initZFrame(d.cnode, n + 2, frame_ctx),
-            .Backward => zapi.initZFrame(d.cnode, n - 2, frame_ctx),
+            .Normal => zapi.initZFrame(d.nnode, n + 1),
+            .Forward => zapi.initZFrame(d.cnode, n + 2),
+            .Backward => zapi.initZFrame(d.cnode, n - 2),
         };
 
         defer {
@@ -282,7 +282,7 @@ fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, f
     return null;
 }
 
-export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *ClenseData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.cnode);
@@ -291,8 +291,8 @@ export fn clenseFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const
     allocator.destroy(d);
 }
 
-export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
-    const zapi = ZAPI.init(vsapi, core);
+export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
+    const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 

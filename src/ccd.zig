@@ -447,11 +447,11 @@ fn CCD(comptime T: type) type {
     };
 }
 
-fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
     // Assign frame_data to nothing to stop compiler complaints
     _ = frame_data;
 
-    const zapi = ZAPI.init(vsapi, core);
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
     const d: *CCDData = @ptrCast(@alignCast(instance_data));
 
     const n: usize = lossyCast(usize, _n);
@@ -460,21 +460,21 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
     if (activation_reason == ar.Initial) {
         for (first..last + 1) |f| {
-            zapi.requestFrameFilter(@intCast(f), d.node, frame_ctx);
+            zapi.requestFrameFilter(@intCast(f), d.node);
         }
     } else if (activation_reason == ar.AllFramesReady) {
         // Skip first and last frames that lie inside the temporal radius,
         // since we don't have enough information to process them.
         // This might be a lazy approach...
         if (n < d.temporal_radius or n > d.vi.numFrames - 1 - d.temporal_radius) {
-            return zapi.getFrameFilter(_n, d.node, frame_ctx);
+            return zapi.getFrameFilter(_n, d.node);
         }
 
         const temporal_diameter = d.temporal_radius * 2 + 1;
 
         var src_frames: [MAX_TEMPORAL_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
         for (0..temporal_diameter) |i| {
-            src_frames[i] = zapi.initZFrame(d.node, @intCast(n - d.temporal_radius + i), frame_ctx);
+            src_frames[i] = zapi.initZFrame(d.node, @intCast(n - d.temporal_radius + i));
         }
         defer for (0..temporal_diameter) |i| src_frames[i].deinit();
 
@@ -517,7 +517,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     return null;
 }
 
-export fn ccdFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn ccdFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *CCDData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
@@ -525,9 +525,9 @@ export fn ccdFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs
     allocator.destroy(d);
 }
 
-export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
-    const zapi = ZAPI.init(vsapi, core);
+    const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 

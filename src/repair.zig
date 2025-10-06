@@ -839,7 +839,7 @@ fn Repair(comptime T: type) type {
             }
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
@@ -893,7 +893,7 @@ fn Repair(comptime T: type) type {
     };
 }
 
-export fn repairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn repairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *RepairData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
@@ -901,7 +901,7 @@ export fn repairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const
     allocator.destroy(d);
 }
 
-export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: RepairData = undefined;
 
@@ -929,7 +929,7 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
 
     for (0..3) |i| {
         if (i < numModes) {
-            if (vsh.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+            if (vscmn.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
                 if (mode < 0 or mode > 24) {
                     vsapi.?.mapSetError.?(out, "Repair: Invalid mode specified, only modes 0-24 supported.");
                     vsapi.?.freeNode.?(d.node);

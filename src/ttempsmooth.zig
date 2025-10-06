@@ -433,12 +433,12 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
-        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
             const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
-            const zapi: ZAPI = ZAPI.init(vsapi, core);
+            const zapi: ZAPI = ZAPI.init(vsapi, core, frame_ctx);
 
             const n: usize = lossyCast(usize, _n);
             const first: usize = n -| d.maxr;
@@ -447,10 +447,10 @@ fn TTempSmooth(comptime T: type) type {
 
             if (activation_reason == ar.Initial) {
                 for (first..(last + 1)) |i| {
-                    zapi.requestFrameFilter(@intCast(i), d.node, frame_ctx);
+                    zapi.requestFrameFilter(@intCast(i), d.node);
 
                     if (has_pfclip) {
-                        zapi.requestFrameFilter(@intCast(i), d.pfclip, frame_ctx);
+                        zapi.requestFrameFilter(@intCast(i), d.pfclip);
                     }
                 }
             } else if (activation_reason == ar.AllFramesReady) {
@@ -464,10 +464,10 @@ fn TTempSmooth(comptime T: type) type {
                         const frame_number: i32 = std.math.clamp(lossyCast(i32, n) + i, 0, d.vi.numFrames - 1);
                         const index: usize = @intCast(i + lossyCast(i8, d.maxr)); // i + d.maxr
 
-                        src_frames[index] = zapi.getFrameFilter(frame_number, d.node, frame_ctx);
+                        src_frames[index] = zapi.getFrameFilter(frame_number, d.node);
 
                         if (has_pfclip) {
-                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.pfclip, frame_ctx);
+                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.pfclip);
                         }
                     }
                 }
@@ -548,7 +548,7 @@ fn TTempSmooth(comptime T: type) type {
     };
 }
 
-export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
 
@@ -752,12 +752,12 @@ test calculateTemporalDifferenceWeights {
     try std.testing.expectEqual(1.0 / 3.16666666666666666666, center_weight);
 }
 
-export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: TTempSmoothData = undefined;
     // var err: vs.MapPropertyError = undefined;
 
-    const zapi = ZAPI.init(vsapi, core);
+    const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 

@@ -288,32 +288,32 @@ fn TemporalRepair(comptime T: type) type {
     };
 }
 
-fn temporalRepairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+fn temporalRepairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
     // Assign frame_data to nothing to stop compiler complaints
     _ = frame_data;
 
-    const zapi = ZAPI.init(vsapi, core);
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
     const d: *TemporalRepairData = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
-        zapi.requestFrameFilter(n, d.node, frame_ctx);
+        zapi.requestFrameFilter(n, d.node);
 
         // Request the previous, current, and next frames from repair clip.
         const start: usize = @max(n - 1, 0);
         const end: usize = @intCast(@min(n + 1, d.vi.numFrames - 1));
         for (start..end + 1) |i| { // end + 1 because .. range syntax is exclusive.
-            zapi.requestFrameFilter(@intCast(i), d.repair_node, frame_ctx);
+            zapi.requestFrameFilter(@intCast(i), d.repair_node);
         }
     } else if (activation_reason == ar.AllFramesReady) {
         // Skip the first and last frames since we can't process them temporally.
         if (n < 1 or n > d.vi.numFrames - 2) {
-            return zapi.getFrameFilter(n, d.node, frame_ctx);
+            return zapi.getFrameFilter(n, d.node);
         }
 
-        const src = zapi.initZFrame(d.node, n, frame_ctx);
-        const prev_repair = zapi.initZFrame(d.repair_node, n - 1, frame_ctx);
-        const curr_repair = zapi.initZFrame(d.repair_node, n, frame_ctx);
-        const next_repair = zapi.initZFrame(d.repair_node, n + 1, frame_ctx);
+        const src = zapi.initZFrame(d.node, n);
+        const prev_repair = zapi.initZFrame(d.repair_node, n - 1);
+        const curr_repair = zapi.initZFrame(d.repair_node, n);
+        const next_repair = zapi.initZFrame(d.repair_node, n + 1);
 
         defer {
             src.deinit();
@@ -357,7 +357,7 @@ fn temporalRepairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
     return null;
 }
 
-export fn temporalRepairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalRepairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *TemporalRepairData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
@@ -365,9 +365,9 @@ export fn temporalRepairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
     allocator.destroy(d);
 }
 
-export fn temporalRepairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn temporalRepairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
-    const zapi = ZAPI.init(vsapi, core);
+    const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 

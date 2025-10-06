@@ -10,6 +10,28 @@ const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
 
 /////////////////////////////////////////////////
+/// Vapoursynth API helpers
+/////////////////////////////////////////////////
+
+//TODO: Replace all references of this with ZAPI.Zmap. 
+//Doing so will require rewriting most of the function signatures in this file
+//to remove the pass in map + vsapi instance.
+//I'm just copy-pasting this from vapoursynth-zig (since dnjulek removed it after the 0.15.1 release)
+//in order to prevent a broader refactoring.
+
+/// Helper to use Zig Optionals and saturate to return type
+pub fn mapGetN(comptime T: type, in: ?*const vs.Map, key: [*:0]const u8, index: u32, vsapi: ?*const vs.API) ?T {
+    var err: vs.MapPropertyError = undefined;
+    const val: T = switch (@typeInfo(T)) {
+        .int => math.lossyCast(T, vsapi.?.mapGetInt.?(in, key, @intCast(index), &err)),
+        .float => math.lossyCast(T, vsapi.?.mapGetFloat.?(in, key, @intCast(index), &err)),
+        .bool => vsapi.?.mapGetInt.?(in, key, @intCast(index), &err) != 0,
+        else => @compileError("mapGetN only works with Int, Float and Bool types"),
+    };
+    return if (err == .Success) val else null;
+}
+
+/////////////////////////////////////////////////
 // Video format utilities (value scaling, peak finding, etc)
 /////////////////////////////////////////////////
 
@@ -325,7 +347,7 @@ pub fn normalizePlanes(format: vs.VideoFormat, in: ?*const vs.Map, vsapi: ?*cons
 
     if (!requestedPlanesIsEmpty) {
         for (0..@intCast(requestedPlanesSize)) |i| {
-            const plane: u8 = vsh.mapGetN(u8, in, "planes", @intCast(i), vsapi) orelse unreachable;
+            const plane: u8 = mapGetN(u8, in, "planes", @intCast(i), vsapi) orelse unreachable;
 
             if (plane < 0 or plane > format.numPlanes) {
                 return PlanesError.IndexOutOfRange;
@@ -350,7 +372,7 @@ pub fn normalizeThreshold(key: [:0]const u8, scalep: bool, defaults: [3]f32, for
     var values = defaults;
 
     for (0..3) |i| {
-        if (vsh.mapGetN(f32, in, key, @intCast(i), vsapi)) |_val| {
+        if (mapGetN(f32, in, key, @intCast(i), vsapi)) |_val| {
             if (scalep and (_val < 0 or _val > 255)) {
                 return ThresholdError.ScaledValueOutsideOfRange;
             }

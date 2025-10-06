@@ -28,9 +28,10 @@ match format:
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, color=[1.0, 1.0, 1.0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.lsmas.LWLibavSource("/home/adub/Videos/test.webm")
         # clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
-        # clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
-        clip = core.bs.VideoSource("/home/adub/Videos/test.mp4")
+        #clip = core.bs.VideoSource("/home/adub/Videos/test.webm")
+        #clip = core.bs.VideoSource("/home/adub/Videos/test.mp4")
         from vstools import initialize_clip
         clip = initialize_clip(clip)
         # clip = clip.resize.Point(format=vs.RGB24)

@@ -7,7 +7,7 @@ const std = @import("std");
 /// we're going to *leak memory when the program exits, but there's nothing we
 /// can do about that due to the realities of the C interop.
 pub fn printf(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) [:0]const u8 {
-    return std.fmt.allocPrintZ(allocator, fmt, args) catch "Out of memory occurred while writing string.";
+    return std.fmt.allocPrintSentinel(allocator, fmt, args, 0) catch "Out of memory occurred while writing string.";
 }
 
 // TODO: Debug this test, seems to be freeing less memory than was allocated.

@@ -528,7 +528,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             vec.store(VecType, dstp, offset, selected_result);
         }
 
-        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) ?*const vs.Frame {
+        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
@@ -604,14 +604,14 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
     };
 }
 
-export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *FluxSmoothData = @ptrCast(@alignCast(instance_data));
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
 
-export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.C) void {
+export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     const mode: FluxSmoothMode = @as(*FluxSmoothMode, @ptrCast(user_data)).*;
 
     var d: FluxSmoothData = undefined;
@@ -628,13 +628,13 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
     }
 
     // Optional parameter scaling.
-    const scalep = vsh.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
 
     var temporal_threshold = [3]f32{ -1, -1, -1 };
     var spatial_threshold = [3]f32{ -1, -1, -1 };
 
     for (0..3) |i| {
-        if (vsh.mapGetN(f32, in, "temporal_threshold", @intCast(i), vsapi)) |threshold| {
+        if (vscmn.mapGetN(f32, in, "temporal_threshold", @intCast(i), vsapi)) |threshold| {
             temporal_threshold[i] = if (scalep and threshold >= 0) thresh: {
                 if (threshold < 0 or threshold > 255) {
                     vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
@@ -651,7 +651,7 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         }
 
         if (mode == .SpatialTemporal) {
-            if (vsh.mapGetN(f32, in, "spatial_threshold", @intCast(i), vsapi)) |threshold| {
+            if (vscmn.mapGetN(f32, in, "spatial_threshold", @intCast(i), vsapi)) |threshold| {
                 spatial_threshold[i] = if (scalep and threshold >= 0) thresh: {
                     if (threshold < 0 or threshold > 255) {
                         vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);

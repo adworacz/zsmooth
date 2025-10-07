@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -10,7 +11,6 @@ const sort = @import("common/sorting_networks.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
-const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -150,14 +150,17 @@ fn VerticalCleaner(comptime T: type) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
+
             const d: *VerticalCleanerData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+                zapi.requestFrameFilter(n, d.node);
             } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
 
-                defer vsapi.?.freeFrame.?(src_frame);
+                const src_frame = zapi.initZFrame(d.node, n);
+
+                defer src_frame.deinit();
 
                 const process = [_]bool{
                     d.modes[0] > 0,
@@ -165,7 +168,7 @@ fn VerticalCleaner(comptime T: type) type {
                     d.modes[2] > 0,
                 };
 
-                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
+                const dst = src_frame.newVideoFrame2(process);
 
                 for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
                     const plane: c_int = @intCast(_plane);
@@ -174,11 +177,11 @@ fn VerticalCleaner(comptime T: type) type {
                         continue;
                     }
 
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const width: usize = dst.getWidth(_plane);
+                    const height: usize = dst.getHeight(_plane);
+                    const stride: usize = dst.getStride2(T, _plane);
+                    const srcp: []const T = src_frame.getReadSlice2(T, _plane);
+                    const dstp: []T = dst.getWriteSlice2(T, _plane);
                     const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, plane);
                     const maximum = vscmn.getFormatMaximum(T, d.vi.format, chroma);
                     const minimum = vscmn.getFormatMinimum(T, d.vi.format, chroma);
@@ -190,7 +193,7 @@ fn VerticalCleaner(comptime T: type) type {
                     }
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -209,25 +212,25 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
     _ = user_data;
     var d: VerticalCleanerData = undefined;
 
-    // TODO: Add error handling.
-    var err: vs.MapPropertyError = undefined;
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
-    const numModes = vsapi.?.mapNumElements.?(in, "mode");
+    const numModes: c_int = @intCast(inz.numElements("mode") orelse 0);
     if (numModes > d.vi.format.numPlanes) {
-        vsapi.?.mapSetError.?(out, "VerticalCleaner: Number of modes must be equal or fewer than the number of input planes.");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError( "VerticalCleaner: Number of modes must be equal or fewer than the number of input planes.");
+        zapi.freeNode(d.node);
         return;
     }
 
     for (0..3) |i| {
         if (i < numModes) {
-            if (vscmn.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+            if (inz.getInt2(i32, "mode", i)) |mode| {
                 if (mode < 0 or mode > 2) {
-                    vsapi.?.mapSetError.?(out, "VerticalCleaner: Invalid mode specified, only modes 0-2 supported.");
-                    vsapi.?.freeNode.?(d.node);
+                    outz.setError( "VerticalCleaner: Invalid mode specified, only modes 0-2 supported.");
+                    zapi.freeNode(d.node);
                     return;
                 }
                 d.modes[i] = @intCast(mode);
@@ -239,12 +242,12 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         const height = d.vi.height >> @intCast(if (i > 0) d.vi.format.subSamplingH else 0);
 
         if (d.modes[i] == 1 and height < 3) {
-            vsapi.?.mapSetError.?(out, "VerticalCleaner: corresponding plane's height must be greater than or equal to 3 for mode 1");
-            vsapi.?.freeNode.?(d.node);
+            outz.setError( "VerticalCleaner: corresponding plane's height must be greater than or equal to 3 for mode 1");
+            zapi.freeNode(d.node);
             return;
         } else if (d.modes[i] == 2 and height < 5) {
-            vsapi.?.mapSetError.?(out, "VerticalCleaner: corresponding plane's height must be greater than or equal to 5 for mode 2");
-            vsapi.?.freeNode.?(d.node);
+            outz.setError( "VerticalCleaner: corresponding plane's height must be greater than or equal to 5 for mode 2");
+            zapi.freeNode(d.node);
             return;
         }
     }
@@ -266,7 +269,7 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "VerticalCleaner", d.vi, getFrame, verticalCleanerFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "VerticalCleaner", d.vi, getFrame, verticalCleanerFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

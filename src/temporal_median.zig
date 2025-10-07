@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -154,55 +155,56 @@ fn TemporalMedian(comptime T: type) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
+
             const d: *TemporalMedianData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
                 if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                    vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+                    zapi.requestFrameFilter(n, d.node);
                 } else {
                     // Request previous, current, and next frames, based on the filter radius.
                     var i = -d.radius;
                     while (i <= d.radius) : (i += 1) {
-                        vsapi.?.requestFrameFilter.?(n + i, d.node, frame_ctx);
+                        zapi.requestFrameFilter(n + i, d.node);
                     }
                 }
             } else if (activation_reason == ar.AllFramesReady) {
                 // Skip filtering on the first and last frames that lie inside the filter radius,
                 // since we do not have enough information to filter them properly.
                 if (n < d.radius or n > d.vi.numFrames - 1 - d.radius) {
-                    return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                    return zapi.getFrameFilter(n, d.node);
                 }
 
                 const diameter: u8 = @intCast(d.radius * 2 + 1);
-                var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                var src_frames: [MAX_DIAMETER]?ZAPI.ZFrame(*const vs.Frame) = undefined;
 
                 // Retrieve all source frames within the filter radius.
                 {
                     var i = -d.radius;
                     while (i <= d.radius) : (i += 1) {
-                        src_frames[@intCast(d.radius + i)] = vsapi.?.getFrameFilter.?(n + i, d.node, frame_ctx);
+                        src_frames[@intCast(d.radius + i)] = zapi.initZFrame(d.node, n + i);
                     }
                 }
-                defer for (0..diameter) |i| vsapi.?.freeFrame.?(src_frames[i]);
+                defer for (0..diameter) |i| if (src_frames[i]) |f| f.deinit();
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[@intCast(d.radius)], d.vi, core, vsapi);
+                const dst = src_frames[@intCast(d.radius)].?.newVideoFrame();
 
-                var plane: c_int = 0;
-                while (plane < d.vi.format.numPlanes) : (plane += 1) {
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
                     // Skip planes we aren't supposed to process
-                    if (!d.process[@intCast(plane)]) {
+                    if (!d.process[plane]) {
                         continue;
                     }
 
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const width = dst.getWidth(plane);
+                    const height = dst.getHeight(plane);
+                    const stride = dst.getStride2(T, plane);
 
                     var srcp: [MAX_DIAMETER][]const T = undefined;
                     for (0..diameter) |i| {
-                        srcp[i] = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane))))[0..(height * stride)];
+                        srcp[i] = src_frames[i].?.getReadSlice2(T, plane);
                     }
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
 
                     switch (d.radius) {
                         inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), srcp[0..(r * 2 + 1)], dstp, width, height, stride),
@@ -210,7 +212,7 @@ fn TemporalMedian(comptime T: type) type {
                     }
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -227,32 +229,35 @@ export fn temporalMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
 
 export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
-    var d: TemporalMedianData = undefined;
-    var err: vs.MapPropertyError = undefined;
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
+
+    var d: TemporalMedianData = undefined;
+
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, "TemporalMedian: only constant format input supported");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError("TemporalMedian: only constant format input supported");
+        zapi.freeNode(d.node);
         return;
     }
 
-    d.radius = vscmn.mapGetN(i8, in, "radius", 0, vsapi) orelse 1;
+    d.radius = inz.getInt(i8, "radius") orelse 1;
 
     if ((d.radius < 1) or (d.radius > MAX_RADIUS)) {
-        vsapi.?.mapSetError.?(out, "TemporalMedian: Radius must be between 1 and 10 (inclusive)");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError("TemporalMedian: Radius must be between 1 and 10 (inclusive)");
+        zapi.freeNode(d.node);
         return;
     }
 
     d.process = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
-        vsapi.?.freeNode.?(d.node);
+        zapi.freeNode(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, "TemporalMedian: Plane index out of range."),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, "TemporalMedian: Plane specified twice."),
+            vscmn.PlanesError.IndexOutOfRange => outz.setError("TemporalMedian: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => outz.setError("TemporalMedian: Plane specified twice."),
         }
         return;
     };
@@ -274,7 +279,7 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "TemporalMedian", d.vi, getFrame, temporalMedianFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "TemporalMedian", d.vi, getFrame, temporalMedianFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

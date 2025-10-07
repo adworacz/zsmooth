@@ -146,59 +146,75 @@ fn VerticalCleaner(comptime T: type) type {
             try std.testing.expectEqualDeep(&expected, dstp);
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(mode: u2, chroma: bool, bits_per_sample: u6, noalias dstp8: []u8, noalias srcp8: []const u8, width: usize, height: usize, stride8: usize) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const T = @ptrCast(@alignCast(srcp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const zapi = ZAPI.init(vsapi, core, frame_ctx);
+            const maximum = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
+            const minimum = vscmn.getFormatMinimum2(T, chroma);
 
-            const d: *VerticalCleanerData = @ptrCast(@alignCast(instance_data));
+            switch (mode) {
+                1 => verticalMedian(srcp, dstp, width, height, stride),
+                2 => relaxedVerticalMedian(srcp, dstp, width, height, stride, minimum, maximum),
+                else => unreachable,
+            }
+        }
+        
+    };
+}
 
-            if (activation_reason == ar.Initial) {
-                zapi.requestFrameFilter(n, d.node);
-            } else if (activation_reason == ar.AllFramesReady) {
+fn verticalCleanerGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
 
-                const src_frame = zapi.initZFrame(d.node, n);
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
 
-                defer src_frame.deinit();
+    const d: *VerticalCleanerData = @ptrCast(@alignCast(instance_data));
 
-                const process = [_]bool{
-                    d.modes[0] > 0,
-                    d.modes[1] > 0,
-                    d.modes[2] > 0,
-                };
+    if (activation_reason == ar.Initial) {
+        zapi.requestFrameFilter(n, d.node);
+    } else if (activation_reason == ar.AllFramesReady) {
+        const src_frame = zapi.initZFrame(d.node, n);
 
-                const dst = src_frame.newVideoFrame2(process);
+        defer src_frame.deinit();
 
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
-                    // Skip planes we aren't supposed to process
-                    if (d.modes[_plane] == 0) {
-                        continue;
-                    }
+        const process = [_]bool{
+            d.modes[0] > 0,
+            d.modes[1] > 0,
+            d.modes[2] > 0,
+        };
 
-                    const width: usize = dst.getWidth(_plane);
-                    const height: usize = dst.getHeight(_plane);
-                    const stride: usize = dst.getStride2(T, _plane);
-                    const srcp: []const T = src_frame.getReadSlice2(T, _plane);
-                    const dstp: []T = dst.getWriteSlice2(T, _plane);
-                    const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, plane);
-                    const maximum = vscmn.getFormatMaximum(T, d.vi.format, chroma);
-                    const minimum = vscmn.getFormatMinimum(T, d.vi.format, chroma);
+        const dst = src_frame.newVideoFrame2(process);
 
-                    switch (d.modes[_plane]) {
-                        1 => verticalMedian(srcp, dstp, width, height, stride),
-                        2 => relaxedVerticalMedian(srcp, dstp, width, height, stride, minimum, maximum),
-                        else => unreachable,
-                    }
-                }
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &VerticalCleaner(u8).processPlane,
+            .U16 => &VerticalCleaner(u16).processPlane,
+            .F16 => &VerticalCleaner(f16).processPlane,
+            .F32 => &VerticalCleaner(f32).processPlane,
+        };
 
-                return dst.frame;
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (d.modes[plane] == 0) {
+                continue;
             }
 
-            return null;
+            const width: usize = dst.getWidth(plane);
+            const height: usize = dst.getHeight(plane);
+            const stride8: usize = dst.getStride(plane);
+            const srcp8: []const u8 = src_frame.getReadSlice(plane);
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+            const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, plane);
+            const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
+
+            processPlane(d.modes[plane], chroma, bits_per_sample, dstp8, srcp8, width, height, stride8); 
         }
-    };
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn verticalCleanerFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
@@ -220,7 +236,7 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
 
     const numModes: c_int = @intCast(inz.numElements("mode") orelse 0);
     if (numModes > d.vi.format.numPlanes) {
-        outz.setError( "VerticalCleaner: Number of modes must be equal or fewer than the number of input planes.");
+        outz.setError("VerticalCleaner: Number of modes must be equal or fewer than the number of input planes.");
         zapi.freeNode(d.node);
         return;
     }
@@ -229,7 +245,7 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         if (i < numModes) {
             if (inz.getInt2(i32, "mode", i)) |mode| {
                 if (mode < 0 or mode > 2) {
-                    outz.setError( "VerticalCleaner: Invalid mode specified, only modes 0-2 supported.");
+                    outz.setError("VerticalCleaner: Invalid mode specified, only modes 0-2 supported.");
                     zapi.freeNode(d.node);
                     return;
                 }
@@ -242,11 +258,11 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         const height = d.vi.height >> @intCast(if (i > 0) d.vi.format.subSamplingH else 0);
 
         if (d.modes[i] == 1 and height < 3) {
-            outz.setError( "VerticalCleaner: corresponding plane's height must be greater than or equal to 3 for mode 1");
+            outz.setError("VerticalCleaner: corresponding plane's height must be greater than or equal to 3 for mode 1");
             zapi.freeNode(d.node);
             return;
         } else if (d.modes[i] == 2 and height < 5) {
-            outz.setError( "VerticalCleaner: corresponding plane's height must be greater than or equal to 5 for mode 2");
+            outz.setError("VerticalCleaner: corresponding plane's height must be greater than or equal to 5 for mode 2");
             zapi.freeNode(d.node);
             return;
         }
@@ -262,14 +278,7 @@ export fn verticalCleanerCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &VerticalCleaner(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &VerticalCleaner(u16).getFrame else &VerticalCleaner(f16).getFrame,
-        4 => &VerticalCleaner(f32).getFrame,
-        else => unreachable,
-    };
-
-    zapi.createVideoFilter(out, "VerticalCleaner", d.vi, getFrame, verticalCleanerFree, fm.Parallel, &deps, data);
+    zapi.createVideoFilter(out, "VerticalCleaner", d.vi, verticalCleanerGetFrame, verticalCleanerFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

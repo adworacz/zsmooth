@@ -41,12 +41,20 @@ pub fn build(b: *std.Build) !void {
         // in which case setting this value will optimize out any threading
         // or locking constructs.
         .single_threaded = true,
+
+        .strip = optimize == .ReleaseFast,
     });
+
+    root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
+    root_module.addOptions("config", options);
 
     // const zsmooth_options: std.Build.SharedLibraryOptions = .{
     const zsmooth_options: std.Build.LibraryOptions = .{
         .name = "zsmooth",
         .root_module = root_module,
+
+        // Ensure we build a shared (*.so) library.
+        .linkage = .dynamic,
 
         // Improve build times by giving an upper bound to memory,
         // thus enabling multi-threaded builds.
@@ -55,9 +63,6 @@ pub fn build(b: *std.Build) !void {
 
     const lib = b.addLibrary(zsmooth_options);
 
-    lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
-    lib.root_module.addOptions("config", options);
-    lib.root_module.strip = lib.root_module.optimize == .ReleaseFast; //Strip debug symbols in ReleaseFast.
     lib.linkLibC(); // Necessary to use the C memory allocator.
 
     b.installArtifact(lib);
@@ -99,8 +104,6 @@ pub fn build(b: *std.Build) !void {
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
     });
-    lib_unit_tests.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
-    lib_unit_tests.root_module.addOptions("config", options);
     lib_unit_tests.linkLibC();
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);

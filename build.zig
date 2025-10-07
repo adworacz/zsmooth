@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const root_module = b.createModule(.{
+    const root_module_options: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/zsmooth.zig"),
         .target = target,
         .optimize = optimize,
@@ -43,13 +43,14 @@ pub fn build(b: *std.Build) !void {
         .single_threaded = true,
 
         .strip = optimize == .ReleaseFast,
-    });
+    };
+    const root_module = b.createModule(root_module_options);
 
     root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
     root_module.addOptions("config", options);
 
     // const zsmooth_options: std.Build.SharedLibraryOptions = .{
-    const zsmooth_options: std.Build.LibraryOptions = .{
+    const lib_options: std.Build.LibraryOptions = .{
         .name = "zsmooth",
         .root_module = root_module,
 
@@ -61,7 +62,7 @@ pub fn build(b: *std.Build) !void {
         .max_rss = 1024 * 1024 * 1024 * 2, // 2GB
     };
 
-    const lib = b.addLibrary(zsmooth_options);
+    const lib = b.addLibrary(lib_options);
 
     lib.linkLibC(); // Necessary to use the C memory allocator.
 
@@ -70,13 +71,20 @@ pub fn build(b: *std.Build) !void {
     // Release (build all platforms)
     const release = b.step("release", "Build release artifacts for all supported platforms");
     for (targets) |t| {
-        var opts = zsmooth_options;
-        opts.root_module.resolved_target = b.resolveTargetQuery(t);
-        const release_lib = b.addLibrary(opts);
+        // copy root module options so we can operate on them separately.
+        var target_root_module_options = root_module_options;
+        target_root_module_options.target = b.resolveTargetQuery(t);
 
-        release_lib.root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
-        release_lib.root_module.addOptions("config", options);
-        release_lib.root_module.strip = release_lib.root_module.optimize == .ReleaseFast;
+        const target_root_module = b.createModule(target_root_module_options);
+        target_root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
+        target_root_module.addOptions("config", options);
+
+        // copy lib options so we can operate on them separately.
+        var target_lib_options = lib_options;
+        target_lib_options.root_module = target_root_module;
+
+        const release_lib = b.addLibrary(target_lib_options);
+
         release_lib.linkLibC(); // Necessary to use the C memory allocator.
 
         const cpu_model_name = switch (t.cpu_model) {

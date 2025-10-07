@@ -324,7 +324,7 @@ fn temporalRepairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
 
         const dst = src.newVideoFrame2(d.process);
 
-        const processPlane: @TypeOf(&TemporalRepair(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &TemporalRepair(u8).processPlane,
             .U16 => &TemporalRepair(u16).processPlane,
             .F16 => &TemporalRepair(f16).processPlane,

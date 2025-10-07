@@ -174,7 +174,6 @@ fn Clense(comptime T: type) type {
             try std.testing.expectEqualDeep(&expected, dstp);
         }
 
-
         fn processPlane(mode: ClenseMode, noalias dstp8: []u8, noalias srcp8: []const u8, noalias ref1p8: []const u8, noalias ref2p8: []const u8, width: usize, height: usize, stride8: usize) void {
             const stride = stride8 / @sizeOf(T);
             const srcp: []const T = @ptrCast(@alignCast(srcp8));
@@ -252,7 +251,7 @@ fn clenseGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, f
 
         const dst = src_frame.newVideoFrame2(d.process);
 
-        const processPlane: @TypeOf(&Clense(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Clense(u8).processPlane,
             .U16 => &Clense(u16).processPlane,
             .F16 => &Clense(f16).processPlane,
@@ -372,7 +371,7 @@ export fn clenseCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("Clense", "clip:vnode;previous:vnode:opt;next:vnode:opt;planes:int[]:opt", "clip:vnode;", clenseCreate, @constCast(@ptrCast(&ClenseMode.Normal)), plugin);
-    _ = vsapi.registerFunction.?("ForwardClense", "clip:vnode;planes:int[]:opt", "clip:vnode;", clenseCreate, @constCast(@ptrCast(&ClenseMode.Forward)), plugin);
-    _ = vsapi.registerFunction.?("BackwardClense", "clip:vnode;planes:int[]:opt", "clip:vnode;", clenseCreate, @constCast(@ptrCast(&ClenseMode.Backward)), plugin);
+    _ = vsapi.registerFunction.?("Clense", "clip:vnode;previous:vnode:opt;next:vnode:opt;planes:int[]:opt", "clip:vnode;", clenseCreate, @ptrCast(@constCast(&ClenseMode.Normal)), plugin);
+    _ = vsapi.registerFunction.?("ForwardClense", "clip:vnode;planes:int[]:opt", "clip:vnode;", clenseCreate, @ptrCast(@constCast(&ClenseMode.Forward)), plugin);
+    _ = vsapi.registerFunction.?("BackwardClense", "clip:vnode;planes:int[]:opt", "clip:vnode;", clenseCreate, @ptrCast(@constCast(&ClenseMode.Backward)), plugin);
 }

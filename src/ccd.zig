@@ -480,7 +480,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         const dst = src_frames[d.temporal_radius].newVideoFrame();
 
-        const processPlanes: @TypeOf(&CCD(u8).processPlanes) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlanes = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &CCD(u8).processPlanes,
             .U16 => &CCD(u16).processPlanes,
             .F16 => &CCD(f16).processPlanes,

@@ -208,7 +208,7 @@ fn medianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, f
 
         const dst = src_frame.newVideoFrame2(d.process);
 
-        const processPlane: @TypeOf(&Median(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Median(u8).processPlane,
             .U16 => &Median(u16).processPlane,
             .F16 => &Median(f16).processPlane,

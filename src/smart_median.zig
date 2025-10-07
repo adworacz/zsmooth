@@ -135,7 +135,7 @@ fn SmartMedian(comptime T: type) type {
 
             const center = grid.values[grid.values.len / 2];
 
-            const lte_threshold = curved_variance_ish <= threshold; 
+            const lte_threshold = curved_variance_ish <= threshold;
             const median = lossyCast(VT, std.math.clamp(center, @min(median_left, median_right), @max(median_left, median_right)));
             return @select(T, lte_threshold, median, center);
         }
@@ -293,7 +293,7 @@ fn smartMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaq
 
         const dst = src_frame.newVideoFrame2(d.process);
 
-        const processPlane: @TypeOf(&SmartMedian(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &SmartMedian(u8).processPlane,
             .U16 => &SmartMedian(u16).processPlane,
             .F16 => &SmartMedian(f16).processPlane,

@@ -854,7 +854,7 @@ fn removeGrainGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaq
         };
         const dst = src_frame.newVideoFrame2(process);
 
-        const processPlane: @TypeOf(&RemoveGrain(u8).processPlane) = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &RemoveGrain(u8).processPlane,
             .U16 => &RemoveGrain(u16).processPlane,
             .F16 => &RemoveGrain(f16).processPlane,

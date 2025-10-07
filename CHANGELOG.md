@@ -1,7 +1,11 @@
 # Changelog
 
 ## 0.13
-* TBD
+* Upgrade to Zig 0.15.1
+* Minor code improvements in VerticalCleaner
+* Minor code improvements in Repair
+* Improve cross-builds - we now take advantage of Zig's build intelligence to
+generate build artifacts for all artifacts in parallel.
 
 ## 0.12
 * Migrate Median and InterQuartileMean to ZAPI and compartmentalized filter modules to reduce binary

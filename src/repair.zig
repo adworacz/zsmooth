@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
 const types = @import("common/type.zig");
@@ -843,17 +844,18 @@ fn Repair(comptime T: type) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
             const d: *RepairData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-                vsapi.?.requestFrameFilter.?(n, d.repair_node, frame_ctx);
+                zapi.requestFrameFilter(n, d.node);
+                zapi.requestFrameFilter(n, d.repair_node);
             } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
-                const repair_frame = vsapi.?.getFrameFilter.?(n, d.repair_node, frame_ctx);
+                const src_frame = zapi.initZFrame(d.node, n);
+                const repair_frame = zapi.initZFrame(d.repair_node, n);
 
-                defer vsapi.?.freeFrame.?(src_frame);
-                defer vsapi.?.freeFrame.?(repair_frame);
+                defer src_frame.deinit();
+                defer repair_frame.deinit();
 
                 const process = [_]bool{
                     d.modes[0] > 0,
@@ -861,31 +863,30 @@ fn Repair(comptime T: type) type {
                     d.modes[2] > 0,
                 };
 
-                const dst = vscmn.newVideoFrame(&process, src_frame, d.vi, core, vsapi);
+                const dst = src_frame.newVideoFrame2(process);
 
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
                     // Skip planes we aren't supposed to process
-                    if (d.modes[_plane] == 0) {
+                    if (d.modes[plane] == 0) {
                         continue;
                     }
 
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
-                    const srcp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frame, plane))))[0..(height * stride)];
-                    const repairp: []const T = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(repair_frame, plane))))[0..(height * stride)];
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const width: usize = src_frame.getWidth(plane);
+                    const height: usize = src_frame.getHeight(plane);
+                    const stride: usize = src_frame.getStride2(T, plane);
+                    const srcp: []const T = src_frame.getReadSlice2(T, plane);
+                    const repairp: []const T = repair_frame.getReadSlice2(T, plane);
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
                     const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
 
                     // See note in remove_grain about the use of "double switch" optimization.
-                    switch (d.modes[_plane]) {
+                    switch (d.modes[plane]) {
                         inline 1...24 => |mode| processPlaneScalar(mode, srcp, repairp, dstp, width, height, stride, chroma),
                         else => unreachable,
                     }
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -905,34 +906,35 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
     _ = user_data;
     var d: RepairData = undefined;
 
-    // TODO: Add error handling.
-    var err: vs.MapPropertyError = undefined;
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.repair_node = vsapi.?.mapGetNode.?(in, "repairclip", 0, &err).?;
+    d.node, d.vi = inz.getNodeVi("clip").?;
+    d.repair_node = inz.getNode("repairclip");
 
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
-
-    if (!vsh.isSameVideoInfo(d.vi, vsapi.?.getVideoInfo.?(d.repair_node))) {
-        vsapi.?.mapSetError.?(out, "Repair: Input clips must have the same format.");
-        vsapi.?.freeNode.?(d.node);
-        vsapi.?.freeNode.?(d.repair_node);
+    if (!vsh.isSameVideoInfo(d.vi, zapi.getVideoInfo(d.repair_node))) {
+        outz.setError("Repair: Input clips must have the same format.");
+        zapi.freeNode(d.node);
+        zapi.freeNode(d.repair_node);
         return;
     }
 
-    const numModes = vsapi.?.mapNumElements.?(in, "mode");
+    const numModes:c_int = @intCast(inz.numElements("mode") orelse 0);
     if (numModes > d.vi.format.numPlanes) {
-        vsapi.?.mapSetError.?(out, "Repair: Number of modes must be equal or fewer than the number of input planes.");
-        vsapi.?.freeNode.?(d.node);
+        outz.setError("Repair: Number of modes must be equal or fewer than the number of input planes.");
+        zapi.freeNode(d.node);
+        zapi.freeNode(d.repair_node);
         return;
     }
 
     for (0..3) |i| {
         if (i < numModes) {
-            if (vscmn.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+            if (inz.getInt2(i32, "mode", i)) |mode| {
                 if (mode < 0 or mode > 24) {
-                    vsapi.?.mapSetError.?(out, "Repair: Invalid mode specified, only modes 0-24 supported.");
-                    vsapi.?.freeNode.?(d.node);
+                    outz.setError( "Repair: Invalid mode specified, only modes 0-24 supported.");
+                    zapi.freeNode(d.node);
+                    zapi.freeNode(d.repair_node);
                     return;
                 }
                 d.modes[i] = @intCast(mode);
@@ -963,7 +965,7 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "Repair", d.vi, getFrame, repairFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "Repair", d.vi, getFrame, repairFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

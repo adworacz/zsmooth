@@ -840,58 +840,74 @@ fn Repair(comptime T: type) type {
             }
         }
 
-        fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(mode: u5, chroma: bool, noalias dstp8: []u8, noalias srcp8: []const u8, noalias repairp8: []const u8, width: usize, height: usize, stride8: usize) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const T = @ptrCast(@alignCast(srcp8));
+            const repairp: []const T = @ptrCast(@alignCast(repairp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const zapi = ZAPI.init(vsapi, core, frame_ctx);
-            const d: *RepairData = @ptrCast(@alignCast(instance_data));
-
-            if (activation_reason == ar.Initial) {
-                zapi.requestFrameFilter(n, d.node);
-                zapi.requestFrameFilter(n, d.repair_node);
-            } else if (activation_reason == ar.AllFramesReady) {
-                const src_frame = zapi.initZFrame(d.node, n);
-                const repair_frame = zapi.initZFrame(d.repair_node, n);
-
-                defer src_frame.deinit();
-                defer repair_frame.deinit();
-
-                const process = [_]bool{
-                    d.modes[0] > 0,
-                    d.modes[1] > 0,
-                    d.modes[2] > 0,
-                };
-
-                const dst = src_frame.newVideoFrame2(process);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-                    // Skip planes we aren't supposed to process
-                    if (d.modes[plane] == 0) {
-                        continue;
-                    }
-
-                    const width: usize = src_frame.getWidth(plane);
-                    const height: usize = src_frame.getHeight(plane);
-                    const stride: usize = src_frame.getStride2(T, plane);
-                    const srcp: []const T = src_frame.getReadSlice2(T, plane);
-                    const repairp: []const T = repair_frame.getReadSlice2(T, plane);
-                    const dstp: []T = dst.getWriteSlice2(T, plane);
-                    const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
-
-                    // See note in remove_grain about the use of "double switch" optimization.
-                    switch (d.modes[plane]) {
-                        inline 1...24 => |mode| processPlaneScalar(mode, srcp, repairp, dstp, width, height, stride, chroma),
-                        else => unreachable,
-                    }
-                }
-
-                return dst.frame;
+            // See note in remove_grain about the use of "double switch" optimization.
+            switch (mode) {
+                inline 1...24 => |m| processPlaneScalar(m, srcp, repairp, dstp, width, height, stride, chroma),
+                else => unreachable,
             }
-
-            return null;
         }
     };
+}
+
+fn repairGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
+    const d: *RepairData = @ptrCast(@alignCast(instance_data));
+
+    if (activation_reason == ar.Initial) {
+        zapi.requestFrameFilter(n, d.node);
+        zapi.requestFrameFilter(n, d.repair_node);
+    } else if (activation_reason == ar.AllFramesReady) {
+        const src_frame = zapi.initZFrame(d.node, n);
+        const repair_frame = zapi.initZFrame(d.repair_node, n);
+
+        defer src_frame.deinit();
+        defer repair_frame.deinit();
+
+        const process = [_]bool{
+            d.modes[0] > 0,
+            d.modes[1] > 0,
+            d.modes[2] > 0,
+        };
+
+        const dst = src_frame.newVideoFrame2(process);
+
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &Repair(u8).processPlane,
+            .U16 => &Repair(u16).processPlane,
+            .F16 => &Repair(f16).processPlane,
+            .F32 => &Repair(f32).processPlane,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (d.modes[plane] == 0) {
+                continue;
+            }
+
+            const width: usize = src_frame.getWidth(plane);
+            const height: usize = src_frame.getHeight(plane);
+            const stride8: usize = src_frame.getStride(plane);
+            const srcp8 = src_frame.getReadSlice(plane);
+            const repairp8 = repair_frame.getReadSlice(plane);
+            const dstp8 = dst.getWriteSlice(plane);
+            const chroma = d.vi.format.colorFamily == vs.ColorFamily.YUV and plane > 0;
+
+            processPlane(d.modes[plane], chroma, dstp8, srcp8, repairp8, width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn repairFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
@@ -920,7 +936,7 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         return;
     }
 
-    const numModes:c_int = @intCast(inz.numElements("mode") orelse 0);
+    const numModes: c_int = @intCast(inz.numElements("mode") orelse 0);
     if (numModes > d.vi.format.numPlanes) {
         outz.setError("Repair: Number of modes must be equal or fewer than the number of input planes.");
         zapi.freeNode(d.node);
@@ -932,7 +948,7 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         if (i < numModes) {
             if (inz.getInt2(i32, "mode", i)) |mode| {
                 if (mode < 0 or mode > 24) {
-                    outz.setError( "Repair: Invalid mode specified, only modes 0-24 supported.");
+                    outz.setError("Repair: Invalid mode specified, only modes 0-24 supported.");
                     zapi.freeNode(d.node);
                     zapi.freeNode(d.repair_node);
                     return;
@@ -958,14 +974,7 @@ export fn repairCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &Repair(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &Repair(u16).getFrame else &Repair(f16).getFrame,
-        4 => &Repair(f32).getFrame,
-        else => unreachable,
-    };
-
-    zapi.createVideoFilter(out, "Repair", d.vi, getFrame, repairFree, fm.Parallel, &deps, data);
+    zapi.createVideoFilter(out, "Repair", d.vi, repairGetFrame, repairFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

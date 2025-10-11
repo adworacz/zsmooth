@@ -192,7 +192,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
         }
 
         const diameter: u8 = @intCast(d.radius * 2 + 1);
-        var src_frames: [MAX_DIAMETER]?ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
 
         // Retrieve all source frames within the filter radius.
         {
@@ -201,9 +201,9 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
                 src_frames[@intCast(d.radius + i)] = zapi.initZFrame(d.node, n + i);
             }
         }
-        defer for (0..diameter) |i| if (src_frames[i]) |f| f.deinit();
+        defer for (0..diameter) |i| src_frames[i].deinit();
 
-        const dst = src_frames[@intCast(d.radius)].?.newVideoFrame();
+        const dst = src_frames[@intCast(d.radius)].newVideoFrame();
 
         const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &TemporalMedian(u8).processPlane,
@@ -224,7 +224,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
 
             var srcp8: [MAX_DIAMETER][]const u8 = undefined;
             for (0..diameter) |i| {
-                srcp8[i] = src_frames[i].?.getReadSlice(plane);
+                srcp8[i] = src_frames[i].getReadSlice(plane);
             }
             const dstp8: []u8 = dst.getWriteSlice(plane);
 

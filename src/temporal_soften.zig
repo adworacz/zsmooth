@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -12,7 +13,6 @@ const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) 
 
 const vs = vapoursynth.vapoursynth4;
 const vsh = vapoursynth.vshelper;
-const ZAPI = vapoursynth.ZAPI;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -198,6 +198,8 @@ fn TemporalSoften(comptime T: type) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
+
             const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
             const n: usize = math.lossyCast(usize, _n);
             const radius: usize = math.lossyCast(usize, d.radius);
@@ -207,32 +209,31 @@ fn TemporalSoften(comptime T: type) type {
 
             if (activation_reason == ar.Initial) {
                 for (first..(last + 1)) |i| {
-                    vsapi.?.requestFrameFilter.?(@intCast(i), d.node, frame_ctx);
+                    zapi.requestFrameFilter(@intCast(i), d.node);
                 }
             } else if (activation_reason == ar.AllFramesReady) {
-                var err: vs.MapPropertyError = undefined;
-                var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
                 // The current frame is always stored at the first (0) index.
-                src_frames[0] = vsapi.?.getFrameFilter.?(_n, d.node, frame_ctx);
+                src_frames[0] = zapi.initZFrame(d.node, _n);
                 var frames: u8 = 1;
 
-                var sc_prev = if (d.scenechange) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), "_SceneChangePrev", 0, &err) else 0;
-                var sc_next = if (d.scenechange) vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[0]), "_SceneChangeNext", 0, &err) else 0;
+                var sc_prev = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0 else 0;
+                var sc_next = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0 else 0;
 
                 // Request previous frames, up until we hit a scene change, if using scene change detection.
                 // Even though we aren't going to use all of the frames in a scene change
                 // we still need to request them so that we can free those unused frames.
                 for (1..(n - first + 1)) |i| {
-                    src_frames[frames] = vsapi.?.getFrameFilter.?(_n - @as(c_int, @intCast(i)), d.node, frame_ctx);
+                    src_frames[frames] = zapi.initZFrame(d.node, _n - @as(c_int, @intCast(i)));
 
                     if (sc_prev != 0) {
                         // This frame is a scene change, so let's ditch it and continue;
-                        vsapi.?.freeFrame.?(src_frames[frames]);
+                        src_frames[frames].deinit();
                         continue;
                     }
 
                     if (d.scenechange) {
-                        sc_prev = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), "_SceneChangePrev", 0, &err);
+                        sc_prev = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0;
                     }
 
                     frames += 1;
@@ -240,49 +241,48 @@ fn TemporalSoften(comptime T: type) type {
 
                 // Retrieve next frames, up until we hit a scene change, if using scene change detection.
                 for (1..(last - n + 1)) |i| {
-                    src_frames[frames] = vsapi.?.getFrameFilter.?(_n + @as(c_int, @intCast(i)), d.node, frame_ctx);
+                    src_frames[frames] = zapi.initZFrame(d.node, _n + @as(c_int, @intCast(i)));
 
                     if (sc_next != 0) {
                         // This frame is a scene change, so let's ditch it and continue;
-                        vsapi.?.freeFrame.?(src_frames[frames]);
+                        src_frames[frames].deinit();
                         continue;
                     }
 
                     if (d.scenechange) {
-                        sc_next = vsapi.?.mapGetInt.?(vsapi.?.getFramePropertiesRO.?(src_frames[frames]), "_SceneChangeNext", 0, &err);
+                        sc_next = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0;
                     }
 
                     frames += 1;
                 }
-                defer for (0..frames) |i| vsapi.?.freeFrame.?(src_frames[i]);
+                defer for (0..frames) |i| src_frames[i].deinit();
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[0], d.vi, core, vsapi);
+                const dst = src_frames[0].newVideoFrame2(d.process);
 
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
 
                     // Skip planes we aren't supposed to process
-                    if (d.threshold[_plane] == 0) {
+                    if (d.threshold[plane] == 0) {
                         continue;
                     }
 
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const width: usize = dst.getWidth(plane);
+                    const height: usize = dst.getHeight(plane);
+                    const stride: usize = dst.getStride2(T, plane);
 
                     var srcp: [MAX_DIAMETER][]const T = undefined;
                     for (0..frames) |i| {
-                        srcp[i] = @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[i], plane))))[0..(height * stride)];
+                        srcp[i] = src_frames[i].getReadSlice2(T, plane);
                     }
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
 
-                    const threshold = math.lossyCast(T, d.threshold[_plane]);
+                    const threshold = math.lossyCast(T, d.threshold[plane]);
 
                     // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
                     processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -300,16 +300,11 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     _ = user_data;
     var d: TemporalSoftenData = undefined;
 
-    var err: vs.MapPropertyError = undefined; // Just used for C API shimming. We use optionals for handling errors.
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
 
-    if (vsapi.?.mapGetNode.?(in, "clip", 0, &err)) |node| {
-        d.node = node;
-    } else {
-        vsapi.?.mapSetError.?(out, "TemporalSoften: Please provide a clip.");
-        return;
-    }
-
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
     // Check video format.
     if (!vsh.isConstantVideoFormat(d.vi) or
@@ -317,20 +312,20 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
             d.vi.format.colorFamily != vs.ColorFamily.RGB and
             d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
-        return vscmn.reportError("TemporalSoften: only constant format YUV, RGB or Grey input is supported", vsapi, out, d.node);
+        return vscmn.reportError2("TemporalSoften: only constant format YUV, RGB or Grey input is supported", zapi, outz, d.node);
     }
 
     // Check radius param
-    if (vscmn.mapGetN(i32, in, "radius", 0, vsapi)) |radius| {
+    if (inz.getInt(i32, "radius")) |radius| {
         if ((radius < 1) or (radius > MAX_RADIUS)) {
-            return vscmn.reportError("TemporalSoften: Radius must be between 1 and 7 (inclusive)", vsapi, out, d.node);
+            return vscmn.reportError2("TemporalSoften: Radius must be between 1 and 7 (inclusive)", zapi, outz, d.node);
         }
         d.radius = @intCast(radius);
     } else {
         d.radius = 4;
     }
 
-    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = inz.getBool("scalep") orelse false;
 
     // Check threshold param
     d.threshold = if (d.vi.format.colorFamily == vs.ColorFamily.RGB)
@@ -339,9 +334,9 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         [_]f32{ vscmn.scaleToFormat(f32, d.vi.format, 4, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0), vscmn.scaleToFormat(f32, d.vi.format, 8, 0) };
 
     for (0..3) |i| {
-        if (vscmn.mapGetN(f32, in, "threshold", @intCast(i), vsapi)) |_threshold| {
+        if (inz.getFloat2(f32, "threshold", i)) |_threshold| {
             if (scalep and (_threshold < 0 or _threshold > 255)) {
-                return vscmn.reportError(string.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), vsapi, out, d.node);
+                return vscmn.reportError2(string.printf(allocator, "TemporalSoften: Using parameter scaling (scalep), but threshold value of {d} is outside the range of 0-255", .{_threshold}), zapi, outz, d.node);
             }
 
             const threshold = if (scalep)
@@ -353,7 +348,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
             const formatMinimum = vscmn.getFormatMinimum(f32, d.vi.format, i > 0);
 
             if ((threshold < formatMinimum or threshold > formatMaximum)) {
-                return vscmn.reportError(string.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), vsapi, out, d.node);
+                return vscmn.reportError2(string.printf(allocator, "TemporalSoften: Index {d} threshold '{d}' must be between {d} and {d} (inclusive)", .{ i, threshold, formatMinimum, formatMaximum }), zapi, outz, d.node);
             }
             d.threshold[i] = threshold;
         } else {
@@ -365,11 +360,11 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     }
 
     if (d.threshold[0] == 0 and (d.vi.format.colorFamily == vs.ColorFamily.RGB or d.vi.format.colorFamily == vs.ColorFamily.Gray)) {
-        return vscmn.reportError("TemporalSoften: threshold at index 0 must not be 0 when input is RGB or Gray", vsapi, out, d.node);
+        return vscmn.reportError2("TemporalSoften: threshold at index 0 must not be 0 when input is RGB or Gray", zapi, outz, d.node);
     }
 
     if (d.threshold[0] == 0 and d.threshold[1] == 0 and d.threshold[2] == 0) {
-        return vscmn.reportError("TemporalSoften: All thresholds cannot be 0.", vsapi, out, d.node);
+        return vscmn.reportError2("TemporalSoften: All thresholds cannot be 0.", zapi, outz, d.node);
     }
 
     d.process = [_]bool{
@@ -378,9 +373,9 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         d.threshold[2] > 0,
     };
 
-    const scene_change_threshold = if (vscmn.mapGetN(i32, in, "scenechange", 0, vsapi)) |scene_change_threshold| blk: {
+    const scene_change_threshold = if (inz.getInt(i32, "scenechange")) |scene_change_threshold| blk: {
         if (scene_change_threshold < -1 or scene_change_threshold > 254) {
-            return vscmn.reportError("TemporalSoften: scenechange must be between -1 and 254 (inclusive)", vsapi, out, d.node);
+            return vscmn.reportError2("TemporalSoften: scenechange must be between -1 and 254 (inclusive)", zapi, outz, d.node);
         }
         break :blk scene_change_threshold;
     } else 0;
@@ -389,24 +384,27 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 
     if (scene_change_threshold > 0) {
         if (d.vi.format.colorFamily == vs.ColorFamily.RGB) {
-            return vscmn.reportError("TemporalSoften: Scene change support does not work with RGB.", vsapi, out, d.node);
+            return vscmn.reportError2("TemporalSoften: Scene change support does not work with RGB.", zapi, outz, d.node);
         }
 
-        if (vsapi.?.getPluginByID.?("com.vapoursynth.misc", core)) |misc_plugin| {
-            const args = vsapi.?.createMap.?();
-            _ = vsapi.?.mapSetNode.?(args, "clip", d.node, vs.MapAppendMode.Replace);
-            vsapi.?.freeNode.?(d.node);
-            _ = vsapi.?.mapSetFloat.?(args, "threshold", @as(f64, @floatFromInt(scene_change_threshold)) / 255.0, vs.MapAppendMode.Replace);
+        if (zapi.getPluginByID("com.vapoursynth.misc")) |misc_plugin| {
+            const map = zapi.createMap();
+            const args = zapi.initZMap(map);
 
-            const ret = vsapi.?.invoke.?(misc_plugin, "SCDetect", args);
-            vsapi.?.freeMap.?(args);
+            _ = args.setNode("clip", d.node, .Replace);
+            zapi.freeNode(d.node);
 
-            if (vsapi.?.mapGetNode.?(ret, "clip", 0, &err)) |node| {
+            args.setFloat("threshold", @as(f64, @floatFromInt(scene_change_threshold)) / 255.0, .Replace);
+
+            const ret = zapi.initZMap(zapi.invoke(misc_plugin, "SCDetect", args.map));
+            defer ret.free();
+
+            args.free();
+
+            if (ret.getNode("clip")) |node| {
                 d.node = node;
-                vsapi.?.freeMap.?(ret);
             } else {
-                vsapi.?.mapSetError.?(out, vsapi.?.mapGetError.?(ret) orelse "TemporalSoften: Unexpected error while invoking SCDetect.");
-                vsapi.?.freeMap.?(ret);
+                outz.setError(if (ret.getError()) |err| std.mem.span(err) else "TemporalSoften: Unexpected error while invoking SCDetect.");
                 return;
             }
         } else {

@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 
 const lossyCast = @import("math.zig").lossyCast;
 const getVecSize = @import("vector.zig").getVecSize;
@@ -408,6 +409,12 @@ pub fn reportError(msg: [:0]const u8, vsapi: ?*const vs.API, out: ?*vs.Map, node
     vsapi.?.mapSetError.?(out, msg.ptr);
     vsapi.?.freeNode.?(node);
     return;
+}
+
+/// Reports an error to the VS API (using ZAPI) and frees the input node;
+pub fn reportError2(msg: [:0]const u8, zapi: ZAPI, outz: ZAPI.ZMap(?*vs.Map), node: ?*vs.Node) void {
+    outz.setError(msg);
+    zapi.freeNode(node);
 }
 
 const SoftThresholdParams = struct { bias: f32, threshold_lower: f32, threshold_upper: f32, threshold_scale: f32 };

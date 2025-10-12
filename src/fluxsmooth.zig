@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -61,7 +62,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
 
         fn fluxsmoothTemporalScalar(prev: T, curr: T, next: T, threshold: T) T {
             @setFloatMode(float_mode);
-            
+
             // If both pixels from the corresponding previous and next frames
             // are *brighter* or both are *darker*, then filter.
             if ((prev < curr and next < curr) or (prev > curr and next > curr)) {
@@ -489,7 +490,7 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             const mask_either = vec.orB(prevnextless, prevnextmore);
 
             const prevabsdiff = math.absDiff(prev, curr);
-            const nextabsdiff = math.absDiff(next, curr); 
+            const nextabsdiff = math.absDiff(next, curr);
 
             var sum: @Vector(vec_size, UAT) = curr;
             var count = ones;
@@ -532,71 +533,70 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
             const d: *FluxSmoothData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
                 if (n == 0 or n == d.vi.numFrames - 1) {
-                    vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
+                    zapi.requestFrameFilter(n, d.node);
                 } else {
-                    vsapi.?.requestFrameFilter.?(n - 1, d.node, frame_ctx);
-                    vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-                    vsapi.?.requestFrameFilter.?(n + 1, d.node, frame_ctx);
+                    zapi.requestFrameFilter(n - 1, d.node);
+                    zapi.requestFrameFilter(n, d.node);
+                    zapi.requestFrameFilter(n + 1, d.node);
                 }
             } else if (activation_reason == ar.AllFramesReady) {
                 // Skip filtering on the first and last frames,
                 // since we do not have enough information to filter them properly.
                 if (n == 0 or n == d.vi.numFrames - 1) {
-                    return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                    return zapi.getFrameFilter(n, d.node);
                 }
 
-                const src_frames = [3]?*const vs.Frame{
-                    vsapi.?.getFrameFilter.?(n - 1, d.node, frame_ctx),
-                    vsapi.?.getFrameFilter.?(n, d.node, frame_ctx),
-                    vsapi.?.getFrameFilter.?(n + 1, d.node, frame_ctx),
+                const src_frames = [3]ZAPI.ZFrame(*const vs.Frame){
+                    zapi.initZFrame(d.node, n - 1),
+                    zapi.initZFrame(d.node, n),
+                    zapi.initZFrame(d.node, n + 1),
                 };
-                defer for (&src_frames) |frame| vsapi.?.freeFrame.?(frame);
+                defer for (src_frames) |frame| frame.deinit();
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[1], d.vi, core, vsapi);
+                const dst = src_frames[1].newVideoFrame2(d.process);
 
-                for (0..@intCast(d.vi.format.numPlanes)) |_plane| {
-                    const plane: c_int = @intCast(_plane);
-
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
                     // Skip planes we aren't supposed to process
-                    if (!d.process[_plane]) {
+                    if (!d.process[plane]) {
                         continue;
                     }
 
-                    const width: usize = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: usize = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: usize = @as(usize, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const width = dst.getWidth(plane);
+                    const height = dst.getHeight(plane);
+                    const stride = dst.getStride2(T, plane);
 
                     const srcp = [3][]const T{
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[0], plane))))[0..(height * stride)],
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[1], plane))))[0..(height * stride)],
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[2], plane))))[0..(height * stride)],
+                        src_frames[0].getReadSlice2(T, plane),
+                        src_frames[1].getReadSlice2(T, plane),
+                        src_frames[2].getReadSlice2(T, plane),
                     };
 
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
 
                     switch (mode) {
                         // .Temporal => processPlaneTemporalScalar(srcp, dstp, width, height, math.lossyCast(T, temporal_threshold)),
-                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[_plane])),
+                        .Temporal => processPlaneTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[plane])),
                         .SpatialTemporal => {
                             // We can produce faster code if we know that a given threshold is
                             // greater then -1, since we can use unsigned types.
                             // This picks the optimal function based on the threshold values.
-                            if (d.temporal_threshold[_plane] >= 0 and d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[_plane]), math.lossyCast(T, d.spatial_threshold[_plane]));
-                            } else if (d.spatial_threshold[_plane] >= 0) {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[_plane]), math.lossyCast(T, d.spatial_threshold[_plane]));
+                            if (d.temporal_threshold[plane] >= 0 and d.spatial_threshold[plane] >= 0) {
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(T, d.temporal_threshold[plane]), math.lossyCast(T, d.spatial_threshold[plane]));
+                            } else if (d.spatial_threshold[plane] >= 0) {
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[plane]), math.lossyCast(T, d.spatial_threshold[plane]));
                             } else {
-                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[_plane]), math.lossyCast(SAT, d.spatial_threshold[_plane]));
+                                processPlaneSpatialTemporalVector(srcp, dstp, width, height, stride, math.lossyCast(SAT, d.temporal_threshold[plane]), math.lossyCast(SAT, d.spatial_threshold[plane]));
                             }
                         },
                     }
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -614,32 +614,30 @@ export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*c
 export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     const mode: FluxSmoothMode = @as(*FluxSmoothMode, @ptrCast(user_data)).*;
 
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
+
     var d: FluxSmoothData = undefined;
-    var err: vs.MapPropertyError = undefined;
     const func_name = if (mode == .Temporal) "FluxSmoothT" else "FluxSmoothST";
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
     if (!vsh.isConstantVideoFormat(d.vi)) {
-        vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: only constant format input supported", .{func_name}).ptr);
-        vsapi.?.freeNode.?(d.node);
-        return;
+        return vscmn.reportError2(string.printf(allocator, "{s}: only constant format input supported", .{func_name}), zapi, outz, d.node);
     }
 
     // Optional parameter scaling.
-    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = inz.getBool("scalep") orelse false;
 
     var temporal_threshold = [3]f32{ -1, -1, -1 };
     var spatial_threshold = [3]f32{ -1, -1, -1 };
 
     for (0..3) |i| {
-        if (vscmn.mapGetN(f32, in, "temporal_threshold", @intCast(i), vsapi)) |threshold| {
+        if (inz.getFloat2(f32, "temporal_threshold", i)) |threshold| {
             temporal_threshold[i] = if (scalep and threshold >= 0) thresh: {
                 if (threshold < 0 or threshold > 255) {
-                    vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
-                    vsapi.?.freeNode.?(d.node);
-                    return;
+                    return vscmn.reportError2(string.printf(allocator, "{s}: Using parameter scaling (scalep), but temporal_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }), zapi, outz, d.node);
                 }
                 break :thresh vscmn.scaleToFormat(f32, d.vi.format, threshold, 0);
             } else threshold;
@@ -651,12 +649,10 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         }
 
         if (mode == .SpatialTemporal) {
-            if (vscmn.mapGetN(f32, in, "spatial_threshold", @intCast(i), vsapi)) |threshold| {
+            if (inz.getFloat2(f32, "spatial_threshold", i)) |threshold| {
                 spatial_threshold[i] = if (scalep and threshold >= 0) thresh: {
                     if (threshold < 0 or threshold > 255) {
-                        vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }).ptr);
-                        vsapi.?.freeNode.?(d.node);
-                        return;
+                        return vscmn.reportError2(string.printf(allocator, "{s}: Using parameter scaling (scalep), but spatial_threshold of {d} is outside the range of 0-255", .{ func_name, threshold }), zapi, outz, d.node);
                     }
                     break :thresh vscmn.scaleToFormat(f32, d.vi.format, threshold, 0);
                 } else threshold;
@@ -667,11 +663,11 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
-        vsapi.?.freeNode.?(d.node);
+        zapi.freeNode(d.node);
 
         switch (e) {
-            vscmn.PlanesError.IndexOutOfRange => vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Plane index out of range.", .{ func_name }).ptr),
-            vscmn.PlanesError.SpecifiedTwice => vsapi.?.mapSetError.?(out, string.printf(allocator, "{s}: Plane specified twice.", .{ func_name }).ptr),
+            vscmn.PlanesError.IndexOutOfRange => outz.setError(string.printf(allocator, "{s}: Plane index out of range.", .{func_name})),
+            vscmn.PlanesError.SpecifiedTwice => outz.setError(string.printf(allocator, "{s}: Plane specified twice.", .{func_name})),
         }
         return;
     };
@@ -707,10 +703,10 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, func_name.ptr, d.vi, getFrame, fluxSmoothFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, func_name, d.vi, getFrame, fluxSmoothFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.Temporal)), plugin);
-    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:float[]:opt;spatial_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @constCast(@ptrCast(&FluxSmoothMode.SpatialTemporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothT", "clip:vnode;temporal_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @ptrCast(@constCast(&FluxSmoothMode.Temporal)), plugin);
+    _ = vsapi.registerFunction.?("FluxSmoothST", "clip:vnode;temporal_threshold:float[]:opt;spatial_threshold:float[]:opt;planes:int[]:opt;scalep:int:opt;", "clip:vnode;", fluxSmoothCreate, @ptrCast(@constCast(&FluxSmoothMode.SpatialTemporal)), plugin);
 }

@@ -4,6 +4,7 @@
 * Upgrade to Zig 0.15.1
 * Minor code improvements in VerticalCleaner
 * Minor code improvements in Repair
+* Fix minor memory leak in Repair - repair clip wasn't freed if an error occurred during plugin init.
 * Improve cross-builds - we now take advantage of Zig's build intelligence to
 generate build artifacts for all artifacts in parallel.
 

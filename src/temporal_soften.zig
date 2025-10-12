@@ -80,7 +80,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneVector(srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
@@ -96,7 +96,7 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn temporalSmoothVector(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, offset: usize, frames: u8, threshold: T) void {
+        fn temporalSmoothVector(srcp: []const []const T, noalias dstp: []T, offset: usize, frames: u8, threshold: T) void {
             @setFloatMode(float_mode);
 
             const threshold_vec: VecType = @splat(threshold);
@@ -194,100 +194,114 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(frames: u8, _threshold: f32, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
+            //TODO: Remove 'frames' param, since it's just the length of the srcp8 slice.
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const []const T = @ptrCast(@alignCast(srcp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
+            const threshold = math.lossyCast(T, _threshold);
 
-            const zapi = ZAPI.init(vsapi, core, frame_ctx);
-
-            const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
-            const n: usize = math.lossyCast(usize, _n);
-            const radius: usize = math.lossyCast(usize, d.radius);
-
-            const first: usize = n -| radius;
-            const last: usize = @min(n + radius, math.lossyCast(usize, d.vi.numFrames - 1));
-
-            if (activation_reason == ar.Initial) {
-                for (first..(last + 1)) |i| {
-                    zapi.requestFrameFilter(@intCast(i), d.node);
-                }
-            } else if (activation_reason == ar.AllFramesReady) {
-                var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
-                // The current frame is always stored at the first (0) index.
-                src_frames[0] = zapi.initZFrame(d.node, _n);
-                var frames: u8 = 1;
-
-                var sc_prev = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0 else 0;
-                var sc_next = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0 else 0;
-
-                // Request previous frames, up until we hit a scene change, if using scene change detection.
-                // Even though we aren't going to use all of the frames in a scene change
-                // we still need to request them so that we can free those unused frames.
-                for (1..(n - first + 1)) |i| {
-                    src_frames[frames] = zapi.initZFrame(d.node, _n - @as(c_int, @intCast(i)));
-
-                    if (sc_prev != 0) {
-                        // This frame is a scene change, so let's ditch it and continue;
-                        src_frames[frames].deinit();
-                        continue;
-                    }
-
-                    if (d.scenechange) {
-                        sc_prev = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0;
-                    }
-
-                    frames += 1;
-                }
-
-                // Retrieve next frames, up until we hit a scene change, if using scene change detection.
-                for (1..(last - n + 1)) |i| {
-                    src_frames[frames] = zapi.initZFrame(d.node, _n + @as(c_int, @intCast(i)));
-
-                    if (sc_next != 0) {
-                        // This frame is a scene change, so let's ditch it and continue;
-                        src_frames[frames].deinit();
-                        continue;
-                    }
-
-                    if (d.scenechange) {
-                        sc_next = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0;
-                    }
-
-                    frames += 1;
-                }
-                defer for (0..frames) |i| src_frames[i].deinit();
-
-                const dst = src_frames[0].newVideoFrame2(d.process);
-
-                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-
-                    // Skip planes we aren't supposed to process
-                    if (d.threshold[plane] == 0) {
-                        continue;
-                    }
-
-                    const width: usize = dst.getWidth(plane);
-                    const height: usize = dst.getHeight(plane);
-                    const stride: usize = dst.getStride2(T, plane);
-
-                    var srcp: [MAX_DIAMETER][]const T = undefined;
-                    for (0..frames) |i| {
-                        srcp[i] = src_frames[i].getReadSlice2(T, plane);
-                    }
-                    const dstp: []T = dst.getWriteSlice2(T, plane);
-
-                    const threshold = math.lossyCast(T, d.threshold[plane]);
-
-                    // processPlaneScalar(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
-                    processPlaneVector(srcp, @ptrCast(@alignCast(dstp)), width, height, stride, frames, threshold);
-                }
-
-                return dst.frame;
-            }
-
-            return null;
+            // processPlaneScalar(srcp, dstp), width, height, stride, frames, threshold);
+            processPlaneVector(srcp, dstp, width, height, stride, frames, threshold);
         }
     };
+}
+
+fn temporalSoftenGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
+
+    const d: *TemporalSoftenData = @ptrCast(@alignCast(instance_data));
+    const n: usize = math.lossyCast(usize, _n);
+    const radius: usize = math.lossyCast(usize, d.radius);
+
+    const first: usize = n -| radius;
+    const last: usize = @min(n + radius, math.lossyCast(usize, d.vi.numFrames - 1));
+
+    if (activation_reason == ar.Initial) {
+        for (first..(last + 1)) |i| {
+            zapi.requestFrameFilter(@intCast(i), d.node);
+        }
+    } else if (activation_reason == ar.AllFramesReady) {
+        var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        // The current frame is always stored at the first (0) index.
+        src_frames[0] = zapi.initZFrame(d.node, _n);
+        var frames: u8 = 1;
+
+        var sc_prev = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0 else 0;
+        var sc_next = if (d.scenechange) src_frames[0].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0 else 0;
+
+        // Request previous frames, up until we hit a scene change, if using scene change detection.
+        // Even though we aren't going to use all of the frames in a scene change
+        // we still need to request them so that we can free those unused frames.
+        for (1..(n - first + 1)) |i| {
+            src_frames[frames] = zapi.initZFrame(d.node, _n - @as(c_int, @intCast(i)));
+
+            if (sc_prev != 0) {
+                // This frame is a scene change, so let's ditch it and continue;
+                src_frames[frames].deinit();
+                continue;
+            }
+
+            if (d.scenechange) {
+                sc_prev = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangePrev") orelse 0;
+            }
+
+            frames += 1;
+        }
+
+        // Retrieve next frames, up until we hit a scene change, if using scene change detection.
+        for (1..(last - n + 1)) |i| {
+            src_frames[frames] = zapi.initZFrame(d.node, _n + @as(c_int, @intCast(i)));
+
+            if (sc_next != 0) {
+                // This frame is a scene change, so let's ditch it and continue;
+                src_frames[frames].deinit();
+                continue;
+            }
+
+            if (d.scenechange) {
+                sc_next = src_frames[frames].getPropertiesRO().getInt(i32, "_SceneChangeNext") orelse 0;
+            }
+
+            frames += 1;
+        }
+        defer for (0..frames) |i| src_frames[i].deinit();
+
+        const dst = src_frames[0].newVideoFrame2(d.process);
+
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &TemporalSoften(u8).processPlane,
+            .U16 => &TemporalSoften(u16).processPlane,
+            .F16 => &TemporalSoften(f16).processPlane,
+            .F32 => &TemporalSoften(f32).processPlane,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            // Skip planes we aren't supposed to process
+            if (d.threshold[plane] == 0) {
+                continue;
+            }
+
+            const width = dst.getWidth(plane);
+            const height = dst.getHeight(plane);
+            const stride8 = dst.getStride(plane);
+
+            var srcp8: [MAX_DIAMETER][]const u8 = undefined;
+            for (0..frames) |i| {
+                srcp8[i] = src_frames[i].getReadSlice(plane);
+            }
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+
+            processPlane(frames, d.threshold[plane], dstp8, srcp8[0..frames], width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
@@ -296,6 +310,7 @@ export fn temporalSoftenFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi:
     vsapi.?.freeNode.?(d.node);
     allocator.destroy(d);
 }
+
 export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: TemporalSoftenData = undefined;
@@ -422,14 +437,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &TemporalSoften(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &TemporalSoften(u16).getFrame else &TemporalSoften(f16).getFrame,
-        4 => &TemporalSoften(f32).getFrame,
-        else => unreachable,
-    };
-
-    vsapi.?.createVideoFilter.?(out, "TemporalSoften", d.vi, getFrame, temporalSoftenFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "TemporalSoften", d.vi, temporalSoftenGetFrame, temporalSoftenFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

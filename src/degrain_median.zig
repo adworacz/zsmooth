@@ -1,5 +1,6 @@
 const std = @import("std");
 const vapoursynth = @import("vapoursynth");
+const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 const testingAllocator = @import("std").testing.allocator;
 
@@ -568,56 +569,56 @@ fn DegrainMedian(comptime T: type) type {
             // Assign frame_data to nothing to stop compiler complaints
             _ = frame_data;
 
+            const zapi = ZAPI.init(vsapi, core, frame_ctx);
             const d: *const DegrainMedianData = @ptrCast(@alignCast(instance_data));
 
             if (activation_reason == ar.Initial) {
                 // Request previous, current, and next frames.
-                vsapi.?.requestFrameFilter.?(@max(0, n - 1), d.node, frame_ctx);
-                vsapi.?.requestFrameFilter.?(n, d.node, frame_ctx);
-                vsapi.?.requestFrameFilter.?(@min(n + 1, d.vi.numFrames - 1), d.node, frame_ctx);
+                zapi.requestFrameFilter(@max(0, n - 1), d.node);
+                zapi.requestFrameFilter(n, d.node);
+                zapi.requestFrameFilter(@min(n + 1, d.vi.numFrames - 1), d.node);
             } else if (activation_reason == ar.AllFramesReady) {
                 // Skip filtering on the first and last frames that lie inside the filter radius,
                 // since we do not have enough information to filter them properly.
                 if (n == 0 or n == d.vi.numFrames - 1) {
-                    return vsapi.?.getFrameFilter.?(n, d.node, frame_ctx);
+                    return zapi.getFrameFilter(n, d.node);
                 }
 
-                const src_frames = [3]?*const vs.Frame{
-                    vsapi.?.getFrameFilter.?(n - 1, d.node, frame_ctx),
-                    vsapi.?.getFrameFilter.?(n, d.node, frame_ctx),
-                    vsapi.?.getFrameFilter.?(n + 1, d.node, frame_ctx),
+                const src_frames = [3]ZAPI.ZFrame(*const vs.Frame){
+                    zapi.initZFrame(d.node, n - 1),
+                    zapi.initZFrame(d.node, n),
+                    zapi.initZFrame(d.node, n + 1),
                 };
-                defer for (0..3) |i| vsapi.?.freeFrame.?(src_frames[i]);
+                defer for (src_frames) |frame| frame.deinit();
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[1], d.vi, core, vsapi);
+                const dst = src_frames[1].newVideoFrame2(d.process);
 
-                for (0..3) |_plane| {
-                    const plane: c_int = @intCast(_plane);
+                for (0..3) |plane| {
 
                     // Skip planes we aren't supposed to process
-                    if (!d.process[_plane]) {
+                    if (!d.process[plane]) {
                         continue;
                     }
 
-                    const width: u32 = @intCast(vsapi.?.getFrameWidth.?(dst, plane));
-                    const height: u32 = @intCast(vsapi.?.getFrameHeight.?(dst, plane));
-                    const stride: u32 = @as(u32, @intCast(vsapi.?.getStride.?(dst, plane))) / @sizeOf(T);
+                    const width: u32 = dst.getWidth(plane);
+                    const height: u32 = dst.getHeight(plane);
+                    const stride: u32 = dst.getStride2(T, plane);
 
                     const srcp = [3][]const T{
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[0], plane))))[0..(height * stride)],
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[1], plane))))[0..(height * stride)],
-                        @as([*]const T, @ptrCast(@alignCast(vsapi.?.getReadPtr.?(src_frames[2], plane))))[0..(height * stride)],
+                        src_frames[0].getReadSlice2(T, plane),
+                        src_frames[1].getReadSlice2(T, plane),
+                        src_frames[2].getReadSlice2(T, plane),
                     };
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(vsapi.?.getWritePtr.?(dst, plane))))[0..(height * stride)];
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
 
-                    const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, _plane > 0);
-                    const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, _plane > 0);
+                    const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, plane > 0);
+                    const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, plane > 0);
 
-                    DegrainMedianOperation.init(d.mode[_plane], d.norow)
-                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[_plane]), pixel_min, pixel_max, d.interlaced);
+                    DegrainMedianOperation.init(d.mode[plane], d.norow)
+                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[plane]), pixel_min, pixel_max, d.interlaced);
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -634,44 +635,47 @@ export fn degrainMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: 
 
 export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
-    var d: DegrainMedianData = undefined;
-    var err: vs.MapPropertyError = undefined;
 
-    d.node = vsapi.?.mapGetNode.?(in, "clip", 0, &err).?;
-    d.vi = vsapi.?.getVideoInfo.?(d.node);
+    const zapi = ZAPI.init(vsapi, core, null);
+    const inz = zapi.initZMap(in);
+    const outz = zapi.initZMap(out);
+
+    var d: DegrainMedianData = undefined;
+
+    d.node, d.vi = inz.getNodeVi("clip").?;
 
     if (!vsh.isConstantVideoFormat(d.vi) or
         (d.vi.format.colorFamily != vs.ColorFamily.YUV and
         d.vi.format.colorFamily != vs.ColorFamily.RGB and
         d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
-        return vscmn.reportError("DegrainMedian: only constant format YUV, RGB or Grey input is supported", vsapi, out, d.node);
+        return vscmn.reportError2("DegrainMedian: only constant format YUV, RGB or Grey input is supported", zapi, outz, d.node);
     }
 
     const vector_len = vscmn.formatVectorLength(d.vi.format);
     if (d.vi.width < vector_len) {
-        return vscmn.reportError(string.printf(allocator,
+        return vscmn.reportError2(string.printf(allocator,
             \\DegrainMedian: For performance reasons, DegrainMedian does not support clip widths under {} for this sample type. 
             \\If you have good reason to process such small clips, please open an issue describing your use csae.
-        , .{vector_len}), vsapi, out, d.node);
+        , .{vector_len}), zapi, outz, d.node);
     }
 
-    d.interlaced = vscmn.mapGetN(bool, in, "interlaced", 0, vsapi) orelse false;
-    d.norow = vscmn.mapGetN(bool, in, "norow", 0, vsapi) orelse false;
+    d.interlaced = inz.getBool("interlaced") orelse false;
+    d.norow = inz.getBool("norow") orelse false;
 
-    const scalep = vscmn.mapGetN(bool, in, "scalep", 0, vsapi) orelse false;
+    const scalep = inz.getBool("scalep") orelse false;
 
-    const num_limits = vsapi.?.mapNumElements.?(in, "limit");
-    if (num_limits > d.vi.format.numPlanes) {
+    const num_limits = inz.numElements("limit") orelse 0;
+    if (num_limits > math.lossyCast(u32, d.vi.format.numPlanes)) {
         return vscmn.reportError("DegrainMedian: limit has more elements than there are planes.", vsapi, out, d.node);
     }
 
     d.limit = [3]f32{ 4, 4, 4 };
 
     for (0..3) |i| {
-        if (vscmn.mapGetN(f32, in, "limit", @intCast(i), vsapi)) |_limit| {
+        if (inz.getFloat2(f32, "limit", i)) |_limit| {
             if (scalep and (_limit < 0 or _limit > 255)) {
-                return vscmn.reportError(string.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), vsapi, out, d.node);
+                return vscmn.reportError2(string.printf(allocator, "DegrainMedian: Using parameter scaling (scalep), but limit value of {d} is outside the range of 0-255", .{_limit}), zapi, outz, d.node);
             }
 
             const formatMaximum = vscmn.getFormatMaximum(f32, d.vi.format, i > 0);
@@ -687,7 +691,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
                 _limit;
 
             if ((limit < formatMinimum or limit > formatMaximum)) {
-                return vscmn.reportError(string.printf(allocator, "DegrainMedian: Index {d} limit '{d}' must be between {d} and {d} (inclusive)", .{ i, limit, formatMinimum, formatMaximum }), vsapi, out, d.node);
+                return vscmn.reportError2(string.printf(allocator, "DegrainMedian: Index {d} limit '{d}' must be between {d} and {d} (inclusive)", .{ i, limit, formatMinimum, formatMaximum }), zapi, outz, d.node);
             }
 
             d.limit[i] = limit;
@@ -700,7 +704,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
     }
 
     if (d.limit[0] == 0 and d.limit[1] == 0 and d.limit[2] == 0) {
-        return vscmn.reportError("DegrainMedian: All limits cannot be 0.", vsapi, out, d.node);
+        return vscmn.reportError2("DegrainMedian: All limits cannot be 0.", zapi, outz, d.node);
     }
 
     d.process = [_]bool{
@@ -709,17 +713,17 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         d.limit[2] > 0,
     };
 
-    const num_modes = vsapi.?.mapNumElements.?(in, "mode");
-    if (num_modes > d.vi.format.numPlanes) {
-        return vscmn.reportError("DegrainMedian: mode has more elements than there are planes.", vsapi, out, d.node);
+    const num_modes = inz.numElements("mode") orelse 0;
+    if (num_modes > math.lossyCast(u32, d.vi.format.numPlanes)) {
+        return vscmn.reportError2("DegrainMedian: mode has more elements than there are planes.", zapi, outz, d.node);
     }
 
     d.mode = [3]u3{ 1, 1, 1 };
 
     for (0..3) |i| {
-        if (vscmn.mapGetN(i32, in, "mode", @intCast(i), vsapi)) |mode| {
+        if (inz.getInt2(i32, "mode", i)) |mode| {
             if (mode < 0 or mode > 5) {
-                return vscmn.reportError("DegrainMedian: Mode cannot be less than 0 or greater than 5.", vsapi, out, d.node);
+                return vscmn.reportError2("DegrainMedian: Mode cannot be less than 0 or greater than 5.", zapi, outz, d.node);
             }
             d.mode[i] = @intCast(mode);
         } else {
@@ -747,7 +751,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         else => unreachable,
     };
 
-    vsapi.?.createVideoFilter.?(out, "DegrainMedian", d.vi, getFrame, degrainMedianFree, fm.Parallel, &deps, deps.len, data, core);
+    zapi.createVideoFilter(out, "DegrainMedian", d.vi, getFrame, degrainMedianFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

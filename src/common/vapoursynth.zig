@@ -59,7 +59,6 @@ pub const FormatType = enum {
 /// Scales an 8 bit value match the pertinent bit depth, sample
 /// type, and plane (is/is not chroma).
 pub fn scaleToFormat(comptime T: type, vf: vs.VideoFormat, value: anytype, plane: anytype) T {
-    // const V = @TypeOf(value);
     // Float support, 16-32 bit.
     if (vf.sampleType == vs.SampleType.Float) {
         var out: f32 = lossyCast(f32, value) / 255.0;

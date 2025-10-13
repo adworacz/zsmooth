@@ -417,7 +417,6 @@ fn TTempSmooth(comptime T: type) type {
 
         fn processPlaneVector(srcp: []const []const T, pfp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
             const width_simd = width / vector_len * vector_len;
-
             for (0..height) |row| {
                 var column: usize = 0;
                 while (column < width_simd) : (column += vector_len) {
@@ -433,115 +432,135 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
-        pub fn getFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(weight_mode: WeightMode, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, _threshold: f32, fp: bool, shift: u8, center_weight: f32, temporal_weights: []f32, temporal_difference_weights: [][MAX_NUM_DIFFERENCES]f32, noalias dstp8: []u8, srcp8: []const []const u8, pfp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: []const []const T = @ptrCast(@alignCast(srcp8));
+            const pfp: []const []const T = @ptrCast(@alignCast(pfp8));
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
-            const zapi: ZAPI = ZAPI.init(vsapi, core, frame_ctx);
+            const threshold = lossyCast(T, _threshold);
 
-            const n: usize = lossyCast(usize, _n);
-            const first: usize = n -| d.maxr;
-            const last: usize = @min(n + d.maxr, lossyCast(usize, d.vi.numFrames - 1));
-            const has_pfclip = d.pfclip != null;
-
-            if (activation_reason == ar.Initial) {
-                for (first..(last + 1)) |i| {
-                    zapi.requestFrameFilter(@intCast(i), d.node);
-
-                    if (has_pfclip) {
-                        zapi.requestFrameFilter(@intCast(i), d.pfclip);
-                    }
-                }
-            } else if (activation_reason == ar.AllFramesReady) {
-                var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
-                var pf_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
-                const diameter = d.maxr * 2 + 1;
-
-                {
-                    var i = -lossyCast(i8, d.maxr); // -d.maxr
-                    while (i <= d.maxr) : (i += 1) {
-                        const frame_number: i32 = std.math.clamp(lossyCast(i32, n) + i, 0, d.vi.numFrames - 1);
-                        const index: usize = @intCast(i + lossyCast(i8, d.maxr)); // i + d.maxr
-
-                        src_frames[index] = zapi.initZFrame(d.node, frame_number);
-
-                        if (has_pfclip) {
-                            pf_frames[index] = zapi.initZFrame(d.pfclip, frame_number);
-                        }
-                    }
-                }
-                defer for (0..diameter) |i| {
-                    src_frames[i].deinit();
-                    if (has_pfclip) {
-                        pf_frames[i].deinit();
-                    }
-                };
-
-                var from_frame_idx: usize = 0;
-                var to_frame_idx: usize = diameter - 1;
-                if (d.scenechange) {
-                    const frames = if (has_pfclip) pf_frames else src_frames;
-                    {
-                        var i = d.maxr;
-                        while (i > 0) : (i -= 1) {
-                            if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangePrev") == 1) {
-                                from_frame_idx = i;
-                                break;
-                            }
-                        }
-                    }
-                    {
-                        var i = d.maxr;
-                        while (i < diameter - 1) : (i += 1) {
-                            if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangeNext") == 1) {
-                                to_frame_idx = i;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                const dst = src_frames[d.maxr].newVideoFrame2(d.process);
-                const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
-
-                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-                    if (!d.process[plane]) {
-                        continue;
-                    }
-
-                    const width = dst.getWidth(plane);
-                    const height = dst.getHeight(plane);
-                    const stride = dst.getStride2(T, plane);
-
-                    var srcp: [MAX_DIAMETER][]const T = undefined;
-                    for (0..diameter) |i| {
-                        srcp[i] = src_frames[i].getReadSlice2(T, plane);
-                    }
-
-                    var pfp: [MAX_DIAMETER][]const T = undefined;
-                    if (has_pfclip) {
-                        for (0..diameter) |i| {
-                            pfp[i] = pf_frames[i].getReadSlice2(T, plane);
-                        }
-                    }
-
-                    const dstp: []T = dst.getWriteSlice2(T, plane);
-
-                    const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[plane], 0);
-
-                    switch (d.weight_mode[plane]) {
-                        // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
-                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[plane], d.temporal_difference_weights[plane]),
-                    }
-                }
-
-                return dst.frame;
+            switch (weight_mode) {
+                inline else => |wm| processPlaneVector(srcp, pfp, dstp, width, height, stride, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, wm, temporal_weights, temporal_difference_weights),
             }
-
-            return null;
         }
     };
+}
+
+fn ttempSmoothGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const d: *TTempSmoothData = @ptrCast(@alignCast(instance_data));
+    const zapi: ZAPI = ZAPI.init(vsapi, core, frame_ctx);
+
+    const n: usize = lossyCast(usize, _n);
+    const first: usize = n -| d.maxr;
+    const last: usize = @min(n + d.maxr, lossyCast(usize, d.vi.numFrames - 1));
+    const has_pfclip = d.pfclip != null;
+
+    if (activation_reason == ar.Initial) {
+        for (first..(last + 1)) |i| {
+            zapi.requestFrameFilter(@intCast(i), d.node);
+
+            if (has_pfclip) {
+                zapi.requestFrameFilter(@intCast(i), d.pfclip);
+            }
+        }
+    } else if (activation_reason == ar.AllFramesReady) {
+        var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var pf_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        const diameter = d.maxr * 2 + 1;
+
+        {
+            var i = -lossyCast(i8, d.maxr); // -d.maxr
+            while (i <= d.maxr) : (i += 1) {
+                const frame_number: i32 = std.math.clamp(lossyCast(i32, n) + i, 0, d.vi.numFrames - 1);
+                const index: usize = @intCast(i + lossyCast(i8, d.maxr)); // i + d.maxr
+
+                src_frames[index] = zapi.initZFrame(d.node, frame_number);
+
+                if (has_pfclip) {
+                    pf_frames[index] = zapi.initZFrame(d.pfclip, frame_number);
+                }
+            }
+        }
+        defer for (0..diameter) |i| {
+            src_frames[i].deinit();
+            if (has_pfclip) {
+                pf_frames[i].deinit();
+            }
+        };
+
+        var from_frame_idx: usize = 0;
+        var to_frame_idx: usize = diameter - 1;
+        if (d.scenechange) {
+            const frames = if (has_pfclip) pf_frames else src_frames;
+            {
+                var i = d.maxr;
+                while (i > 0) : (i -= 1) {
+                    if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangePrev") == 1) {
+                        from_frame_idx = i;
+                        break;
+                    }
+                }
+            }
+            {
+                var i = d.maxr;
+                while (i < diameter - 1) : (i += 1) {
+                    if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangeNext") == 1) {
+                        to_frame_idx = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const dst = src_frames[d.maxr].newVideoFrame2(d.process);
+        const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
+
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &TTempSmooth(u8).processPlane,
+            .U16 => &TTempSmooth(u16).processPlane,
+            // Math.pow doesn't support f16 yet, so have to disable f16 support for the short term until the following is addressed:
+            // * https://github.com/ziglang/zig/issues/23602
+            // * https://github.com/ziglang/zig/pull/23631
+            // .F16 => &TTempSmooth(f16).processPlane,
+            .F32 => &TTempSmooth(f32).processPlane,
+            else => unreachable,
+        };
+
+        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+            if (!d.process[plane]) {
+                continue;
+            }
+
+            const width = dst.getWidth(plane);
+            const height = dst.getHeight(plane);
+            const stride8 = dst.getStride(plane);
+
+            var srcp8: [MAX_DIAMETER][]const u8 = undefined;
+            for (0..diameter) |i| {
+                srcp8[i] = src_frames[i].getReadSlice(plane);
+            }
+
+            var pfp8: [MAX_DIAMETER][]const u8 = undefined;
+            if (has_pfclip) {
+                for (0..diameter) |i| {
+                    pfp8[i] = pf_frames[i].getReadSlice(plane);
+                }
+            }
+
+            const dstp8: []u8 = dst.getWriteSlice(plane);
+            const threshold: f32 = vscmn.scaleToFormat(f32, d.vi.format, d.threshold[plane], 0);
+
+            processPlane(d.weight_mode[plane], from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, d.temporal_weights[plane], d.temporal_difference_weights[plane], dstp8, srcp8[0..diameter], if(has_pfclip) pfp8[0..diameter] else srcp8[0..diameter], width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
@@ -931,18 +950,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
     };
     const num_deps: u8 = if (d.pfclip != null) 2 else 1;
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &TTempSmooth(u8).getFrame,
-        // Math.pow doesn't support f16 yet, so have to disable f16 support for the short term until the following is addressed:
-        // * https://github.com/ziglang/zig/issues/23602
-        // * https://github.com/ziglang/zig/pull/23631
-        // 2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &TTempSmooth(u16).getFrame else &TTempSmooth(f16).getFrame,
-        2 => &TTempSmooth(u16).getFrame,
-        4 => &TTempSmooth(f32).getFrame,
-        else => unreachable,
-    };
-
-    vsapi.?.createVideoFilter.?(out, "TTempSmooth", d.vi, getFrame, ttempSmoothFree, fm.Parallel, deps[0..num_deps].ptr, @intCast(num_deps), data, core);
+    zapi.createVideoFilter(out, "TTempSmooth", d.vi, ttempSmoothGetFrame, ttempSmoothFree, fm.Parallel, deps[0..num_deps], data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

@@ -454,8 +454,8 @@ fn TTempSmooth(comptime T: type) type {
                     }
                 }
             } else if (activation_reason == ar.AllFramesReady) {
-                var src_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
-                var pf_frames: [MAX_DIAMETER]?*const vs.Frame = undefined;
+                var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+                var pf_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
                 const diameter = d.maxr * 2 + 1;
 
                 {
@@ -464,17 +464,17 @@ fn TTempSmooth(comptime T: type) type {
                         const frame_number: i32 = std.math.clamp(lossyCast(i32, n) + i, 0, d.vi.numFrames - 1);
                         const index: usize = @intCast(i + lossyCast(i8, d.maxr)); // i + d.maxr
 
-                        src_frames[index] = zapi.getFrameFilter(frame_number, d.node);
+                        src_frames[index] = zapi.initZFrame(d.node, frame_number);
 
                         if (has_pfclip) {
-                            pf_frames[index] = zapi.getFrameFilter(frame_number, d.pfclip);
+                            pf_frames[index] = zapi.initZFrame(d.pfclip, frame_number);
                         }
                     }
                 }
                 defer for (0..diameter) |i| {
-                    zapi.freeFrame(src_frames[i]);
+                    src_frames[i].deinit();
                     if (has_pfclip) {
-                        zapi.freeFrame(pf_frames[i]);
+                        pf_frames[i].deinit();
                     }
                 };
 
@@ -485,8 +485,7 @@ fn TTempSmooth(comptime T: type) type {
                     {
                         var i = d.maxr;
                         while (i > 0) : (i -= 1) {
-                            const props = zapi.initZMap(zapi.getFramePropertiesRO(frames[i]));
-                            if (props.getInt(i32, "_SceneChangePrev") == 1) {
+                            if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangePrev") == 1) {
                                 from_frame_idx = i;
                                 break;
                             }
@@ -495,8 +494,7 @@ fn TTempSmooth(comptime T: type) type {
                     {
                         var i = d.maxr;
                         while (i < diameter - 1) : (i += 1) {
-                            const props = zapi.initZMap(zapi.getFramePropertiesRO(frames[i]));
-                            if (props.getInt(i32, "_SceneChangeNext") == 1) {
+                            if (frames[i].getPropertiesRO().getInt(i32, "_SceneChangeNext") == 1) {
                                 to_frame_idx = i;
                                 break;
                             }
@@ -504,43 +502,41 @@ fn TTempSmooth(comptime T: type) type {
                     }
                 }
 
-                const dst = vscmn.newVideoFrame(&d.process, src_frames[d.maxr], d.vi, core, vsapi);
+                const dst = src_frames[d.maxr].newVideoFrame2(d.process);
                 const shift = lossyCast(u8, d.vi.format.bitsPerSample) - 8;
 
-                for (0..@intCast(d.vi.format.numPlanes)) |uplane| {
-                    if (!d.process[uplane]) {
+                for (0..@intCast(d.vi.format.numPlanes)) |plane| {
+                    if (!d.process[plane]) {
                         continue;
                     }
 
-                    const iplane: c_int = @intCast(uplane);
-
-                    const width: usize = @intCast(zapi.getFrameWidth(dst, iplane));
-                    const height: usize = @intCast(zapi.getFrameHeight(dst, iplane));
-                    const stride: usize = @as(usize, @intCast(zapi.getStride(dst, iplane))) / @sizeOf(T);
+                    const width = dst.getWidth(plane);
+                    const height = dst.getHeight(plane);
+                    const stride = dst.getStride2(T, plane);
 
                     var srcp: [MAX_DIAMETER][]const T = undefined;
                     for (0..diameter) |i| {
-                        srcp[i] = @as([*]const T, @ptrCast(@alignCast(zapi.getReadPtr(src_frames[i], iplane))))[0..(height * stride)];
+                        srcp[i] = src_frames[i].getReadSlice2(T, plane);
                     }
 
                     var pfp: [MAX_DIAMETER][]const T = undefined;
                     if (has_pfclip) {
                         for (0..diameter) |i| {
-                            pfp[i] = @as([*]const T, @ptrCast(@alignCast(zapi.getReadPtr(pf_frames[i], iplane))))[0..(height * stride)];
+                            pfp[i] = pf_frames[i].getReadSlice2(T, plane);
                         }
                     }
 
-                    const dstp: []T = @as([*]T, @ptrCast(@alignCast(zapi.getWritePtr(dst, iplane))))[0..(height * stride)];
+                    const dstp: []T = dst.getWriteSlice2(T, plane);
 
-                    const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[uplane], 0);
+                    const threshold: T = vscmn.scaleToFormat(T, d.vi.format, d.threshold[plane], 0);
 
-                    switch (d.weight_mode[uplane]) {
+                    switch (d.weight_mode[plane]) {
                         // inline else => |wm| processPlaneScalar(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
-                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[uplane], d.temporal_difference_weights[uplane]),
+                        inline else => |wm| processPlaneVector(srcp[0..diameter], if (has_pfclip) pfp[0..diameter] else srcp[0..diameter], dstp, width, height, stride, from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, wm, d.temporal_weights[plane], d.temporal_difference_weights[plane]),
                     }
                 }
 
-                return dst;
+                return dst.frame;
             }
 
             return null;
@@ -755,7 +751,6 @@ test calculateTemporalDifferenceWeights {
 export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     var d: TTempSmoothData = undefined;
-    // var err: vs.MapPropertyError = undefined;
 
     const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);

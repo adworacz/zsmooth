@@ -565,65 +565,88 @@ fn DegrainMedian(comptime T: type) type {
             copy.copyLastNLines(T, dstp, srcp[1], width, height, stride, skip_rows);
         }
 
-        pub fn getFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
-            // Assign frame_data to nothing to stop compiler complaints
-            _ = frame_data;
+        fn processPlane(mode: u3, norow: bool, _limit: f32, interlaced: bool, _pixel_min: f32, _pixel_max: f32, noalias dstp8: []u8, srcp8: [3][]const u8, width: u32, height: u32, stride8: u32) void {
+            const stride = stride8 / @sizeOf(T);
+            const srcp: [3][]const T = .{
+                @ptrCast(@alignCast(srcp8[0])),
+                @ptrCast(@alignCast(srcp8[1])),
+                @ptrCast(@alignCast(srcp8[2])),
+            };
+            const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const zapi = ZAPI.init(vsapi, core, frame_ctx);
-            const d: *const DegrainMedianData = @ptrCast(@alignCast(instance_data));
+            const limit: T  = math.lossyCast(T, _limit);
+            const pixel_min: T = math.lossyCast(T, _pixel_min);
+            const pixel_max: T = math.lossyCast(T, _pixel_max);
 
-            if (activation_reason == ar.Initial) {
-                // Request previous, current, and next frames.
-                zapi.requestFrameFilter(@max(0, n - 1), d.node);
-                zapi.requestFrameFilter(n, d.node);
-                zapi.requestFrameFilter(@min(n + 1, d.vi.numFrames - 1), d.node);
-            } else if (activation_reason == ar.AllFramesReady) {
-                // Skip filtering on the first and last frames that lie inside the filter radius,
-                // since we do not have enough information to filter them properly.
-                if (n == 0 or n == d.vi.numFrames - 1) {
-                    return zapi.getFrameFilter(n, d.node);
-                }
-
-                const src_frames = [3]ZAPI.ZFrame(*const vs.Frame){
-                    zapi.initZFrame(d.node, n - 1),
-                    zapi.initZFrame(d.node, n),
-                    zapi.initZFrame(d.node, n + 1),
-                };
-                defer for (src_frames) |frame| frame.deinit();
-
-                const dst = src_frames[1].newVideoFrame2(d.process);
-
-                for (0..3) |plane| {
-
-                    // Skip planes we aren't supposed to process
-                    if (!d.process[plane]) {
-                        continue;
-                    }
-
-                    const width: u32 = dst.getWidth(plane);
-                    const height: u32 = dst.getHeight(plane);
-                    const stride: u32 = dst.getStride2(T, plane);
-
-                    const srcp = [3][]const T{
-                        src_frames[0].getReadSlice2(T, plane),
-                        src_frames[1].getReadSlice2(T, plane),
-                        src_frames[2].getReadSlice2(T, plane),
-                    };
-                    const dstp: []T = dst.getWriteSlice2(T, plane);
-
-                    const pixel_max = vscmn.getFormatMaximum(T, d.vi.format, plane > 0);
-                    const pixel_min = vscmn.getFormatMinimum(T, d.vi.format, plane > 0);
-
-                    DegrainMedianOperation.init(d.mode[plane], d.norow)
-                        .processPlane(srcp, dstp, width, height, stride, math.lossyCast(T, d.limit[plane]), pixel_min, pixel_max, d.interlaced);
-                }
-
-                return dst.frame;
-            }
-
-            return null;
+            DegrainMedianOperation.init(mode, norow)
+                .processPlane(srcp, dstp, width, height, stride, limit, pixel_min, pixel_max, interlaced);
         }
     };
+}
+
+fn degrainMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+    // Assign frame_data to nothing to stop compiler complaints
+    _ = frame_data;
+
+    const zapi = ZAPI.init(vsapi, core, frame_ctx);
+    const d: *const DegrainMedianData = @ptrCast(@alignCast(instance_data));
+
+    if (activation_reason == ar.Initial) {
+        // Request previous, current, and next frames.
+        zapi.requestFrameFilter(@max(0, n - 1), d.node);
+        zapi.requestFrameFilter(n, d.node);
+        zapi.requestFrameFilter(@min(n + 1, d.vi.numFrames - 1), d.node);
+    } else if (activation_reason == ar.AllFramesReady) {
+        // Skip filtering on the first and last frames that lie inside the filter radius,
+        // since we do not have enough information to filter them properly.
+        if (n == 0 or n == d.vi.numFrames - 1) {
+            return zapi.getFrameFilter(n, d.node);
+        }
+
+        const src_frames = [3]ZAPI.ZFrame(*const vs.Frame){
+            zapi.initZFrame(d.node, n - 1),
+            zapi.initZFrame(d.node, n),
+            zapi.initZFrame(d.node, n + 1),
+        };
+        defer for (src_frames) |frame| frame.deinit();
+
+        const dst = src_frames[1].newVideoFrame2(d.process);
+
+        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &DegrainMedian(u8).processPlane,
+            .U16 => &DegrainMedian(u16).processPlane,
+            .F16 => &DegrainMedian(f16).processPlane,
+            .F32 => &DegrainMedian(f32).processPlane,
+        };
+
+        for (0..3) |plane| {
+
+            // Skip planes we aren't supposed to process
+            if (!d.process[plane]) {
+                continue;
+            }
+
+            const width= dst.getWidth(plane);
+            const height= dst.getHeight(plane);
+            const stride8= dst.getStride(plane);
+
+            const srcp8 = [3][]const u8{
+                src_frames[0].getReadSlice(plane),
+                src_frames[1].getReadSlice(plane),
+                src_frames[2].getReadSlice(plane),
+            };
+            const dstp8 = dst.getWriteSlice(plane);
+
+            const pixel_min = vscmn.getFormatMinimum(f32, d.vi.format, plane > 0);
+            const pixel_max = vscmn.getFormatMaximum(f32, d.vi.format, plane > 0);
+
+            processPlane(d.mode[plane], d.norow, d.limit[plane], d.interlaced, pixel_min, pixel_max, dstp8, srcp8, width, height, stride8);
+        }
+
+        return dst.frame;
+    }
+
+    return null;
 }
 
 export fn degrainMedianFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
@@ -646,8 +669,8 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
 
     if (!vsh.isConstantVideoFormat(d.vi) or
         (d.vi.format.colorFamily != vs.ColorFamily.YUV and
-        d.vi.format.colorFamily != vs.ColorFamily.RGB and
-        d.vi.format.colorFamily != vs.ColorFamily.Gray))
+            d.vi.format.colorFamily != vs.ColorFamily.RGB and
+            d.vi.format.colorFamily != vs.ColorFamily.Gray))
     {
         return vscmn.reportError2("DegrainMedian: only constant format YUV, RGB or Grey input is supported", zapi, outz, d.node);
     }
@@ -744,14 +767,7 @@ export fn degrainMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*an
         },
     };
 
-    const getFrame = switch (d.vi.format.bytesPerSample) {
-        1 => &DegrainMedian(u8).getFrame,
-        2 => if (d.vi.format.sampleType == vs.SampleType.Integer) &DegrainMedian(u16).getFrame else &DegrainMedian(f16).getFrame,
-        4 => &DegrainMedian(f32).getFrame,
-        else => unreachable,
-    };
-
-    zapi.createVideoFilter(out, "DegrainMedian", d.vi, getFrame, degrainMedianFree, fm.Parallel, &deps, data);
+    zapi.createVideoFilter(out, "DegrainMedian", d.vi, degrainMedianGetFrame, degrainMedianFree, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

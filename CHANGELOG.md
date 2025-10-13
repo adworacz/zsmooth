@@ -2,8 +2,9 @@
 
 ## 0.13
 * Upgrade to Zig 0.15.1
-* Minor code improvements in VerticalCleaner
-* Minor code improvements in Repair
+* Minor code improvements in VerticalCleaner, Repair, TemporalMedian, TemporalSoften, FluxSmooth, DegrainMedian, and
+TTempSmooth. Essentially, I've made updates to use vapoursynth-zig's ZAPI, and compartmentalized the filtering logic,
+which shrinks binary size and makes filters easier to test and port (to things like Avisynth or FFMPEG, potentially).
 * Fix minor memory leak in Repair - repair clip wasn't freed if an error occurred during plugin init.
 * Improve cross-builds - we now take advantage of Zig's build intelligence to
 generate build artifacts for all artifacts in parallel.

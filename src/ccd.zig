@@ -93,11 +93,10 @@ const CCDData = struct {
     weights: [MAX_TEMPORAL_DIAMETER]f32,
     scale: f32,
     points: []Point,
+    diameter: u8,
 };
 
 fn CCD(comptime T: type) type {
-    const diameter = 25;
-
     const vector_len = vec.getVecSize(T);
     const VT = @Vector(vector_len, T);
     const BSAT = types.BigSignedArithmeticType(T);
@@ -348,8 +347,9 @@ fn CCD(comptime T: type) type {
         //     }
         // }
 
-        fn processPlanesVector(threshold: BUAT, scale: f32, points: []const Point, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
-            const scaled_diameter: usize = @intFromFloat(@round(diameter * scale));
+        fn processPlanesVector(threshold: BUAT, scale: f32, points: []const Point, diameter: u8, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
+            // TODO: Potentially move this calculation up, since it is identical in every plane...
+            const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(diameter)) * scale));
             const scaled_radius: usize = scaled_diameter / 2;
             const width_simd = (width - scaled_radius) / vector_len * vector_len;
 
@@ -377,7 +377,7 @@ fn CCD(comptime T: type) type {
 
                 // Middle columns - not mirrored
                 var column: usize = scaled_radius;
-                while (column < width_simd + scaled_radius) : (column += vector_len) {
+                while (column < width_simd) : (column += vector_len) {
                     const result = ccdVector(threshold, points, temporal_radius, weights, format_max, row, column, stride, src);
 
                     vec.store(VT, dst[0], row * stride + column, result[0]);
@@ -418,7 +418,7 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        fn processPlanes(_threshold: f32, scale: f32, points: []Point, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, chroma: bool, bits_per_sample: u6, srcp8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, dstp8: [3][]u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlanes(_threshold: f32, scale: f32, points: []Point, diameter: u8, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, chroma: bool, bits_per_sample: u6, srcp8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, dstp8: [3][]u8, width: usize, height: usize, stride8: usize) void {
             const threshold: BUAT = lossyCast(BUAT, _threshold);
             const stride = stride8 / @sizeOf(T);
             const srcp: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
@@ -440,7 +440,7 @@ fn CCD(comptime T: type) type {
             const format_max = vscmn.getFormatMaximum2(T, bits_per_sample, chroma);
 
             switch (temporal_radius) {
-                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(threshold, scale, points, r, weights, format_max, srcp, dstp, width, height, stride),
+                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(threshold, scale, points, diameter, r, weights, format_max, srcp, dstp, width, height, stride),
                 else => unreachable,
             }
         }
@@ -509,7 +509,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, 0);
         const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 
-        processPlanes(d.threshold, d.scale, d.points, d.temporal_radius, d.weights, chroma, bits_per_sample, srcp8, dstp8, width, height, stride8);
+        processPlanes(d.threshold, d.scale, d.points, d.diameter, d.temporal_radius, d.weights, chroma, bits_per_sample, srcp8, dstp8, width, height, stride8);
 
         return dst.frame;
     }
@@ -603,16 +603,28 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         if (low) {
             @memcpy(d.points[i .. i + low_points.len], &low_points);
             i += low_points.len;
+            d.diameter = 9; // 4 + 4 + 1 (center)
         }
         if (medium) {
             @memcpy(d.points[i .. i + medium_points.len], &medium_points);
             i += medium_points.len;
+            d.diameter = 17; // 8 + 8 + 1 (center)
         }
         if (high) {
             @memcpy(d.points[i .. i + high_points.len], &high_points);
             i += high_points.len;
+            d.diameter = 25; // 12 + 12 + 1 (center)
         }
     }
+
+    const scaled_diameter: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(d.diameter)) * d.scale));
+    if (scaled_diameter > d.vi.width or scaled_diameter > d.vi.height) {
+        outz.setError(string.printf(allocator, "Scale {} produces a scaled filter diameter of {}, which is beyond the width {} or height {}. Reduce the scale amount.", .{ d.scale, scaled_diameter, d.vi.width, d.vi.height}));
+        zapi.freeNode(d.node);
+        allocator.free(d.points);
+        return;
+    }
+    
 
     // Sort points to ensure optimal (cache aware) lookups.
     std.sort.insertion(Point, d.points, {}, less_than_points);

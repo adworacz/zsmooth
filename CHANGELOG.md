@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.13
-* Upgrade to Zig 0.15.1 - brings some nice performance improvements for several filters, particularly with AVX512.
+* Upgrade to Zig 0.15.2 - brings some nice performance improvements for several filters, particularly with AVX512.
 * Minor code improvements in VerticalCleaner, Repair, TemporalMedian, TemporalSoften, FluxSmooth, DegrainMedian, and
 TTempSmooth. Essentially, I've made updates to use vapoursynth-zig's ZAPI, and compartmentalized the filtering logic,
 which shrinks binary size and makes filters easier to test and port (to things like Avisynth or FFMPEG, potentially).

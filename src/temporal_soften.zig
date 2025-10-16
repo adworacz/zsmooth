@@ -49,7 +49,7 @@ fn TemporalSoften(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        fn processPlaneScalar(srcp: [MAX_DIAMETER][]const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneScalar(srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
             @setFloatMode(float_mode);
 
             const half_frames: u8 = @divTrunc(frames, 2);
@@ -163,7 +163,7 @@ fn TemporalSoften(comptime T: type) type {
 
             const radius = 2;
             const diameter = radius * 2 + 1;
-            const threshold: u32 = if (types.isInt(T)) 4 else @bitCast(@as(f32, 4));
+            const threshold = 4;
             const expectedAverage = ([_]T{3} ** size)[0..];
 
             var src: [MAX_DIAMETER][]const T = undefined;
@@ -183,8 +183,8 @@ fn TemporalSoften(comptime T: type) type {
             defer testingAllocator.free(dstp_scalar);
             defer testingAllocator.free(dstp_vec);
 
-            processPlaneScalar(src, dstp_scalar, width, height, stride, diameter, threshold);
-            processPlaneVector(src, dstp_vec, width, height, stride, diameter, threshold);
+            processPlaneScalar(&src, dstp_scalar, width, height, stride, diameter, threshold);
+            processPlaneVector(&src, dstp_vec, width, height, stride, diameter, threshold);
 
             for (0..height) |row| {
                 const start = row * stride;

@@ -131,6 +131,8 @@ fn TemporalMedian(comptime T: type) type {
         }
 
         fn medianVector(comptime diameter: u8, from_frame_idx: u8, to_frame_idx: u8, srcp: []const []const T, noalias dstp: []T, offset: usize) void {
+            // THIS IS BASICALLY BROKEN, as it doesn't handle even numbers of frames.
+            // and from_frame_idx and to_frame_idx are basically worthless and should be handled exclusively in getFrame.
             @setFloatMode(float_mode);
 
             var src: [diameter]VecType = undefined;

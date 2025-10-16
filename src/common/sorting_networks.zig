@@ -261,6 +261,7 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
         else => unreachable,
     }
 
+    //TODO: Handle even using average of center numbers.
     return input[N / 2];
 }
 

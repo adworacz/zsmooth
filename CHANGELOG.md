@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14
+* TBD
+
 ## 0.13
 * Upgrade to Zig 0.15.2 - brings some nice performance improvements for several filters, particularly with AVX512.
 * Minor code improvements in VerticalCleaner, Repair, TemporalMedian, TemporalSoften, FluxSmooth, DegrainMedian, and

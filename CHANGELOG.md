@@ -8,6 +8,9 @@ which shrinks binary size and makes filters easier to test and port (to things l
 * Fix minor memory leak in Repair - repair clip wasn't freed if an error occurred during plugin init.
 * Improve cross-builds - we now take advantage of Zig's build intelligence to
 generate build artifacts for all artifacts in parallel.
+* Fix several bugs in CCD. 1) we now properly validate the `scale` param based on the clip size, 2) we now use a dynamic
+filter diameter/radius for SIMD vector processing, which improves performance when "high" points are not used, and 3) fixed a
+corner case bug with the main SIMD vector loop and cases where the radius was >= the SIMD vector size.
 
 ## 0.12
 * Migrate Median and InterQuartileMean to ZAPI and compartmentalized filter modules to reduce binary

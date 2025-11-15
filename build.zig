@@ -66,6 +66,15 @@ pub fn build(b: *std.Build) !void {
 
     lib.linkLibC(); // Necessary to use the C memory allocator.
 
+    // Add check step for quick n easy build checking without
+    // emitting binary output.
+    //
+    // Allows ZLS to provide better inline errors.
+    //
+    // https://zigtools.org/zls/guides/build-on-save/
+    const check = b.step("check", "Check if zsmooth compiles");
+    check.dependOn(&lib.step);
+
     b.installArtifact(lib);
 
     // Release (build all platforms)

@@ -48,6 +48,11 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 1, 2 },
             &[_]usize{ 0, 1 },
         }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N4L4D2
+        4 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 2, 3 },
+            &[_]usize{ 0, 2, 1, 3 },
+        }).sort(T, input),
         // https://bertdobbelaere.github.io/median_networks.html#N5L7D5
         5 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3 },
@@ -55,6 +60,13 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 2, 4 },
             &[_]usize{ 1, 2 },
             &[_]usize{ 2, 4 },
+        }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N6L10D4
+        6 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 4, 5 },
+            &[_]usize{ 0, 5, 1, 3, 2, 4 },
+            &[_]usize{ 0, 2, 1, 4, 3, 5 },
+            &[_]usize{ 1, 2, 3, 4 },
         }).sort(T, input),
         // https://bertdobbelaere.github.io/median_networks.html#N7L13D6
         7 => SortingNetwork([_]Layer{
@@ -83,6 +95,17 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 2, 3, 4, 5 },
             &[_]usize{ 3, 4 },
         }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N10L22D8
+        10 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 3, 5, 4, 6, 8, 9 },
+            &[_]usize{ 0, 3, 1, 5, 4, 8, 6, 9 },
+            &[_]usize{ 1, 3, 6, 8 },
+            &[_]usize{ 0, 6, 1, 4, 3, 9, 5, 8 },
+            &[_]usize{ 2, 6, 3, 7 },
+            &[_]usize{ 2, 3, 6, 7 },
+            &[_]usize{ 3, 4, 5, 6 },
+            &[_]usize{ 3, 5, 4, 6 },
+        }).sort(T, input),
         11 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 },
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
@@ -96,6 +119,16 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 4, 8 },
             &[_]usize{ 5, 8 },
         }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N12L29D7
+        12 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
+            &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11 },
+            &[_]usize{ 0, 4, 1, 10, 2, 9, 5, 6, 7, 11 },
+            &[_]usize{ 2, 6, 3, 7, 4, 8, 5, 9 },
+            &[_]usize{ 1, 5, 2, 8, 3, 9, 6, 10 },
+            &[_]usize{ 3, 5, 6, 8 },
+            &[_]usize{ 3, 6, 5, 8 },
+        }).sort(T, input),
         13 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 },
             &[_]usize{ 0, 8, 1, 9, 2, 4, 3, 5, 6, 10, 7, 11 },
@@ -107,6 +140,19 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 5, 7, 6, 10 },
             &[_]usize{ 5, 6 },
             &[_]usize{ 6, 7 },
+        }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N14L38D10
+        14 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 },
+            &[_]usize{ 0, 9, 2, 10, 3, 11, 4, 13 },
+            &[_]usize{ 0, 12, 1, 13, 4, 6, 7, 9 },
+            &[_]usize{ 0, 4, 1, 10, 3, 12, 5, 7, 6, 8, 9, 13 },
+            &[_]usize{ 1, 8, 2, 4, 5, 12, 9, 11 },
+            &[_]usize{ 1, 5, 3, 4, 8, 12, 9, 10 },
+            &[_]usize{ 3, 5, 4, 9, 8, 10 },
+            &[_]usize{ 4, 6, 7, 9 },
+            &[_]usize{ 5, 7, 6, 8 },
+            &[_]usize{ 5, 6, 7, 8 },
         }).sort(T, input),
         15 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 },
@@ -122,6 +168,19 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 6, 8 },
             &[_]usize{ 7, 8 },
         }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N16L46D10
+        16 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
+            &[_]usize{ 0, 6, 2, 4, 9, 15, 11, 13 },
+            &[_]usize{ 4, 9, 6, 11 },
+            &[_]usize{ 1, 9, 3, 11, 4, 12, 6, 14 },
+            &[_]usize{ 0, 4, 1, 10, 2, 6, 3, 8, 5, 14, 7, 12, 9, 13, 11, 15 },
+            &[_]usize{ 1, 12, 3, 14, 4, 7, 5, 6, 8, 11, 9, 10 },
+            &[_]usize{ 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14 },
+            &[_]usize{ 3, 5, 6, 8, 7, 9, 10, 12 },
+            &[_]usize{ 5, 8, 7, 10 },
+            &[_]usize{ 5, 7, 8, 10 },
+        }).sort(T, input),
         17 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 },
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15 },
@@ -135,6 +194,21 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 7, 9, 8, 12 },
             &[_]usize{ 6, 7, 8, 9 },
             &[_]usize{ 7, 8 },
+        }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N18L55D12
+        18 => SortingNetwork([_]Layer{
+            &[_]usize{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 },
+            &[_]usize{ 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 13, 12, 14, 15, 17 },
+            &[_]usize{ 0, 4, 1, 5, 2, 14, 3, 15, 12, 16, 13, 17 },
+            &[_]usize{ 0, 13, 1, 12, 2, 6, 4, 17, 5, 16, 11, 15 },
+            &[_]usize{ 0, 1, 4, 12, 5, 13, 16, 17 },
+            &[_]usize{ 4, 13, 5, 9, 8, 12 },
+            &[_]usize{ 4, 7, 5, 11, 6, 12, 10, 13 },
+            &[_]usize{ 1, 11, 6, 16, 7, 8, 9, 10 },
+            &[_]usize{ 2, 8, 6, 10, 7, 11, 9, 15 },
+            &[_]usize{ 2, 9, 3, 11, 6, 14, 8, 15 },
+            &[_]usize{ 6, 9, 8, 11 },
+            &[_]usize{ 6, 8, 9, 11 },
         }).sort(T, input),
         19 => SortingNetwork([_]Layer{
             // TODO: Try out some of the other sorting networks provided by sorter hunter
@@ -154,6 +228,21 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
             &[_]usize{ 8, 9 },
             &[_]usize{ 9, 18 },
             &[_]usize{ 8, 9 },
+        }).sort(T, input),
+        // https://bertdobbelaere.github.io/median_networks.html#N20L63D12
+        20 => SortingNetwork([_]Layer{
+            &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 },
+            &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15, 16, 18, 17, 19 },
+            &[_]usize{ 1, 5, 2, 6, 3, 15, 4, 16, 13, 17, 14, 18 },
+            &[_]usize{ 1, 14, 2, 13, 3, 7, 5, 18, 6, 17, 12, 16 },
+            &[_]usize{ 0, 16, 1, 2, 3, 19, 5, 13, 6, 14, 17, 18 },
+            &[_]usize{ 0, 4, 5, 14, 6, 10, 9, 13, 15, 19 },
+            &[_]usize{ 5, 8, 6, 12, 7, 13, 11, 14 },
+            &[_]usize{ 2, 12, 7, 17, 8, 9, 10, 11 },
+            &[_]usize{ 3, 9, 7, 11, 8, 12, 10, 16 },
+            &[_]usize{ 3, 10, 4, 12, 7, 15, 9, 16 },
+            &[_]usize{ 7, 10, 9, 12 },
+            &[_]usize{ 7, 9, 10, 12 },
         }).sort(T, input),
         21 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 },
@@ -261,26 +350,30 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
         }).sort(T, input),
         else => unreachable,
     }
-    
 
     // Handle odd number of elements by returning the middle,
     // handle even number of elements by dividing elements on left
     // and right of middle by 2.
     return if (N % 2 == 1)
         input[N / 2]
+    else if (types.isScalar(T))
+        (input[(N / 2) - 1] + input[N / 2]) / 2
     else
-        if (types.isScalar(T))
-            (input[(N / 2) - 1] + input[N / 2]) / 2
-        else
-            (input[(N / 2) - 1] + input[N / 2]) / @as(T, @splat(2));
+        (input[(N / 2) - 1] + input[N / 2]) / @as(T, @splat(2));
 }
 
 test "Sorting Networks - Median" {
     var input3 = [_]u8{ 3, 1, 2 };
     try std.testing.expectEqual(2, median(u8, input3.len, &input3));
 
+    var input4 = [_]u8{ 3, 1, 2, 4 };
+    try std.testing.expectEqual(2, median(u8, input4.len, &input4));
+
     var input5 = [_]u8{ 3, 1, 5, 2, 4 };
     try std.testing.expectEqual(3, median(u8, input5.len, &input5));
+
+    var input6 = [_]u8{ 3, 1, 5, 6, 2, 4 };
+    try std.testing.expectEqual(3, median(u8, input6.len, &input6));
 
     var input7 = [_]u8{ 6, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(4, median(u8, input7.len, &input7));
@@ -293,20 +386,38 @@ test "Sorting Networks - Median" {
     var input9 = [_]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(5, median(u8, input9.len, &input9));
 
+    var input10 = [_]u8{ 6, 8, 9, 3, 1, 5, 10, 2, 4, 7 };
+    try std.testing.expectEqual(5, median(u8, input10.len, &input10));
+
     var input11 = [_]u8{ 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(6, median(u8, input11.len, &input11));
+
+    var input12 = [_]u8{ 10, 11, 6, 8, 12, 9, 3, 1, 5, 2, 4, 7 };
+    try std.testing.expectEqual(6, median(u8, input12.len, &input12));
 
     var input13 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(7, median(u8, input13.len, &input13));
 
+    var input14 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 14, 1, 5, 2, 4, 7 };
+    try std.testing.expectEqual(7, median(u8, input14.len, &input14));
+
     var input15 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(8, median(u8, input15.len, &input15));
+
+    var input16 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 16, 5, 2, 4, 7 };
+    try std.testing.expectEqual(8, median(u8, input16.len, &input16));
 
     var input17 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(9, median(u8, input17.len, &input17));
 
+    var input18 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 18, 5, 2, 4, 7 };
+    try std.testing.expectEqual(9, median(u8, input18.len, &input18));
+
     var input19 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(10, median(u8, input19.len, &input19));
+
+    var input20 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 20, 5, 2, 4, 7 };
+    try std.testing.expectEqual(10, median(u8, input20.len, &input20));
 
     var input21 = [_]u8{ 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
     try std.testing.expectEqual(11, median(u8, input21.len, &input21));

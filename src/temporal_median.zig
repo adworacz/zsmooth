@@ -203,7 +203,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
         }
         defer for (0..diameter) |i| src_frames[i].deinit();
 
-        const dst = src_frames[@intCast(d.radius)].newVideoFrame();
+        const dst = src_frames[@intCast(d.radius)].newVideoFrame2(d.process);
 
         const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &TemporalMedian(u8).processPlane,

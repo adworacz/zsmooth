@@ -1,5 +1,6 @@
 const std = @import("std");
 const vec = @import("vector.zig");
+const types = @import("type.zig");
 
 fn compareSwap(comptime T: type, a: *T, b: *T) void {
     const min = vec.minFast(a.*, b.*);
@@ -260,8 +261,18 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
         }).sort(T, input),
         else => unreachable,
     }
+    
 
-    return input[N / 2];
+    // Handle odd number of elements by returning the middle,
+    // handle even number of elements by dividing elements on left
+    // and right of middle by 2.
+    return if (N % 2 == 1)
+        input[N / 2]
+    else
+        if (types.isScalar(T))
+            (input[(N / 2) - 1] + input[N / 2]) / 2
+        else
+            (input[(N / 2) - 1] + input[N / 2]) / @as(T, @splat(2));
 }
 
 test "Sorting Networks - Median" {
@@ -275,7 +286,7 @@ test "Sorting Networks - Median" {
     try std.testing.expectEqual(4, median(u8, input7.len, &input7));
 
     var input8 = [_]u8{ 6, 3, 1, 5, 2, 4, 7, 8 };
-    _ = median(u8, input8.len, &input8);
+    try std.testing.expectEqual(4, median(u8, input8.len, &input8));
     try std.testing.expectEqual(4, input8[input8.len / 2 - 1]);
     try std.testing.expectEqual(5, input8[input8.len / 2]);
 

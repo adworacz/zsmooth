@@ -206,10 +206,17 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
         var from_frame_idx: usize = 0;
         var to_frame_idx: usize = radius * 2;
         if (d.scenechange) {
+            // Quick check to ensure that the scenechange properties are present.
+            const props = src_frames[0].getPropertiesRO();
+            if (props.getSceneChangePrev() == null or props.getSceneChangeNext() == null) {
+                zapi.setFilterError("TemporalMedian: Scene change handling enabled, but input frame is missing scene change properties.");
+                return null;
+            }
+
             {
                 var i: usize = radius;
                 while (i > 0) : (i -= 1) {
-                    if (src_frames[i].getPropertiesRO().getInt(i32, "_SceneChangePrev") == 1) {
+                    if (src_frames[i].getPropertiesRO().getSceneChangePrev() == true) {
                         from_frame_idx = i;
                         break;
                     }
@@ -218,7 +225,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             {
                 var i = radius;
                 while (i < diameter - 1) : (i += 1) {
-                    if (src_frames[i].getPropertiesRO().getInt(i32, "_SceneChangeNext") == 1) {
+                    if (src_frames[i].getPropertiesRO().getSceneChangeNext() == true) {
                         to_frame_idx = i;
                         break;
                     }

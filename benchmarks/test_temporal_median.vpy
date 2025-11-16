@@ -36,7 +36,7 @@ match format:
 # clip = clip.resize.Lanczos(720, 480)
 
 # Run scenechange detection
-clip = clip.misc.SCDetect()
+# clip = clip.misc.SCDetect()
 
 clip.set_output(0)
 

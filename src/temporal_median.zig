@@ -37,6 +37,9 @@ const TemporalMedianData = struct {
 
     // Which planes we will process.
     process: [3]bool,
+
+    // Whether scenechange handling is enabled or not.
+    scenechange: bool,
 };
 
 fn TemporalMedian(comptime T: type) type {
@@ -151,14 +154,17 @@ fn TemporalMedian(comptime T: type) type {
             vec.store(VecType, dstp, offset, result);
         }
 
-        fn processPlane(radius: i8, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
-            std.debug.assert(radius * 2 + 1 == srcp8.len);
+        fn processPlane(diameter: i8, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
+            std.debug.assert(diameter == srcp8.len);
+            std.debug.assert(diameter > 0);
+            // TODO: inhance median sort to support 1 and 2 frames.
+            // Then diameter can range from 1...21
 
             const stride = stride8 / @sizeOf(T);
-            const srcp: []const [] const T = @ptrCast(@alignCast(srcp8));
+            const srcp: []const []const T = @ptrCast(@alignCast(srcp8));
             const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            switch (radius) {
+            switch (diameter) {
                 inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), srcp, dstp, width, height, stride),
                 else => unreachable,
             }
@@ -191,7 +197,9 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             return zapi.getFrameFilter(n, d.node);
         }
 
-        const diameter: u8 = @intCast(d.radius * 2 + 1);
+        const radius: u8 = @as(u8, @intCast(d.radius));
+        const diameter: u8 = radius * 2 + 1;
+        // TODO: Consider changing d.radius to u8 instead of i8;
         var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
 
         // Retrieve all source frames within the filter radius.
@@ -203,7 +211,34 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
         }
         defer for (0..diameter) |i| src_frames[i].deinit();
 
-        const dst = src_frames[@intCast(d.radius)].newVideoFrame2(d.process);
+        const dst = src_frames[radius].newVideoFrame2(d.process);
+
+        // Handle scene changes by walking backwards/forwards from the radius (current frame).
+        var from_frame_idx: usize = 0;
+        var to_frame_idx: usize = radius * 2;
+        if (d.scenechange) {
+            {
+                var i: usize = radius;
+                while (i > 0) : (i -= 1) {
+                    if (src_frames[i].getPropertiesRO().getInt(i32, "_SceneChangePrev") == 1) {
+                        from_frame_idx = i;
+                        break;
+                    }
+                }
+            }
+            {
+                var i = radius;
+                while (i < diameter - 1) : (i += 1) {
+                    if (src_frames[i].getPropertiesRO().getInt(i32, "_SceneChangeNext") == 1) {
+                        to_frame_idx = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // diameter, with scene change handling taken into account
+        const sc_diameter = to_frame_idx - from_frame_idx + 1;
 
         const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &TemporalMedian(u8).processPlane,
@@ -277,6 +312,9 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         }
         return;
     };
+
+    // TODO: Actually build scenechange handling.
+    d.scenechange = false;
 
     const data: *TemporalMedianData = allocator.create(TemporalMedianData) catch unreachable;
     data.* = d;

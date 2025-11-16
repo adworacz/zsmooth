@@ -362,7 +362,7 @@ TemporalMedian is a temporal denoising filter. It replaces every pixel with the 
 This filter will introduce ghosting, so use with caution.
 
 ```py
-core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]])
+core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2], bool scenechange = False])
 ```
 
 | Parameter | Type | Options (Default) | Description |
@@ -370,6 +370,7 @@ core.zsmooth.TemporalMedian(clip clip[, int radius = 1, int[] planes = [0, 1, 2]
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | radius | int | 1 - 10 (1) | Size of the temporal window from which to calculate the median. First and last _radius_ frames of a clip are not filtered. |
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
+| scenechange | bool | (False) | Whether to compensate for scene changes. In short, if this is set to `True`, then Temporal Median will include any frames that lie beyond a scene change when filtering the current frame. This ensures that frames from other scenes don't "pollute" the current frame.|
 
 ### Temporal Repair
 **EXPERIMENTAL - MAY HAVE BUGS**

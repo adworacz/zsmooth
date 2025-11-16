@@ -1,7 +1,8 @@
 # Changelog
 
 ## 0.14
-* TBD
+* Fix TemporMedian with planes=0. In short, planes were not being properly copied from the source frame. Fixes #19
+* Support optional scenechange handling in TemporalMedian.
 
 ## 0.13
 * Upgrade to Zig 0.15.2 - brings some nice performance improvements for several filters, particularly with AVX512.

@@ -4,11 +4,11 @@ core = vs.core
 core.max_cache_size = 1024
 core.num_threads = 1
 
+scenechange = False
 from vspreview.api import is_preview
 if is_preview():
     radius = 1
     output = 'all'
-    scenechange = False
 #format = 'u8'
 
 length = 30000

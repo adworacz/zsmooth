@@ -8,6 +8,7 @@ from vspreview.api import is_preview
 if is_preview():
     radius = 1
     output = 'all'
+    scenechange = False
 #format = 'u8'
 
 length = 30000
@@ -21,8 +22,9 @@ match format:
     case 'f32':
         clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PS, color=[1.0, 0, 0], length=length)
     case _:
-        # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
-        clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
+        clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
+        # clip = core.lsmas.LWLibavSource("/home/adub/Videos/test.mp4")
+        # clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
 
 #from vstools import depth
 # clip = depth(clip, 16)
@@ -33,6 +35,9 @@ match format:
 # clip = clip.resize.Lanczos(720, 480, format=vs.YUV444P16)
 # clip = clip.resize.Lanczos(720, 480)
 
+# Run scenechange detection
+clip = clip.misc.SCDetect()
+
 clip.set_output(0)
 
 if format != 'f16':
@@ -41,7 +46,7 @@ if format != 'f16':
     if output in ['neo_tmedian', 'all']:
         neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 
-zsmooth = clip.zsmooth.TemporalMedian(radius=radius)
+zsmooth = clip.zsmooth.TemporalMedian(radius=radius, scenechange=scenechange)
 
 match output:
     case 'zsmooth':

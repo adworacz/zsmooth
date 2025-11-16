@@ -137,16 +137,7 @@ fn TemporalMedian(comptime T: type) type {
             }
 
             const result: VecType = switch (diameter) {
-                3 => sort.median(VecType, 3, src[0..3]),
-                5 => sort.median(VecType, 5, src[0..5]),
-                7 => sort.median(VecType, 7, src[0..7]),
-                9 => sort.median(VecType, 9, src[0..9]),
-                11 => sort.median(VecType, 11, src[0..11]),
-                13 => sort.median(VecType, 13, src[0..13]),
-                15 => sort.median(VecType, 15, src[0..15]),
-                17 => sort.median(VecType, 17, src[0..17]),
-                19 => sort.median(VecType, 19, src[0..19]),
-                21 => sort.median(VecType, 21, src[0..21]),
+                inline 1...MAX_DIAMETER => |d| sort.median(VecType, d, src[0..d]),
                 else => unreachable,
             };
 
@@ -154,18 +145,16 @@ fn TemporalMedian(comptime T: type) type {
             vec.store(VecType, dstp, offset, result);
         }
 
-        fn processPlane(diameter: i8, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlane(diameter: u8, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
             std.debug.assert(diameter == srcp8.len);
             std.debug.assert(diameter > 0);
-            // TODO: inhance median sort to support 1 and 2 frames.
-            // Then diameter can range from 1...21
 
             const stride = stride8 / @sizeOf(T);
             const srcp: []const []const T = @ptrCast(@alignCast(srcp8));
             const dstp: []T = @ptrCast(@alignCast(dstp8));
 
             switch (diameter) {
-                inline 1...MAX_RADIUS => |r| processPlaneVector((r * 2 + 1), srcp, dstp, width, height, stride),
+                inline 1...MAX_DIAMETER => |d| processPlaneVector(d, srcp, dstp, width, height, stride),
                 else => unreachable,
             }
         }
@@ -197,9 +186,9 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             return zapi.getFrameFilter(n, d.node);
         }
 
+        // TODO: Consider changing d.radius to u8 instead of i8;
         const radius: u8 = @as(u8, @intCast(d.radius));
         const diameter: u8 = radius * 2 + 1;
-        // TODO: Consider changing d.radius to u8 instead of i8;
         var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
 
         // Retrieve all source frames within the filter radius.
@@ -238,7 +227,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
         }
 
         // diameter, with scene change handling taken into account
-        const sc_diameter = to_frame_idx - from_frame_idx + 1;
+        const sc_diameter: u8 = @intCast(to_frame_idx - from_frame_idx + 1);
 
         const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &TemporalMedian(u8).processPlane,
@@ -263,7 +252,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             }
             const dstp8: []u8 = dst.getWriteSlice(plane);
 
-            processPlane(d.radius, dstp8, srcp8[0..diameter], width, height, stride8);
+            processPlane(sc_diameter, dstp8, srcp8[from_frame_idx..to_frame_idx + 1], width, height, stride8);
         }
 
         return dst.frame;
@@ -313,8 +302,7 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         return;
     };
 
-    // TODO: Actually build scenechange handling.
-    d.scenechange = false;
+    d.scenechange = inz.getBool("scenechange") orelse false;
 
     const data: *TemporalMedianData = allocator.create(TemporalMedianData) catch unreachable;
     data.* = d;
@@ -330,5 +318,5 @@ export fn temporalMedianCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TemporalMedian", "clip:vnode;radius:int:opt;planes:int[]:opt;scenechange:int:opt;", "clip:vnode;", temporalMedianCreate, null, plugin);
 }

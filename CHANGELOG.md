@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.15
+* TBD
+
 ## 0.14
 * Fix TemporalMedian with planes=0. In short, planes were not being properly copied from the source frame. Fixes #19
 * Support optional scenechange handling in TemporalMedian. Closes #16

@@ -42,6 +42,8 @@ pub fn SortingNetwork(comptime layers: anytype) type {
 pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
     const Layer = []const usize;
     switch (comptime N) {
+        1 => {},
+        2 => {},
         // https://bertdobbelaere.github.io/median_networks.html#N3L3D3
         3 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 1 },
@@ -363,6 +365,12 @@ pub fn median(comptime T: type, comptime N: u8, input: *[N]T) T {
 }
 
 test "Sorting Networks - Median" {
+    var input1 = [_]u8{1};
+    try std.testing.expectEqual(1, median(u8, input1.len, &input1));
+
+    var input2 = [_]u8{ 1, 3 };
+    try std.testing.expectEqual(2, median(u8, input2.len, &input2));
+
     var input3 = [_]u8{ 3, 1, 2 };
     try std.testing.expectEqual(2, median(u8, input3.len, &input3));
 

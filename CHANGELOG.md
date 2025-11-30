@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.16
+* TBD
+
 ## 0.15
 * Fix panic/extra `free` in TTempSmooth. Issue: https://github.com/adworacz/zsmooth/issues/21
 

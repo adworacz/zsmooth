@@ -70,12 +70,12 @@ fn TemporalSoften(comptime T: type) type {
                         sum += value;
                     }
 
-                    dstp[current_pixel] = if (types.isFloat(T))
-                        @floatCast(sum / @as(f32, @floatFromInt(frames)))
-                    else
+                    dstp[current_pixel] = switch (types.numberType(T)) {
                         // Add half_frames to round the integer value up to the nearest integer value.
                         // So a pixel value of 2.5 will be round (and truncated) to 3, while a pixel value of 2.4 will be truncated to 2.
-                        @intCast((sum + half_frames) / frames);
+                        .int => @intCast((sum + half_frames) / frames),
+                        .float => @floatCast(sum / @as(f32, @floatFromInt(frames))),
+                    };
                 }
             }
         }
@@ -107,49 +107,50 @@ fn TemporalSoften(comptime T: type) type {
             for (1..frames) |i| {
                 const frame_value_vec = vec.load(VecType, srcp[i], offset);
 
-                const abs_vec = if (types.isFloat(T))
-                    @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec)
-                else
-                    @max(current_value_vec, frame_value_vec) - @min(current_value_vec, frame_value_vec);
+                const abs_vec = switch (types.numberType(T)) {
+                    .int => @max(current_value_vec, frame_value_vec) - @min(current_value_vec, frame_value_vec),
+                    .float => @abs(@as(@Vector(vec_size, f32), current_value_vec) - frame_value_vec),
+                };
 
                 const lte_threshold_vec = abs_vec <= threshold_vec;
 
                 sum_vec += @select(T, lte_threshold_vec, frame_value_vec, current_value_vec);
             }
 
-            const result: VecType = if (types.isFloat(T))
-                @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames))))
-            else result: {
-                // As it turns out, integer division can be dog slow.
-                //
-                // This code uses a form of fast division
-                // called division by multiplication of reciprocal.
-                //
-                // Effectively, it is based on the principal
-                // that N/D is the same as N * (1/D), which is
-                // the same as (N * (1 << Z / D)) >> Z
-                //
-                // We use Z to scale up the multiplier to account for integer
-                // arithmetic (since normally N * (1/D) == 0 in integer land).
-                //
-                // So if we use a large enough Z when scaling up, then any
-                // rounding error gets truncated when we shift back down by Z.
-                // The trick is to use a large enough value of Z.
-                //
-                // In this case, I'm using half of my mutiplier type, which is
-                // technically overkill for the values of N (sum of pixel
-                // values) and D (frames) that we are using, but it ensures we
-                // get accurate results and it's simple code to write.
+            const result: VecType = switch (types.numberType(T)) {
+                .int => blk: {
+                    // As it turns out, integer division can be dog slow.
+                    //
+                    // This code uses a form of fast division
+                    // called division by multiplication of reciprocal.
+                    //
+                    // Effectively, it is based on the principal
+                    // that N/D is the same as N * (1/D), which is
+                    // the same as (N * (1 << Z / D)) >> Z
+                    //
+                    // We use Z to scale up the multiplier to account for integer
+                    // arithmetic (since normally N * (1/D) == 0 in integer land).
+                    //
+                    // So if we use a large enough Z when scaling up, then any
+                    // rounding error gets truncated when we shift back down by Z.
+                    // The trick is to use a large enough value of Z.
+                    //
+                    // In this case, I'm using half of my mutiplier type, which is
+                    // values) and D (frames) that we are using, but it ensures we
+                    // technically overkill for the values of N (sum of pixel
+                    // get accurate results and it's simple code to write.
 
-                // BT = extra large (big) arithmetic type since we're going to
-                // be doing multiplication that would otherwise overflow
-                // smaller types for large radii or bit depths.
-                const BT = if (T == u8) u32 else u64;
+                    // BT = extra large (big) arithmetic type since we're going to
+                    // be doing multiplication that would otherwise overflow
+                    // smaller types for large radii or bit depths.
+                    const BT = if (T == u8) u32 else u64;
 
-                const shift_size = @bitSizeOf(BT) / 2;
-                const mul: @Vector(vec_size, BT) = @splat(@as(BT, 1 << shift_size) / frames);
-                sum_vec += @splat(frames / 2); // Add half frames to properly round
-                break :result @intCast((sum_vec * mul) >> @splat(shift_size));
+                    const shift_size = @bitSizeOf(BT) / 2;
+                    const mul: @Vector(vec_size, BT) = @splat(@as(BT, 1 << shift_size) / frames);
+                    sum_vec += @splat(frames / 2); // Add half frames to properly round
+                    break :blk @intCast((sum_vec * mul) >> @splat(shift_size));
+                },
+                .float => @floatCast(sum_vec / @as(@Vector(vec_size, f32), @splat(@floatFromInt(frames)))),
             };
 
             vec.store(VecType, dstp, offset, result);
@@ -169,10 +170,9 @@ fn TemporalSoften(comptime T: type) type {
             var src: [MAX_DIAMETER][]const T = undefined;
             for (0..diameter) |i| {
                 const frame = try testingAllocator.alloc(T, size);
-                if (types.isFloat(T)) {
-                    @memset(frame, @floatFromInt(i + 1));
-                } else {
-                    @memset(frame, @intCast(i + 1));
+                switch (types.numberType(T)) {
+                    .int => @memset(frame, @intCast(i + 1)),
+                    .float => @memset(frame, @floatFromInt(i + 1)),
                 }
                 src[i] = frame;
             }

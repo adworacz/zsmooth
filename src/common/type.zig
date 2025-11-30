@@ -1,5 +1,22 @@
 const std = @import("std");
 
+// Convenience type for delineating whether
+// a number, comptime number, of vector of numbers is int/float
+pub const NumberType = enum {
+    int,
+    float,
+};
+
+pub inline fn numberType(comptime T: type) NumberType {
+    if (isInt(T)) {
+        return .int;
+    } else if (isFloat(T)) {
+        return .float;
+    } else {
+        @compileError("numberType: unsupported type");
+    }
+}
+
 pub inline fn isFloat(comptime T: type) bool {
     const type_info = @typeInfo(T);
     return switch (type_info) {

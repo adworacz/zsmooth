@@ -83,11 +83,9 @@ fn SmartMedian(comptime T: type) type {
             // Dogway did it intentionally: https://forum.doom9.org/showthread.php?s=a1d14808b0218ddbf119fe50215f666a&p=2017961#post2017961
             // https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L4268-L4270
             // The multiplication by 13 boosts the square root into a nice curve for a better (smoother) thresholding experience.
-            const curved_variance_ish: UAT = blk: {
-                break :blk if (types.isInt(T))
-                    lossyCast(UAT, @round(@sqrt(@as(f32, @floatFromInt(squared_diff_sum))) * 13))
-                else
-                    @sqrt(squared_diff_sum) * 13;
+            const curved_variance_ish: UAT = switch (types.numberType(T)) {
+                .int => lossyCast(UAT, @round(@sqrt(@as(f32, @floatFromInt(squared_diff_sum))) * 13)),
+                .float => @sqrt(squared_diff_sum) * 13,
             };
 
             const center = grid.values[grid.values.len / 2];
@@ -126,11 +124,9 @@ fn SmartMedian(comptime T: type) type {
             const FV = @Vector(vector_len, if (types.isInt(T)) f32 else T);
             const thirteen: FV = @splat(13);
 
-            const curved_variance_ish: UATV = blk: {
-                break :blk if (types.isInt(VT))
-                    lossyCast(UATV, @round(@sqrt(@as(FV, @floatFromInt(squared_diff_sum))) * thirteen))
-                else
-                    @sqrt(squared_diff_sum) * thirteen;
+            const curved_variance_ish = switch (types.numberType(T)) {
+                .int => lossyCast(UATV, @round(@sqrt(@as(FV, @floatFromInt(squared_diff_sum))) * thirteen)),
+                .float => @sqrt(squared_diff_sum) * thirteen,
             };
 
             const center = grid.values[grid.values.len / 2];

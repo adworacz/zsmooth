@@ -571,6 +571,10 @@ export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     vsapi.?.freeNode.?(d.pfclip);
 
     for (0..3) |plane| {
+        if (!d.process[plane]) {
+            continue;
+        }
+
         if (d.weight_mode[plane] == .inverse_difference) {
             allocator.free(d.temporal_difference_weights[plane]);
         } else {

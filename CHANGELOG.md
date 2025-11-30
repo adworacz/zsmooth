@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.15
-* TBD
+* Fix panic/extra `free` in TTempSmooth. Issue: https://github.com/adworacz/zsmooth/issues/21
 
 ## 0.14
 * Fix TemporalMedian with planes=0. In short, planes were not being properly copied from the source frame. Fixes #19

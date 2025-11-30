@@ -20,6 +20,9 @@ and explain (in detail) your needs and reasoning.
 ## Implemented Features/Functions
 Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for the current list, and up vote accordingly.
 
+## Benchmarks
+See [Benchmarks](BENCHMARKS.md)
+
 ## Table of Contents
 * [Function Documentation](#function-documentation)
   * [CCD](#ccd)

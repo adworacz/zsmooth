@@ -69,7 +69,6 @@ const BENCHMARKS: Benchmarks[] = [
       { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=3'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 4      , } ,
       { plugin: 'ccd'     , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 10 / 4     , } ,
-      { plugin: 'jetpack' , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 10 / 4 / 4 , } ,
     ],
   },
   {

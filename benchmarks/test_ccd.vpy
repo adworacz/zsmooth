@@ -53,10 +53,6 @@ clip.set_output(0)
 if output in ['ccd', 'all']:
     ccd = clip.ccd.CCD(threshold)
 
-if output in ['jetpack', 'all']:
-    from vsdenoise import ccd as jetccd, CCDPoints
-    jetpack = jetccd(clip, tr=temporal_radius, thr = threshold, scale=0, ref_points = CCDPoints.LOW | CCDPoints.MEDIUM, planes=[0,1,2]) # Scale=0 for jetpack is the same as scale=1 for zsmooth.
-
 zsmooth = clip.zsmooth.CCD(threshold, scale=1, points=[True, True, False], temporal_radius=temporal_radius) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
 
 match output:
@@ -64,12 +60,9 @@ match output:
         zsmooth.set_output()
     case 'ccd':
         ccd.set_output()
-    case 'jetpack':
-        jetpack.set_output()
     case 'all':
         clip.set_output(0)
         ccd.set_output(1)
-        jetpack.set_output(2)
         zsmooth.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"

@@ -96,7 +96,7 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
         ///
         /// Note that this has the side effect of *mutating* the `values` member.
         pub fn medianWithCenter(self: *Self) T {
-            return sort.median(T, self.values.len, &self.values);
+            return sort.median(T, &self.values);
         }
 
         /// Creates an array containing all values of the grid

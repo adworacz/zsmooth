@@ -137,7 +137,7 @@ fn TemporalMedian(comptime T: type) type {
             }
 
             const result: VecType = switch (diameter) {
-                inline 1...MAX_DIAMETER => |d| sort.median(VecType, d, src[0..d]),
+                inline 1...MAX_DIAMETER => |d| sort.median(VecType, src[0..d]),
                 else => unreachable,
             };
 

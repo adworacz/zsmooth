@@ -68,7 +68,7 @@ fn SmartMedian(comptime T: type) type {
 
             // Ignore the return value because the input is an even-numbered array,
             // so we're going to take the two elements on either side of the center.
-            _ = sort.median(T, values.len, &values);
+            _ = sort.median(T, &values);
 
             const median_left: SAT = values[center_idx - 1];
             const median_right: SAT = values[center_idx];
@@ -106,7 +106,7 @@ fn SmartMedian(comptime T: type) type {
 
             // Ignore the return value because the input is an even-numbered array,
             // so we're going to take the two elements on either side of the center.
-            _ = sort.median(VT, values.len, &values);
+            _ = sort.median(VT, &values);
 
             const median_left: SATV = values[center_idx - 1];
             const median_right: SATV = values[center_idx];

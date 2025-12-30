@@ -170,7 +170,7 @@ pub fn Grid(comptime T: type) type {
         pub fn sortWithoutCenter(self: Self) [8]T {
             var a = self.toArrayWithoutCenter();
 
-            sort.sort(T, a.len, &a);
+            sort.sort(T, &a);
 
             return a;
         }
@@ -179,7 +179,7 @@ pub fn Grid(comptime T: type) type {
         pub fn sortWithCenter(self: Self) [9]T {
             var a = self.toArrayWithCenter();
 
-            sort.sort(T, a.len, &a);
+            sort.sort(T, &a);
 
             return a;
         }

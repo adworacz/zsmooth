@@ -89,7 +89,7 @@ pub fn ArrayGrid(comptime side: comptime_int, comptime T: type) type {
         ///
         /// Note that this is a *mutative* operation.
         pub fn sortWithCenter(self: *Self) void {
-            sort.sort(T, self.values.len, &self.values);
+            sort.sort(T, &self.values);
         }
 
         /// Finds the median of the `values` member.

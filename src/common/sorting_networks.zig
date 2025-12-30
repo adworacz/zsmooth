@@ -464,9 +464,9 @@ test median3 {
 //
 // Wouldn't have been possible without the wonderful work of SorterHunter:
 // https://bertdobbelaere.github.io/sorting_networks.html
-pub fn sort(comptime T: type, comptime N: u8, input: *[N]T) void {
+pub fn sort(comptime T: type, input: []T) void {
     const Layer = []const usize;
-    switch (comptime N) {
+    switch (input.len) {
         // https://bertdobbelaere.github.io/sorting_networks.html#N8L19D6
         8 => SortingNetwork([_]Layer{
             &[_]usize{ 0, 2, 1, 3, 4, 6, 5, 7 },
@@ -534,14 +534,14 @@ pub fn sort(comptime T: type, comptime N: u8, input: *[N]T) void {
 
 test "Sorting Networks - sort" {
     var input8 = [8]u8{ 6, 8, 3, 1, 5, 2, 4, 7 };
-    sort(u8, input8.len, &input8);
+    sort(u8, &input8);
     try std.testing.expectEqualDeep([_]u8{ 1, 2, 3, 4, 5, 6, 7, 8 }, input8);
 
     var input9 = [9]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    sort(u8, input9.len, &input9);
+    sort(u8, &input9);
     try std.testing.expectEqualDeep([_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9 }, input9);
 
     var input25 = [25]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7, 11, 10, 12, 14, 13, 16, 15, 17, 18, 19, 20, 21, 24, 23, 22, 25 };
-    sort(u8, input25.len, &input25);
+    sort(u8, &input25);
     try std.testing.expectEqualDeep([_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 }, input25);
 }

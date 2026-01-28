@@ -23,6 +23,7 @@ pub fn build(b: *std.Build) !void {
     const optimize_float = b.option(bool, "optimize-float", "Enables 'fast-math' optimizations for floating point arithmetic, at the expense of accuracy. Defaults to enabled/true.") orelse true;
     const options = b.addOptions();
     options.addOption(bool, "optimize_float", optimize_float);
+    options.addOption(std.SemanticVersion, "version", try .parse(zon.version));
 
     const vapoursynth_dep = b.dependency("vapoursynth", .{
         .target = target,

@@ -1,7 +1,6 @@
 const std = @import("std");
 const x86 = std.Target.x86;
-
-pub const min_zig_version = std.SemanticVersion{ .major = 0, .minor = 14, .patch = 0 };
+const zon = @import("build.zig.zon");
 
 const targets = [_]std.Target.Query{
     .{ .os_tag = .macos, .cpu_arch = .aarch64 },
@@ -17,7 +16,7 @@ const targets = [_]std.Target.Query{
 };
 
 pub fn build(b: *std.Build) !void {
-    ensureZigVersion() catch return;
+    ensureZigVersion(try .parse(zon.minimum_zig_version)) catch return;
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -132,7 +131,7 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_lib_unit_tests.step);
 }
 
-fn ensureZigVersion() !void {
+fn ensureZigVersion(min_zig_version: std.SemanticVersion) !void {
     var installed_ver = @import("builtin").zig_version;
     installed_ver.build = null;
 

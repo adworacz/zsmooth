@@ -15,6 +15,7 @@ const median = @import("median.zig");
 const temporalRepair = @import("temporal_repair.zig");
 const smartMedian = @import("smart_median.zig");
 const ccd = @import("ccd.zig");
+const minmax = @import("minmax.zig");
 
 const version = @import("config").version;
 
@@ -35,4 +36,5 @@ export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI)
     temporalRepair.registerFunction(plugin, vsapi);
     smartMedian.registerFunction(plugin, vsapi);
     ccd.registerFunction(plugin, vsapi);
+    minmax.registerFunction(plugin, vsapi);
 }

@@ -18,10 +18,6 @@ const rp = vs.RequestPattern;
 const fm = vs.FilterMode;
 const st = vs.SampleType;
 
-// https://ziglang.org/documentation/master/#Choosing-an-Allocator
-//
-// Using the C allocator since we're passing pointers to allocated memory between Zig and C code,
-// specifically the filter data between the Create and GetFrame functions.
 const allocator = std.heap.c_allocator;
 
 const MedianData = struct {

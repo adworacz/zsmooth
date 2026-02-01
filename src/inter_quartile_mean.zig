@@ -18,11 +18,12 @@ const rp = vs.RequestPattern;
 const fm = vs.FilterMode;
 const st = vs.SampleType;
 
-// https://ziglang.org/documentation/master/#Choosing-an-Allocator
-//
-// Using the C allocator since we're passing pointers to allocated memory between Zig and C code,
-// specifically the filter data between the Create and GetFrame functions.
 const allocator = std.heap.c_allocator;
+
+// We don't have sorting networks beyond 49 elements at this time,
+// and I haven't implemented any constant time / windowed approach just yet,
+// so we're limited to a radius of 3 (7x7) median.
+const MAX_RADIUS = 3;
 
 const InterQuartileMeanData = struct {
     // The clip on which we are operating.
@@ -39,21 +40,13 @@ const InterQuartileMeanData = struct {
 fn InterQuartileMean(comptime T: type) type {
     const vector_len = vec.getVecSize(T);
     const VT = @Vector(vector_len, T);
+    const UAT = types.UnsignedArithmeticType(T);
+    const UATV = @Vector(vector_len, UAT);
 
     return struct {
-        const UAT = types.UnsignedArithmeticType(T);
-        const UATV = @Vector(vector_len, UAT);
-
-        const Grid3 = gridcmn.ArrayGrid(3, T);
-        const Grid5 = gridcmn.ArrayGrid(5, T);
-        const Grid7 = gridcmn.ArrayGrid(7, T);
-
-        const GridV3 = gridcmn.ArrayGrid(3, VT);
-        const GridV5 = gridcmn.ArrayGrid(5, VT);
-        const GridV7 = gridcmn.ArrayGrid(7, VT);
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm3Scalar(grid: *Grid3) T {
+        fn iqm3Scalar(grid: anytype) T {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -91,6 +84,7 @@ fn InterQuartileMean(comptime T: type) type {
                 3, 2, 1,
             };
 
+            const Grid3 = gridcmn.ArrayGrid(3, T);
             var grid = Grid3.init(T, &data, 3);
 
             try testing.expectEqual(5, iqm3Scalar(&grid));
@@ -105,7 +99,7 @@ fn InterQuartileMean(comptime T: type) type {
             try testing.expectEqual(6, iqm3Scalar(&grid));
         }
 
-        fn iqm3Vector(grid: *GridV3) VT {
+        fn iqm3Vector(grid: anytype) VT {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -132,7 +126,7 @@ fn InterQuartileMean(comptime T: type) type {
         }
 
         /// Interquartile mean of 5x5 grid, including the center.
-        fn iqm5Scalar(grid: *Grid5) T {
+        fn iqm5Scalar(grid: anytype) T {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -157,6 +151,8 @@ fn InterQuartileMean(comptime T: type) type {
                 8,  8,  8,  8,  99,
                 99, 99, 99, 99, 99,
             };
+            
+            const Grid5 = gridcmn.ArrayGrid(5, T);
             var grid = Grid5.init(T, &data, 5);
 
             if (types.isInt(T)) {
@@ -166,7 +162,7 @@ fn InterQuartileMean(comptime T: type) type {
             }
         }
 
-        fn iqm5Vector(grid: *GridV5) VT {
+        fn iqm5Vector(grid: anytype) VT {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -195,7 +191,7 @@ fn InterQuartileMean(comptime T: type) type {
         }
 
         /// Interquartile mean of 7x7 grid, including the center.
-        fn iqm7Scalar(grid: *Grid7) T {
+        fn iqm7Scalar(grid: anytype) T {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -225,6 +221,8 @@ fn InterQuartileMean(comptime T: type) type {
                 8,  8,  99, 99, 99, 99, 99,
                 99, 99, 99, 99, 99, 99, 99,
             };
+
+            const Grid7 = gridcmn.ArrayGrid(7, T);
             var grid = Grid7.init(T, &data, 7);
 
             if (types.isInt(T)) {
@@ -234,7 +232,7 @@ fn InterQuartileMean(comptime T: type) type {
             }
         }
 
-        fn iqm7Vector(grid: *GridV7) VT {
+        fn iqm7Vector(grid: anytype) VT {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -284,9 +282,7 @@ fn InterQuartileMean(comptime T: type) type {
 
         fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
             const Grid = switch (comptime radius) {
-                1 => Grid3,
-                2 => Grid5,
-                3 => Grid7,
+                inline 1...MAX_RADIUS => |r| gridcmn.ArrayGrid(r * 2 + 1, T),
                 else => unreachable,
             };
 
@@ -335,16 +331,12 @@ fn InterQuartileMean(comptime T: type) type {
             // We process the mirrored pixels using our scalar implementation, as Grid.initFromCenterMirrored
             // doesn't fully support vectors at this time. That's why we need both a scalar Grid and a vector Grid.
             const GridS = switch (comptime radius) {
-                1 => Grid3,
-                2 => Grid5,
-                3 => Grid7,
+                inline 1...MAX_RADIUS => |r| gridcmn.ArrayGrid(r * 2 + 1, T),
                 else => unreachable,
             };
 
             const GridV = switch (comptime radius) {
-                1 => GridV3,
-                2 => GridV5,
-                3 => GridV7,
+                inline 1...MAX_RADIUS => |r| gridcmn.ArrayGrid(r * 2 + 1, VT),
                 else => unreachable,
             };
 

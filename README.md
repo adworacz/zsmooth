@@ -195,7 +195,7 @@ Edge pixels are processed using mirror padding.
 
 An interquartile mean is a mean (average) where the darkest 1/4 and brightest 1/4 of pixels in the grid
 are thrown out, and the remaining middle values are averaged. This prevents the extremes from skewing the average,
-thus making InterQuartileMean a solid option as a prefilter.
+thus making InterQuartileMean a solid option as a (fast) prefilter.
 
 ```py
 core.zsmooth.InterQuartileMean(clip clip[, int[] radius = [1,1,1], int[] planes = [0,1,2]])
@@ -210,19 +210,27 @@ core.zsmooth.InterQuartileMean(clip clip[, int[] radius = [1,1,1], int[] planes 
 Credit to Dogway's ["IQM3" and "IQM5" implementations](https://github.com/Dogway/Avisynth-Scripts/blob/c6a837107afbf2aeffecea182d021862e9c2fc36/ExTools.avsi#L3437-L3575) for the original idea.
 
 #### Tip:
-IQM3 and IQM5 can be combined together to provide better edge protection by taking the best of both worlds using
-`limit_filter` from `vsjetpack/vsrgtools`:
+IQM3 and IQM5 can be combined together to provide better edge protection by taking the best of both worlds.
+
+The following example shows various ways to threshold IQM, as well as combine multiple results together 
+and threshold on a form of variance, which generally leads to better edge retention.
 
 ```python
 iqm3 = clip.zsmooth.InterQuartileMean(1)
 iqm5 = clip.zsmooth.InterQuartileMean(2)
 
-from vsrgtools import limit_filter, LimitFilterMode
-iqmv = limit_filter(iqm3, clip, iqm5, mode=LimitFilterMode.SIMPLE_MIN)
+# Adding a limit filter recreates the effect of Dogway's original 'ex_median("IQM3", 8)'
+ths = 8 # 8 is Dogway's original default. Note that you should update this based on your clip's bit depth
+iqm3 = core.vszip.LimitFilter(iqm3, clip, dark_thr=ths, bright_thr=ths)
+iqm5 = core.vszip.LimitFilter(iqm5, clip, dark_thr=ths, bright_thr=ths)
+
+# variance threshold - default is usually fine, effects edge retention more than anything
+# Lower values generally retain more edges than higher values
+# Needs to be updated base on bit depth
+vthr = 5
+iqmv = core.std.Expr([iqm3, clip, iqm5], f'y z - abs {thr} > x z ?')
 ```
 
-This can be further enhanced by using `limit_filter` to threshold IQM3 and IQM5 separately, and then combining the result with a
-third `limit_filter`. This is essentially what Dogway's `IQMV` function does.
 
 ### Median
 Replaces each pixel with the median of the surrounding 3x3, 5x5, or 7x7 grid, based on the `radius` parameter.

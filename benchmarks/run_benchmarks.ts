@@ -483,18 +483,18 @@ for (const filter of benchmarksToRun) {
     const stringifiedArgs = spec.args.join(' ')
 
     console.log(
-      `${filter.filter} ${spec.plugin} ${spec.format} [${stringifiedArgs}] Min: ${min}, Max: ${max}, Median: ${median}, Average: ${average}, StdDev: ${std_deviation}`,
+      `${filter.filter} ${spec.plugin} ${spec.format} [${stringifiedArgs}] Average: ${average} (+/- ${std_deviation}, ${min}..${max})`,
     )
     results.push({
       filter: filter.filter,
       plugin: spec.plugin,
       format: spec.format,
       args: stringifiedArgs,
+      average,
+      stdDev: std_deviation,
       min,
       max,
       median,
-      average,
-      stdDev: std_deviation,
     })
   }
 }
@@ -505,30 +505,38 @@ if (results.length === 0) {
 
 console.table(results)
 
-const headers = [
+const csvHeaders = [
   'Filter',
   'Plugin',
   'Format',
   'Args',
+  'Average',
+  'Standard Deviation',
   'Min',
   'Max',
   'Median',
-  'Average',
-  'Standard Deviation',
 ]
 
-const csvHeaders = headers.join(',')
+const markdownHeaders = [
+  'Filter',
+  'Plugin',
+  'Format',
+  'Args',
+  'Average FPS (std dev, min..max)',
+]
+
+const csvHeadersStr = csvHeaders.join(',')
 const csvEntries = results.reduce(
   (accum, result) =>
-    `${accum}"${result.filter}", "${result.plugin}", "${result.format}", "${result.args}", ${result.min}, ${result.max}, ${result.median}, ${result.average}, ${result.stdDev}\n`,
+    `${accum}"${result.filter}", "${result.plugin}", "${result.format}", "${result.args}", ${result.average}, ${result.stdDev}, ${result.min}, ${result.max}, ${result.median} \n`,
   '',
 )
 
-const markdownHeaders = `| ${headers.join(' | ')} |`
-const markdownTableSeperator = `| ${headers.map(() => ':---: |').join(' ')}`
+const markdownHeadersStr = `| ${markdownHeaders.join(' | ')} |`
+const markdownTableSeperator = `| ${markdownHeaders.map(() => ':---: |').join(' ')}`
 const markdownEntries = results.reduce(
   (accum, result) =>
-    `${accum}| ${result.filter} | ${result.plugin} | ${result.format} | ${result.args} | ${result.min} | ${result.max} | ${result.median} | ${result.average} | ${result.stdDev} |\n`,
+    `${accum}| ${result.filter} | ${result.plugin} | ${result.format} | ${result.args} | ${result.average} (+/- ${result.stdDev}, ${result.min}..${result.max}) |\n`,
   '',
 )
 
@@ -537,7 +545,7 @@ const benchmarkResultsCsvFilename = 'benchmark_results.csv'
 const benchmarkResultsMarkdownFilename = 'benchmark_results.md'
 
 console.log(`Writing results to ${benchmarkResultsCsvFilename}`)
-Bun.write(benchmarkResultsCsvFilename, `${csvHeaders}\n${csvEntries}`)
+Bun.write(benchmarkResultsCsvFilename, `${csvHeadersStr}\n${csvEntries}`)
 
 console.log(`Writing results to ${benchmarkResultsMarkdownFilename}`)
-Bun.write(benchmarkResultsMarkdownFilename, `${markdownHeaders}\n${markdownTableSeperator}\n${markdownEntries}`)
+Bun.write(benchmarkResultsMarkdownFilename, `${markdownHeadersStr}\n${markdownTableSeperator}\n${markdownEntries}`)

@@ -125,9 +125,15 @@ core.zsmooth.BackwardClense(clip clip,[ int[] planes])
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
 ### DegrainMedian
+DegrainMedian is a spatio-temporal limited median denoiser. It uses various methods to replace every pixel with one
+selected from its 3x3 neighbourhood, from either the current, previous, or next frame.
+
+The first column and the last column are simply copied from the source frame. The first row and the last row are also
+copied from the source frame. If interlaced=True, then the second row and the second-to-last row are also copied from
+the source frame.
 
 ```py
-core.zsmooth.DegrainMedian(clip clip[, float[] limit, int[] mode, bool scalep])
+core.zsmooth.DegrainMedian(clip clip[, float[] limit, int[] mode, bool interlaced, bool norow, bool scalep])
 ```
 
 Modes:
@@ -145,6 +151,8 @@ Modes:
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
 | limit | float[] | 0 - bit depth max ([7, 7, 7]) | The maximum amount that a pixel can change. A higher limit results in more smoothing. Can be specified as an array, with values corresonding to each plane of the input clip. |
 | mode | int[] | 0 - 5, inclusive ([1,1,1]) | The processing mode. 0 is the strongest, 5 is the weakest. Can be specified as an array, with values corresponding to each plane. |
+| interlaced | bool | (False) | If True, the top line and the bottom line of the 3x3 neighbourhood will come from the same field as the middle line. In other words, one line will be skipped between the top line and the middle line, and between the middle line and the bottom line. This parameter should only be used when the input clip contains interlaced video. |
+| norow | bool | (False) | If True, the two pixels to the left and right of the original pixel will not be used in the calculations. The corresponding pixels from the previous and next frames are still used. | 
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 
 ### FluxSmooth(S|ST)

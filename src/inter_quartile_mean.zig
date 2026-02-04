@@ -46,7 +46,7 @@ fn InterQuartileMean(comptime T: type) type {
     return struct {
 
         // Interquartile mean of 3x3 grid, including the center.
-        fn iqm3Scalar(grid: anytype) T {
+        fn iqmScalar(grid: anytype) T {
             @setFloatMode(float_mode);
 
             grid.sortWithCenter();
@@ -55,95 +55,108 @@ fn InterQuartileMean(comptime T: type) type {
             // Trim the first and last quartile, then average the inner quartiles
             // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
 
-            const result: T = if (types.isInt(T))
-                // ~922 fps
-                // ((floatFromInt(R, sorted[3]) + floatFromInt(R, sorted[4]) + floatFromInt(R, sorted[5])) +
-                //     ((floatFromInt(R, sorted[2]) + floatFromInt(R, sorted[6])) * 0.75)) / 4.5
-                // ~990 fps
-                // @intFromFloat(@round(floatFromInt(f32, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
-                //     ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5))
-                // ~1000 fps
-                // @intFromFloat(@round(floatFromInt(f32, (@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
-                //     ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) / 4.5))
-                //
-                // ~1091 fps
-                // Note that the use of ".. + 2) / 4" and ".. + 4) / 9" is to ensure proper rounding in integer division.
-                @intCast((((@as(UAT, sorted[3]) + sorted[4] + sorted[5]) +
-                    ((((@as(UAT, sorted[2]) + sorted[6]) * 3) + 2) / 4)) * 2 + 4) / 9)
-            else
-                ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * 0.75)) / 4.5;
+            // Sum together all values in the inner two quartiles
+            var sum: UAT = 0;
+            const start = (grid.values.len / 4) + 1;
+            const end = (3 * grid.values.len / 4); // exclusive
+            for (start..end) |idx| {
+                sum += sorted[idx];
+            }
 
-            // Round result for integers, take float as is.
+            // Add in the (weighted) ends of the first and fourth quartiles
+            sum += switch (types.numberType(T)) {
+                .int => (((@as(UAT, sorted[start - 1]) + sorted[end]) * 3) + 2) / 4, // + 2) is for proper integer rounding
+                .float => (sorted[start - 1] + sorted[end]) * 0.75,
+            };
+
+            const len: T = grid.values.len;
+            const result: T = switch (types.numberType(T)) {
+                .int => @intCast((sum * 2 + (len / 2)) / len),
+                .float => sum / (len / 2),
+            };
+
             return result;
         }
 
-        test iqm3Scalar {
+        fn iqmVector(grid: anytype) VT {
+            @setFloatMode(float_mode);
+
+            grid.sortWithCenter();
+            const sorted = &grid.values;
+
+            // Trim the first and last quartile, then average the inner quartiles
+            // https://en.wikipedia.org/wiki/Interquartile_mean#Dataset_size_not_divisible_by_four
+
+            // Sum together all values in the inner two quartiles
+            var sum: UATV = @splat(0);
+            const start = (grid.values.len / 4) + 1;
+            const end = (3 * grid.values.len / 4); // exclusive
+            for (start..end) |idx| {
+                sum += sorted[idx];
+            }
+
+            // Add in the (weighted) ends of the first and fourth quartiles
+            const three: VT = @splat(3);
+            const two: VT = @splat(2);
+            const four: VT = @splat(4);
+            sum += switch (types.numberType(T)) {
+                .int => (((@as(UATV, sorted[start - 1]) + sorted[end]) * three) + two) / four, // + two) is for proper integer rounding
+                .float => (sorted[start - 1] + sorted[end]) * @as(VT, @splat(0.75)),
+            };
+
+            const len: VT = @splat(grid.values.len);
+            const result: VT = switch (types.numberType(T)) {
+                .int => @intCast((sum * two + (len / two)) / len),
+                .float => sum / (len / two),
+            };
+
+            return result;
+        }
+
+        test "IQM 3 Scalar And Vector" {
             var data = [9]T{
                 9, 8, 7,
                 6, 5, 4,
                 3, 2, 1,
             };
 
+            var data_vec = [9]VT{
+                @splat(9), @splat(8), @splat(7),
+                @splat(6), @splat(5), @splat(4),
+                @splat(3), @splat(2), @splat(1),
+            };
+
             const Grid3 = gridcmn.ArrayGrid(3, T);
+            const Grid3V = gridcmn.ArrayGrid(3, VT);
+
             var grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(5, iqm3Scalar(&grid));
+            var grid_vec: Grid3V = undefined;
+            grid_vec.values = data_vec;
+
+            try testing.expectEqual(5, iqmScalar(&grid));
+            try testing.expectEqual(@as(VT, @splat(5)), iqmVector(&grid_vec));
 
             data = [9]T{
                 1, 1,  3,
                 3, 7,  8,
                 9, 99, 99,
             };
-            grid = Grid3.init(T, &data, 3);
 
-            try testing.expectEqual(6, iqm3Scalar(&grid));
-        }
-
-        fn iqm3Vector(grid: anytype) VT {
-            @setFloatMode(float_mode);
-
-            grid.sortWithCenter();
-
-            const sorted = &grid.values;
-
-            const three: VT = @splat(3);
-            const two: VT = @splat(2);
-            const four: VT = @splat(4);
-            const nine: VT = @splat(9);
-
-            const result: VT = if (types.isInt(VT))
-                // Note that the use of ".. + 2) / 4" and ".. + 4) / 9" is to ensure proper rounding in integer division.
-                @intCast((((@as(UATV, sorted[3]) + sorted[4] + sorted[5]) +
-                    ((((@as(UATV, sorted[2]) + sorted[6]) * three) + two) / four)) * two + four) / nine)
-            else blk: {
-                const point_seven_five: VT = @splat(0.75);
-                const four_point_five: VT = @splat(4.5);
-
-                break :blk ((sorted[3] + sorted[4] + sorted[5]) + ((sorted[2] + sorted[6]) * point_seven_five)) / four_point_five;
+            data_vec = [9]VT{
+                @splat(1), @splat(1),  @splat(3),
+                @splat(3), @splat(7),  @splat(8),
+                @splat(9), @splat(99), @splat(99),
             };
 
-            return result;
+            grid = Grid3.init(T, &data, 3);
+            grid_vec.values = data_vec;
+
+            try testing.expectEqual(6, iqmScalar(&grid));
+            try testing.expectEqual(@as(VT, @splat(6)), iqmVector(&grid_vec));
         }
 
-        /// Interquartile mean of 5x5 grid, including the center.
-        fn iqm5Scalar(grid: anytype) T {
-            @setFloatMode(float_mode);
-
-            grid.sortWithCenter();
-            const sorted = &grid.values;
-
-            const result: T = if (types.isInt(T))
-                // Note that the use of ".. + 2) / 4" and ".. + 12) / 25" is to ensure proper rounding in integer division.
-                @intCast((((@as(UAT, sorted[7]) + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((((@as(UAT, sorted[6]) + sorted[18]) * 3) + 2) / 4)) * 2 + 12) / 25)
-            else
-                ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((sorted[6] + sorted[18]) * 0.75)) / 12.5;
-
-            return result;
-        }
-
-        test iqm5Scalar {
+        test "IQM 5 Scalar" {
             const data = [25]T{
                 1,  1,  1,  1,  1,
                 1,  3,  3,  3,  3,
@@ -151,67 +164,18 @@ fn InterQuartileMean(comptime T: type) type {
                 8,  8,  8,  8,  99,
                 99, 99, 99, 99, 99,
             };
-            
+
             const Grid5 = gridcmn.ArrayGrid(5, T);
             var grid = Grid5.init(T, &data, 5);
 
             if (types.isInt(T)) {
-                try testing.expectEqual(6, iqm5Scalar(&grid));
+                try testing.expectEqual(6, iqmScalar(&grid));
             } else {
-                try testing.expectApproxEqAbs(6.1, iqm5Scalar(&grid), 0.0001);
+                try testing.expectApproxEqAbs(6.1, iqmScalar(&grid), 0.0001);
             }
         }
 
-        fn iqm5Vector(grid: anytype) VT {
-            @setFloatMode(float_mode);
-
-            grid.sortWithCenter();
-
-            const sorted = &grid.values;
-
-            const three: VT = @splat(3);
-            const two: VT = @splat(2);
-            const four: VT = @splat(4);
-            const twelve: VT = @splat(12);
-            const twenty_five: VT = @splat(25);
-
-            const result: VT = if (types.isInt(VT))
-                // Note that the use of ".. + 2) / 4" and ".. + 12) / 25" is to ensure proper rounding in integer division.
-                @intCast((((@as(UATV, sorted[7]) + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((((@as(UATV, sorted[6]) + sorted[18]) * three) + two) / four)) * two + twelve) / twenty_five)
-            else blk: {
-                const point_seven_five: VT = @splat(0.75);
-                const twelve_point_five: VT = @splat(12.5);
-
-                break :blk ((sorted[7] + sorted[8] + sorted[9] + sorted[10] + sorted[11] + sorted[12] + sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17]) +
-                    ((sorted[6] + sorted[18]) * point_seven_five)) / twelve_point_five;
-            };
-
-            return result;
-        }
-
-        /// Interquartile mean of 7x7 grid, including the center.
-        fn iqm7Scalar(grid: anytype) T {
-            @setFloatMode(float_mode);
-
-            grid.sortWithCenter();
-
-            const sorted = &grid.values;
-
-            const result: T = if (types.isInt(T))
-                // Note that the use of ".. + 2) / 4" and ".. + 24) / 49" is to ensure proper rounding in integer division.
-                @intCast((((@as(UAT, sorted[13]) + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
-                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
-                    ((((@as(UAT, sorted[12]) + sorted[36]) * 3) + 2) / 4)) * 2 + 24) / 49)
-            else
-                ((sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
-                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
-                    ((sorted[12] + sorted[36]) * 0.75)) / 24.5;
-
-            return result;
-        }
-
-        test iqm7Scalar {
+        test "IQM 7 Scalar" {
             const data = [49]T{
                 1,  1,  1,  1,  1,  1,  1,
                 1,  1,  1,  1,  1,  3,  3,
@@ -226,58 +190,10 @@ fn InterQuartileMean(comptime T: type) type {
             var grid = Grid7.init(T, &data, 7);
 
             if (types.isInt(T)) {
-                try testing.expectEqual(6, iqm7Scalar(&grid));
+                try testing.expectEqual(6, iqmScalar(&grid));
             } else {
-                try testing.expectApproxEqAbs(6.0, iqm7Scalar(&grid), 0.02);
+                try testing.expectApproxEqAbs(6.0, iqmScalar(&grid), 0.02);
             }
-        }
-
-        fn iqm7Vector(grid: anytype) VT {
-            @setFloatMode(float_mode);
-
-            grid.sortWithCenter();
-
-            const sorted = &grid.values;
-
-            const three: VT = @splat(3);
-            const two: VT = @splat(2);
-            const four: VT = @splat(4);
-            const twenty_four: VT = @splat(24);
-            const forty_nine: VT = @splat(49);
-
-            const result: VT = if (types.isInt(T))
-                // Note that the use of ".. + 2) / 4" and ".. + 24) / 49" is to ensure proper rounding in integer division.
-                @intCast((((@as(UATV, sorted[13]) + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
-                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
-                    ((((@as(UATV, sorted[12]) + sorted[36]) * three) + two) / four)) * two + twenty_four) / forty_nine)
-            else blk: {
-                const point_seven_five: VT = @splat(0.75);
-                const twenty_four_point_five: VT = @splat(24.5);
-
-                break :blk ((sorted[13] + sorted[14] + sorted[15] + sorted[16] + sorted[17] + sorted[18] + sorted[19] + sorted[20] + sorted[21] + sorted[22] + sorted[23] +
-                    sorted[24] + sorted[25] + sorted[26] + sorted[27] + sorted[28] + sorted[29] + sorted[30] + sorted[31] + sorted[32] + sorted[33] + sorted[34] + sorted[35]) +
-                    ((sorted[12] + sorted[36]) * point_seven_five)) / twenty_four_point_five;
-            };
-
-            return result;
-        }
-
-        fn interQuartileMeanScalar(radius: comptime_int, grid: anytype) T {
-            return switch (radius) {
-                1 => iqm3Scalar(grid),
-                2 => iqm5Scalar(grid),
-                3 => iqm7Scalar(grid),
-                else => unreachable,
-            };
-        }
-
-        fn interQuartileMeanVector(radius: comptime_int, grid: anytype) VT {
-            return switch (radius) {
-                1 => iqm3Vector(grid),
-                2 => iqm5Vector(grid),
-                3 => iqm7Vector(grid),
-                else => unreachable,
-            };
         }
 
         fn processPlaneScalar(radius: comptime_int, noalias srcp: []const T, noalias dstp: []T, width: usize, height: usize, stride: usize) void {
@@ -290,7 +206,7 @@ fn InterQuartileMean(comptime T: type) type {
             for (0..radius) |row| {
                 for (0..width) |column| {
                     var grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                    dstp[(row * stride) + column] = iqmScalar(&grid);
                 }
             }
 
@@ -298,7 +214,7 @@ fn InterQuartileMean(comptime T: type) type {
                 // Process first pixels of the row with mirrored grid.
                 for (0..radius) |column| {
                     var gridFirst = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridFirst);
+                    dstp[(row * stride) + column] = iqmScalar(&gridFirst);
                 }
 
                 for (radius..width - radius) |column| {
@@ -308,13 +224,13 @@ fn InterQuartileMean(comptime T: type) type {
                     // We don't need the mirror effect anyways, as all pixels contain valid data.
                     var grid = Grid.init(T, srcp[top_left..], stride);
 
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                    dstp[(row * stride) + column] = iqmScalar(&grid);
                 }
 
                 // Process last pixel of the row with mirrored grid.
                 for (width - radius..width) |column| {
                     var gridLast = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridLast);
+                    dstp[(row * stride) + column] = iqmScalar(&gridLast);
                 }
             }
 
@@ -322,7 +238,7 @@ fn InterQuartileMean(comptime T: type) type {
             for (height - radius..height) |row| {
                 for (0..width) |column| {
                     var grid = Grid.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                    dstp[(row * stride) + column] = iqmScalar(&grid);
                 }
             }
         }
@@ -350,7 +266,7 @@ fn InterQuartileMean(comptime T: type) type {
             for (0..radius) |row| {
                 for (0..width) |column| {
                     var grid = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                    dstp[(row * stride) + column] = iqmScalar(&grid);
                 }
             }
 
@@ -359,14 +275,14 @@ fn InterQuartileMean(comptime T: type) type {
                 // First columns - mirrored
                 for (0..radius) |column| {
                     var gridFirst = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &gridFirst);
+                    dstp[(row * stride) + column] = iqmScalar(&gridFirst);
                 }
 
                 // Middle columns - not mirrored
                 var column: usize = radius;
                 while (column < width_simd) : (column += vector_len) {
                     var grid = GridV.initFromCenter(T, row, column, srcp, stride);
-                    const result = interQuartileMeanVector(radius, &grid);
+                    const result = iqmVector(&grid);
                     vec.storeAt(VT, dstp, row, column, stride, result);
                 }
 
@@ -375,14 +291,14 @@ fn InterQuartileMean(comptime T: type) type {
                 if (width_simd < width) {
                     const adjusted_column = width - vector_len - radius;
                     var grid = GridV.initFromCenter(T, row, adjusted_column, srcp, stride);
-                    const result = interQuartileMeanVector(radius, &grid);
+                    const result = iqmVector(&grid);
                     vec.storeAt(VT, dstp, row, adjusted_column, stride, result);
                 }
 
                 // Last columns - mirrored
                 for (width - radius..width) |c| {
                     var gridLast = GridS.initFromCenterMirrored(T, row, c, width, height, srcp, stride);
-                    dstp[(row * stride) + c] = interQuartileMeanScalar(radius, &gridLast);
+                    dstp[(row * stride) + c] = iqmScalar(&gridLast);
                 }
             }
 
@@ -390,7 +306,7 @@ fn InterQuartileMean(comptime T: type) type {
             for (height - radius..height) |row| {
                 for (0..width) |column| {
                     var grid = GridS.initFromCenterMirrored(T, row, column, width, height, srcp, stride);
-                    dstp[(row * stride) + column] = interQuartileMeanScalar(radius, &grid);
+                    dstp[(row * stride) + column] = iqmScalar(&grid);
                 }
             }
         }

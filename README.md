@@ -1,3 +1,7 @@
+<div align="center">
+    <p>Brought to you by <a href="https://flawless.media">Flawless Media - Digitizing and Restoration</a></p>
+</div>
+
 # Zsmooth - cross-platform, cross-architecture video smoothing functions for Vapoursynth, written in Zig
 
 **Goals**
@@ -370,7 +374,7 @@ core.zsmooth.SmartMedian(clip clip[, int[] radius = [1,1,1], int[] threshold = [
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | | Clip to process |
-| radius | int[] | 0-3 ([1, 1, 1]) | The spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid. Radius 0 disables filtering for the given plane.|
+| radius | int[] | 0-3 ([1, 1, 1]) | The per-plane spatial radius of the filter. Radius 1 is a 3x3 grid, radius 2 is a 5x5 grid, and radius 3 is a 7x7 grid. Radius 0 disables filtering for the given plane.|
 | threshold | int[] | 0-bit depth max, or 0-255 with `scalep=True`([50, 50, 50] for radius 1, [128, 128, 128] for radius 2+) | The variance threshold. Pixels with a variance under the threshold are smoothed, and over the threshold are returned as is.|
 | scalep | bool | (False) | Parameter scaling. If set to true, all threshold values will be automatically scaled from 8-bit range (0-255) to the corresponding range of the input clip's bit depth. |
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |

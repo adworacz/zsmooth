@@ -291,62 +291,6 @@ fn CCD(comptime T: type) type {
             };
         }
 
-        // Outdated, and missing several key features like scaling, points, and temporal support.
-        // But leaving for future reference.
-        // fn processPlanesScalar(threshold: BUAT, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
-        //     // Process top rows with mirrored grid.
-        //     for (0..radius) |row| {
-        //         for (0..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
-        //
-        //             dst[0][(row * stride) + column] = result[0];
-        //             dst[1][(row * stride) + column] = result[1];
-        //             dst[2][(row * stride) + column] = result[2];
-        //         }
-        //     }
-        //
-        //     for (radius..height - radius) |row| {
-        //         // Process first pixels of the row with mirrored grid.
-        //         for (0..radius) |column| {
-        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
-        //
-        //             dst[0][(row * stride) + column] = result[0];
-        //             dst[1][(row * stride) + column] = result[1];
-        //             dst[2][(row * stride) + column] = result[2];
-        //         }
-        //
-        //         for (radius..width - radius) |column| {
-        //             // Use a non-mirrored grid everywhere else for maximum performance.
-        //             // We don't need the mirror effect anyways, as all pixels contain valid data.
-        //             const result = ccdScalar(false, threshold, format_max, row, column, width, height, stride, src);
-        //
-        //             dst[0][(row * stride) + column] = result[0];
-        //             dst[1][(row * stride) + column] = result[1];
-        //             dst[2][(row * stride) + column] = result[2];
-        //         }
-        //
-        //         // Process last pixel of the row with mirrored grid.
-        //         for (width - radius..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
-        //
-        //             dst[0][(row * stride) + column] = result[0];
-        //             dst[1][(row * stride) + column] = result[1];
-        //             dst[2][(row * stride) + column] = result[2];
-        //         }
-        //     }
-        //
-        //     // Process bottom rows with mirrored grid.
-        //     for (height - radius..height) |row| {
-        //         for (0..width) |column| {
-        //             const result = ccdScalar(true, threshold, format_max, row, column, width, height, stride, src);
-        //
-        //             dst[0][(row * stride) + column] = result[0];
-        //             dst[1][(row * stride) + column] = result[1];
-        //             dst[2][(row * stride) + column] = result[2];
-        //         }
-        //     }
-        // }
-
         fn processPlanesVector(threshold: BUAT, scale: f32, points: []const Point, diameter: u8, comptime temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, format_max: T, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, dst: [3][]T, width: usize, height: usize, stride: usize) void {
             // TODO: Potentially move this calculation up, since it is identical in every plane...
             const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(diameter)) * scale));

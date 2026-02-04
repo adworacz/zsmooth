@@ -483,7 +483,7 @@ for (const filter of benchmarksToRun) {
     const stringifiedArgs = spec.args.join(' ')
 
     console.log(
-      `${filter.filter} ${spec.plugin} ${spec.format} [${stringifiedArgs}] Average: ${average} (+/- ${std_deviation}, ${min}..${max})`,
+      `${filter.filter} ${spec.plugin} ${spec.format} [${stringifiedArgs}] Average: ${average} (+/- ${std_deviation}, ${min} .. ${max})`,
     )
     results.push({
       filter: filter.filter,
@@ -522,7 +522,7 @@ const markdownHeaders = [
   'Plugin',
   'Format',
   'Args',
-  'Average FPS (std dev, min..max)',
+  'Average FPS (std dev, min .. max)',
 ]
 
 const csvHeadersStr = csvHeaders.join(',')
@@ -536,7 +536,7 @@ const markdownHeadersStr = `| ${markdownHeaders.join(' | ')} |`
 const markdownTableSeperator = `| ${markdownHeaders.map(() => ':---: |').join(' ')}`
 const markdownEntries = results.reduce(
   (accum, result) =>
-    `${accum}| ${result.filter} | ${result.plugin} | ${result.format} | ${result.args} | ${result.average} (+/- ${result.stdDev}, ${result.min}..${result.max}) |\n`,
+    `${accum}| ${result.filter} | ${result.plugin} | ${result.format} | ${result.args} | ${result.average} (+/- ${result.stdDev}, ${result.min} .. ${result.max}) |\n`,
   '',
 )
 

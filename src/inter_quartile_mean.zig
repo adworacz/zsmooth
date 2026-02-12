@@ -59,7 +59,11 @@ fn InterQuartileMean(comptime T: type) type {
         // In essence this function computes the equivalent of
         // 0.75 as 3 / 4, and returns the 3.
         fn multiplier(num: comptime_int) comptime_int {
-            return num - ((num / 4) * 4);
+            // The following are identical in behavior,
+            // with the latter just being less + simpler operations.
+            // num - ((num / 4) * 4);
+            // num & (4 - 1); // Masks the lower 2 bits to find the difference/remainder.
+            return num % 4;
         }
 
         test multiplier {

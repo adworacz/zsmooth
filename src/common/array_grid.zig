@@ -3,6 +3,12 @@ const vec = @import("vector.zig");
 const sort = @import("sorting_networks.zig");
 const types = @import("type.zig");
 
+// TODO: Refactor this into a Shape module, with 
+// this representing a Square, and simply returning an array as part of init.
+//
+// Long term, I'll just create different shapes, have them load a known number of pixels 
+// into an array, and then build operations based on that array.
+
 /// Creates a grid of side x side size with values of type T.
 /// This is a sister to Grid, without convenient value aliases
 /// (like `top_left`, etc). But it has the benefit of easily supporting

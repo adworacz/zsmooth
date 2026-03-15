@@ -3,12 +3,10 @@ const vapoursynth = @import("vapoursynth");
 const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
-const types = @import("common/type.zig");
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
 
-const string = @import("common/string.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;

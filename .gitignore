@@ -4,4 +4,6 @@ zig-out
 .direnv
 .vspreview
 .vsjet
+.mise
+dist
 /build

@@ -1,8 +1,8 @@
 [env]
-_.python.venv = { path = ".mise/venv", create = true }
+_.python.venv = { path = ".venv", create = true }
 
 [tools]
 bun = "latest"
-python = "3.13.2"
+python = "3.14.2"
 zig = "0.15.2"
 zls = "0.15.0"

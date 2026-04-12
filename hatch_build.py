@@ -43,7 +43,7 @@ targets = {
     # Mac
     'aarch64-macos': {
         'zig_target': 'aarch64-macos', 
-        'python_platform_tag': 'macosx_11_0_aarch64',
+        'python_platform_tag': 'macosx_11_0_arm64',
         'basename': 'libzsmooth',
     },
     'x86_64-macos': {

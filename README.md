@@ -28,6 +28,7 @@ Please see this [pinned issue](https://github.com/adworacz/zsmooth/issues/7) for
 See [Benchmarks](BENCHMARKS.md)
 
 ## Table of Contents
+* [Installation](#installation)
 * [Function Documentation](#function-documentation)
   * [CCD](#ccd)
   * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
@@ -47,6 +48,23 @@ See [Benchmarks](BENCHMARKS.md)
    * [Native Builds](#native-builds)
    * [Cross Compiling](#cross-compiling)
 * [References](#references)
+
+## Installation
+As of Zsmooth version `0.15.1`, a [Python package](https://pypi.org/project/vapoursynth-zsmooth/) is now available
+for use with VapourSynth r74 and greater. This means that the package can be installed with a simple:
+
+```
+pip install -U vapoursynth-zsmooth
+```
+
+Alternatively, `vsrepo` can be used to install older versions:
+
+```
+pip install -U vsrepo 
+vsrepo install zsmooth
+```
+
+Lastly, individual binaries can be downloaded from the [Releases](https://github.com/adworacz/zsmooth/releases) page.
 
 ## Function Documentation
 ### CCD

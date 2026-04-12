@@ -2,6 +2,8 @@
 
 ## 0.15.1
 * Create Python package for Zsmooth, as part of new plugin handling with Vapoursynth r74
+* Internal code improvements for IQM, and sorting functions
+* Restructured benchmark results to be a bit easier to read
 
 ## 0.15
 * Fix panic/extra `free` in TTempSmooth. Issue: https://github.com/adworacz/zsmooth/issues/21

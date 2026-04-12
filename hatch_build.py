@@ -20,12 +20,20 @@ targets = {
     'x86_64-linux-gnu': {
         'zig_target': 'x86_64-linux-gnu.2.17', 
         'python_platform_tag': 'manylinux_2_17_x86_64',
-        'cpus': ['x86_64_v3']
+        'cpus': [
+            {'cpu': 'x86_64'}, 
+            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
+            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
+            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
     },
     'x86_64-linux-musl': {
         'zig_target': 'x86_64-linux-musl', 
         'python_platform_tag': 'musllinux_1_2_x86_64',
-        'cpus': ['x86_64_v3']
+        'cpus': [
+            {'cpu': 'x86_64'}, 
+            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
+            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
+            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
     },
 
     # Mac
@@ -41,8 +49,12 @@ targets = {
     # Windows
     'x86_64-windows': {
         'zig_target': 'x86_64-windows', 
-        'python_platform_tag': 'win32',
-        'cpus': ['x86_64_v3'],
+        'python_platform_tag': 'win_amd64',
+        'cpus': [
+            {'cpu': 'x86_64'}, 
+            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
+            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
+            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
     },
 }
 
@@ -63,6 +75,9 @@ class CustomHook(BuildHookInterface[Any]):
         # https://hatch.pypa.io/latest/plugins/builder/wheel/#build-data
         build_data["pure_python"] = False
 
+        # Ensure the target directory exists
+        self.target_dir.mkdir(parents=True, exist_ok=True)
+
         # Cross-compilation support
         if "ZSTARGET" in os.environ:
             # Ex: ZSTARGET="x86_64-linux-gnu"
@@ -74,22 +89,38 @@ class CustomHook(BuildHookInterface[Any]):
             target = targets[zstarget]
             zig_target = target['zig_target']
             python_platform_tag = target['python_platform_tag']
-            cpu = target['cpus'][0] if target['cpus'] else None
 
             build_data["tag"] = f"py3-none-{python_platform_tag}"
 
-            subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast", f"-Dtarget={zig_target}", f"-Dcpu={cpu}" if cpu else ""], check=True)
+            if 'cpus' in target: 
+                # Build all optimization levels of the library
+                for cpu_spec in target['cpus']:
+                    subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast", f"-Dtarget={zig_target}", f"-Dcpu={cpu_spec['cpu']}"], check=True)
+
+                    for file_path in self.source_dir.rglob("*"):
+                        if file_path.is_file():
+                            if 'opt_level' in cpu_spec:
+                                name = file_path.stem + f".{cpu_spec['opt_level']}" + file_path.suffix
+                                shutil.copy2(file_path, Path(self.target_dir, name))
+                            else:
+                                shutil.copy2(file_path, self.target_dir)
+            else:
+                subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast", f"-Dtarget={zig_target}"], check=True)
+
+                for file_path in self.source_dir.rglob("*"):
+                    if file_path.is_file():
+                        shutil.copy2(file_path, self.target_dir)
+
         # Build for *this* machine
         else:
             build_data["tag"] = f"py3-none-{next(tags.platform_tags())}"
 
             subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast"], check=True)
-
-        # Ensure the target directory exists and copy the compiled binaries
-        self.target_dir.mkdir(parents=True, exist_ok=True)
-        for file_path in self.source_dir.rglob("*"):
-            if file_path.is_file():
-                shutil.copy2(file_path, self.target_dir)
+        
+            # Copy the compiled binaries
+            for file_path in self.source_dir.rglob("*"):
+                if file_path.is_file():
+                    shutil.copy2(file_path, self.target_dir)
 
         # Write a manifest to ensure instruction set-based loading works as desired
         # https://github.com/vapoursynth/vapoursynth/discussions/1196

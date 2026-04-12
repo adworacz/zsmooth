@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.15.2
+* Actually build Python modules with AVX512 turned on for x86_64_v4 targets
+
 ## 0.15.1
 * Create Python package for Zsmooth, as part of new plugin handling with Vapoursynth r74
 * Internal code improvements for IQM, and sorting functions

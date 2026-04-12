@@ -27,7 +27,7 @@ targets = {
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
             {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
+            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
     },
     'x86_64-linux-musl': {
         'zig_target': 'x86_64-linux-musl', 
@@ -37,7 +37,7 @@ targets = {
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
             {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
+            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
     },
 
     # Mac
@@ -61,7 +61,7 @@ targets = {
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
             {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4', 'opt_level': 'v4'},]
+            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
     },
 }
 

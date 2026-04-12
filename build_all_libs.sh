@@ -31,3 +31,16 @@ pushd build
 
 sha256sum *zsmooth* > zsmooth_checksums.sha256
 popd
+
+# Build all of the wheels in parallel
+ZSTARGET=aarch64-linux-gnu python -m build &
+ZSTARGET=aarch64-linux-musl python -m build &
+ZSTARGET=x86_64-linux-gnu python -m build &
+ZSTARGET=x86_64-linux-musl python -m build &
+ZSTARGET=aarch64-macos python -m build &
+ZSTARGET=x86_64-macos python -m build &
+ZSTARGET=x86_64-windows python -m build &
+
+# Wait for the jobs to complete
+wait
+

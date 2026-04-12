@@ -12,14 +12,17 @@ targets = {
     'aarch64-linux-gnu': {
         'zig_target': 'aarch64-linux-gnu.2.17', 
         'python_platform_tag': 'manylinux_2_17_aarch64',
+        'basename': 'libzsmooth',
     },
     'aarch64-linux-musl': {
         'zig_target': 'aarch64-linux-musl', 
         'python_platform_tag': 'musllinux_1_2_aarch64',
+        'basename': 'libzsmooth',
     },
     'x86_64-linux-gnu': {
         'zig_target': 'x86_64-linux-gnu.2.17', 
         'python_platform_tag': 'manylinux_2_17_x86_64',
+        'basename': 'libzsmooth',
         'cpus': [
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
@@ -29,6 +32,7 @@ targets = {
     'x86_64-linux-musl': {
         'zig_target': 'x86_64-linux-musl', 
         'python_platform_tag': 'musllinux_1_2_x86_64',
+        'basename': 'libzsmooth',
         'cpus': [
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
@@ -40,16 +44,19 @@ targets = {
     'aarch64-macos': {
         'zig_target': 'aarch64-macos', 
         'python_platform_tag': 'macosx_11_0_aarch64',
+        'basename': 'libzsmooth',
     },
     'x86_64-macos': {
         'zig_target': 'x86_64-macos', 
         'python_platform_tag': 'macosx_11_0_x86_64',
+        'basename': 'libzsmooth',
     },
 
     # Windows
     'x86_64-windows': {
         'zig_target': 'x86_64-windows', 
         'python_platform_tag': 'win_amd64',
+        'basename': 'zsmooth',
         'cpus': [
             {'cpu': 'x86_64'}, 
             {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
@@ -111,6 +118,15 @@ class CustomHook(BuildHookInterface[Any]):
                     if file_path.is_file():
                         shutil.copy2(file_path, self.target_dir)
 
+            # Write a manifest to ensure instruction set-based loading works as desired
+            # https://github.com/vapoursynth/vapoursynth/discussions/1196
+            manifest_path = Path(self.target_dir, "manifest.vs")
+            with open(manifest_path, "wt") as manifest:
+                manifest.writelines([
+                    "[VapourSynth Manifest V1]\n"
+                    f"{target['basename']}\n"
+                ])
+
         # Build for *this* machine
         else:
             build_data["tag"] = f"py3-none-{next(tags.platform_tags())}"
@@ -122,14 +138,6 @@ class CustomHook(BuildHookInterface[Any]):
                 if file_path.is_file():
                     shutil.copy2(file_path, self.target_dir)
 
-        # Write a manifest to ensure instruction set-based loading works as desired
-        # https://github.com/vapoursynth/vapoursynth/discussions/1196
-        manifest_path = Path(self.target_dir, "manifest.vs")
-        with open(manifest_path, "wt") as manifest:
-            manifest.writelines([
-                "[VapourSynth Manifest V1]\n"
-                "libzsmooth\n"
-            ])
 
     def finalize(self, version: str, build_data: dict[str, Any], artifact_path: str) -> None:
         """

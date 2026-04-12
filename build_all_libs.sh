@@ -44,3 +44,5 @@ ZSTARGET=x86_64-windows python -m build &
 # Wait for the jobs to complete
 wait
 
+# Dedicated sdist build to ensure we get a clean/unclobbered sdist (since the above builds race)
+python -m build --sdist

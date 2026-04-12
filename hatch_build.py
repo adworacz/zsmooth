@@ -53,7 +53,7 @@ class CustomHook(BuildHookInterface[Any]):
     """
 
     source_dir = Path("zig-out")
-    target_dir = Path("vapoursynth/plugins")
+    target_dir = Path("vapoursynth/plugins/zsmooth")
 
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
         """
@@ -74,10 +74,11 @@ class CustomHook(BuildHookInterface[Any]):
             target = targets[zstarget]
             zig_target = target['zig_target']
             python_platform_tag = target['python_platform_tag']
+            cpu = target['cpus'][0] if target['cpus'] else None
 
             build_data["tag"] = f"py3-none-{python_platform_tag}"
 
-            subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast", f"-Dtarget={zig_target}"], check=True)
+            subprocess.run(["python-zig", "build", "-Doptimize=ReleaseFast", f"-Dtarget={zig_target}", f"-Dcpu={cpu}" if cpu else ""], check=True)
         # Build for *this* machine
         else:
             build_data["tag"] = f"py3-none-{next(tags.platform_tags())}"
@@ -89,6 +90,15 @@ class CustomHook(BuildHookInterface[Any]):
         for file_path in self.source_dir.rglob("*"):
             if file_path.is_file():
                 shutil.copy2(file_path, self.target_dir)
+
+        # Write a manifest to ensure instruction set-based loading works as desired
+        # https://github.com/vapoursynth/vapoursynth/discussions/1196
+        manifest_path = Path(self.target_dir, "manifest.vs")
+        with open(manifest_path, "wt") as manifest:
+            manifest.writelines([
+                "[VapourSynth Manifest V1]\n"
+                "libzsmooth\n"
+            ])
 
     def finalize(self, version: str, build_data: dict[str, Any], artifact_path: str) -> None:
         """

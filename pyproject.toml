@@ -28,11 +28,12 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-include = ["vapoursynth/plugins"]
+include = ["vapoursynth/plugins/zsmooth"]
 artifacts = [
-    "vapoursynth/plugins/*.dylib",
-    "vapoursynth/plugins/*.so",
-    "vapoursynth/plugins/*.dll",
+    "vapoursynth/plugins/zsmooth/*.dylib",
+    "vapoursynth/plugins/zsmooth/*.so",
+    "vapoursynth/plugins/zsmooth/*.dll",
+    "vapoursynth/plugins/zsmooth/manifest.vs",
 ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]

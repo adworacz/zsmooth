@@ -2,17 +2,21 @@ const std = @import("std");
 const x86 = std.Target.x86;
 const zon = @import("build.zig.zon");
 
+// Compile for target CPUs based on Myrsloik's "essay"
+// https://github.com/vapoursynth/vapoursynth/issues/1185#issuecomment-4235066569
+// This mainly means targeting haswell for the equivalent of AVX2 instructions,
+// and then Zen 4, with SSE4a support disabled since it was never implemented for Intel CPUs
 const targets = [_]std.Target.Query{
     .{ .os_tag = .macos, .cpu_arch = .aarch64 },
     .{ .os_tag = .macos, .cpu_arch = .x86_64 },
     .{ .os_tag = .linux, .cpu_arch = .aarch64, .abi = .gnu },
     .{ .os_tag = .linux, .cpu_arch = .aarch64, .abi = .musl },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 }, .abi = .gnu },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 }, .abi = .musl },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .abi = .gnu },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .abi = .musl },
-    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.x86_64_v3 } },
-    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 } },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell }, .abi = .gnu },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell }, .abi = .musl },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}), .abi = .gnu },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}), .abi = .musl },
+    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell } },
+    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}) },
 };
 
 pub fn build(b: *std.Build) !void {

@@ -7,6 +7,12 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 from packaging import tags
 import os
 
+cpus = [
+    {'cpu': 'x86_64'}, 
+    {'cpu': 'haswell', 'opt_level': 'v3'},
+    {'cpu': 'znver4-sse4a', 'opt_level': 'v4'}, # "-sse4a" means *remove* the use of SSE4a (which Intel never implemented)
+]
+
 targets = {
     # Linux
     'aarch64-linux-gnu': {
@@ -23,21 +29,13 @@ targets = {
         'zig_target': 'x86_64-linux-gnu.2.17', 
         'python_platform_tag': 'manylinux_2_17_x86_64',
         'basename': 'libzsmooth',
-        'cpus': [
-            {'cpu': 'x86_64'}, 
-            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
-            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
+        'cpus': cpus,
     },
     'x86_64-linux-musl': {
         'zig_target': 'x86_64-linux-musl', 
         'python_platform_tag': 'musllinux_1_2_x86_64',
         'basename': 'libzsmooth',
-        'cpus': [
-            {'cpu': 'x86_64'}, 
-            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
-            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
+        'cpus': cpus, 
     },
 
     # Mac
@@ -57,11 +55,7 @@ targets = {
         'zig_target': 'x86_64-windows', 
         'python_platform_tag': 'win_amd64',
         'basename': 'zsmooth',
-        'cpus': [
-            {'cpu': 'x86_64'}, 
-            {'cpu': 'x86_64_v2', 'opt_level': 'v2'},
-            {'cpu': 'x86_64_v3', 'opt_level': 'v3'},
-            {'cpu': 'x86_64_v4-prefer_256_bit', 'opt_level': 'v4'},] # "-prefer_256_bit" means *remove* the feature (preference) for 256 bit, aka use 512 bit (AVX512)
+        'cpus': cpus, 
     },
 }
 

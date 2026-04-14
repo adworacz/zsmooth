@@ -53,7 +53,6 @@ fn SmartMedian(comptime T: type) type {
     const UATV = @Vector(vector_len, UAT);
 
     return struct {
-
         fn smartMedianScalar(threshold: T, grid: anytype) @typeInfo(@TypeOf(grid.values)).array.child {
             @setFloatMode(float_mode);
 

@@ -259,7 +259,7 @@ fn temporalMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyo
             }
             const dstp8: []u8 = dst.getWriteSlice(plane);
 
-            processPlane(sc_diameter, dstp8, srcp8[from_frame_idx..to_frame_idx + 1], width, height, stride8);
+            processPlane(sc_diameter, dstp8, srcp8[from_frame_idx .. to_frame_idx + 1], width, height, stride8);
         }
 
         return dst.frame;

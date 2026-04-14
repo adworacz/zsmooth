@@ -14,7 +14,7 @@ const vsh = vapoursynth.vshelper;
 /// Vapoursynth API helpers
 /////////////////////////////////////////////////
 
-//TODO: Replace all references of this with ZAPI.Zmap. 
+//TODO: Replace all references of this with ZAPI.Zmap.
 //Doing so will require rewriting most of the function signatures in this file
 //to remove the pass in map + vsapi instance.
 //I'm just copy-pasting this from vapoursynth-zig (since dnjulek removed it after the 0.15.1 release)

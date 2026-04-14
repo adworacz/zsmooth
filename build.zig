@@ -48,6 +48,9 @@ pub fn build(b: *std.Build) !void {
         .single_threaded = true,
 
         .strip = optimize == .ReleaseFast,
+
+        // Necessary to use the C memory allocator.
+        .link_libc = true,
     };
     const root_module = b.createModule(root_module_options);
 
@@ -68,8 +71,6 @@ pub fn build(b: *std.Build) !void {
     };
 
     const lib = b.addLibrary(lib_options);
-
-    lib.linkLibC(); // Necessary to use the C memory allocator.
 
     // Add check step for quick n easy build checking without
     // emitting binary output.
@@ -99,8 +100,6 @@ pub fn build(b: *std.Build) !void {
 
         const release_lib = b.addLibrary(target_lib_options);
 
-        release_lib.linkLibC(); // Necessary to use the C memory allocator.
-
         const cpu_model_name = switch (t.cpu_model) {
             .baseline => "baseline",
             .determined_by_arch_os => "default",
@@ -126,7 +125,6 @@ pub fn build(b: *std.Build) !void {
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
     });
-    lib_unit_tests.linkLibC();
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 

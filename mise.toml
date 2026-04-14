@@ -4,5 +4,5 @@ _.python.venv = { path = ".venv", create = true }
 [tools]
 bun = "latest"
 python = "3.14.2"
-zig = "0.15.2"
+zig = "0.16.0"
 zls = "0.15.0"

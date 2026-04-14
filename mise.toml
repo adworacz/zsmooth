@@ -5,5 +5,5 @@ VAPOURSYNTH_EXTRA_PLUGIN_PATH = "/usr/lib64/vapoursynth"
 [tools]
 bun = "latest"
 python = "3.14.4"
-zig = "0.15.2"
-zls = "0.15.0"
+zig = "0.16.0"
+zls = "0.16.0"

@@ -176,7 +176,7 @@ fn TemporalSoften(comptime T: type) type {
                 }
                 src[i] = frame;
             }
-            defer for (0..diameter) |i| testingAllocator.free(src[i][0..size]);
+            defer for (0..diameter) |i| testingAllocator.free(src[i]);
 
             const dstp_scalar = try testingAllocator.alloc(T, size);
             const dstp_vec = try testingAllocator.alloc(T, size);

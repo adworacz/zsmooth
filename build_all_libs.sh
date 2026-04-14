@@ -17,9 +17,9 @@ zip -9 -j build/zsmooth-x86_64-macos.zip zig-out/x86_64-macos-default/libzsmooth
 zip -9 -j build/zsmooth-aarch64-macos.zip zig-out/aarch64-macos-default/libzsmooth.dylib
 
 # Linux GNU
-zip -9 -j build/zsmooth-x86_64-linux-gnu.zip zig-out/x86_64-linux-gnu-haswell/libzsmooth.so
-zip -9 -j build/zsmooth-x86_64-linux-gnu-znver4.zip zig-out/x86_64-linux-gnu-znver4//libzsmooth.so
-zip -9 -j build/zsmooth-aarch64-linux-gnu.zip zig-out/aarch64-linux-gnu-default/libzsmooth.so
+zip -9 -j build/zsmooth-x86_64-linux-gnu.zip zig-out/x86_64-linux-gnu.2.17-haswell/libzsmooth.so
+zip -9 -j build/zsmooth-x86_64-linux-gnu-znver4.zip zig-out/x86_64-linux-gnu.2.17-znver4//libzsmooth.so
+zip -9 -j build/zsmooth-aarch64-linux-gnu.zip zig-out/aarch64-linux-gnu.2.17-default/libzsmooth.so
 
 
 # Linux Musl

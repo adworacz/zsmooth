@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.4
+* Actually force (non-PyPi) builds to target Glibc 2.17 ABI compatibility
+* Prevent any non-library files from ending up in PyPi wheels. Windows wheels had extra *.lib files in them previously.
+
 ## 0.15.3
 * Update CPU architectures based on Myrsloik's "essay": https://github.com/vapoursynth/vapoursynth/issues/1185#issuecomment-4235066569
 * This means we now target Haswell instead of the generic `x86_64_v3` target, as well as `Zen 4` albeit with SSE4a

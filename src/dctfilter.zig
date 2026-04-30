@@ -3,6 +3,10 @@ const vapoursynth = @import("vapoursynth");
 const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
+const c = @cImport({
+    @cInclude("fftw3.h");
+});
+
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
@@ -23,6 +27,11 @@ const DCTFilterData = struct {
     node: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
+
+    n: u32,
+    factors: []f32,
+    dct_plan: c.fftwf_plan,
+    idct_plan: c.fftwf_plan,
 
     // Which planes to process.
     process: [3]bool,
@@ -52,6 +61,13 @@ fn dctFilterGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque
         defer src_frame.deinit();
 
         const dst = src_frame.newVideoFrame2(d.process);
+
+        const buffer = allocator.alignedAlloc(f32, .@"64", d.n * d.n) catch {
+            dst.deinit();
+            zapi.setFilterError("DCTFilter: Unable to allocate memory for fftw buffer");
+            return null;
+        };
+        defer allocator.free(buffer);
 
         const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &DCTFilter(u8).processPlane,
@@ -99,7 +115,6 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
     var d: DCTFilterData = undefined;
 
     d.node, d.vi = inz.getNodeVi("clip").?;
-
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
         zapi.freeNode(d.node);

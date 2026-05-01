@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.5
+* Build wheels with *.avx2 and *.zn4 suffixes to match Vapoursynth r75 behavior. This changes from r74's "v2/v3/v4"
+behavior. See https://github.com/vapoursynth/vapoursynth/blob/7c014a375dad60c9f4362e91125257e1a9c8c6ca/src/core/vscore.cpp#L2150-L2153
+for refrence.
+* Upped VS dependency to r75 in pyproject.toml, for the above reason
+
+
 ## 0.15.4
 * Actually force (non-PyPi) builds to target Glibc 2.17 ABI compatibility
 * Prevent any non-library files from ending up in PyPi wheels. Windows wheels had extra *.lib files in them previously.

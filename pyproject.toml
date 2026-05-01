@@ -8,7 +8,7 @@ description = "Cross-platform, cross-architecture video smoothing functions for 
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["vapoursynth>=74"]
+dependencies = ["vapoursynth>=75"]
 dynamic = ["version"]
 
 # Development dependencies to assist with script development and linting

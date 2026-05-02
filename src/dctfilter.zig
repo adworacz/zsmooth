@@ -10,10 +10,12 @@ const c = @cImport({
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
+const math = @import("common/math.zig");
 
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
+const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
@@ -22,13 +24,15 @@ const st = vs.SampleType;
 
 const allocator = std.heap.c_allocator;
 
+const DCT_SIDE = 8;
+const DCT_SIZE = DCT_SIDE * DCT_SIDE;
+
 const DCTFilterData = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
 
-    n: u32,
     factors: []f32,
     dct_plan: c.fftwf_plan,
     idct_plan: c.fftwf_plan,
@@ -39,10 +43,51 @@ const DCTFilterData = struct {
 
 fn DCTFilter(comptime T: type) type {
     return struct {
-        fn processPlane(radius: u8, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlane(noalias factors: []const f32, noalias buffer: []f32, dct_plan: c.fftwf_plan, idct_plan: c.fftwf_plan, _pixel_max: f32, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
+            std.debug.assert(factors.len == buffer.len);
+
             const stride = stride8 / @sizeOf(T);
             const srcp: []const T = @ptrCast(@alignCast(srcp8));
             const dstp: []T = @ptrCast(@alignCast(dstp8));
+            const pixel_max: T = math.lossyCast(T, _pixel_max);
+
+            var y: usize = 0;
+            while (y < height) : (y += DCT_SIDE) {
+                var x: usize = 0;
+                while (x < width) : (x += DCT_SIDE) {
+                    for (0..DCT_SIDE) |block_y| {
+                        for (0..DCT_SIDE) |block_x| {
+                            const index = stride * (y + block_y) + x + block_x;
+                            buffer[DCT_SIDE * block_y + block_x] = switch(T) {
+                                u8, u16 => @as(f32, @floatFromInt(srcp[index])) * (1.0 / 256.0),
+                                else => srcp[index] * (1.0 / 256.0),
+                            };
+                        }
+                    }
+
+                    // Perform the DCT
+                    c.fftwf_execute_r2r(dct_plan, buffer.ptr, buffer.ptr);
+
+                    // Scale the DCT by factors
+                    for (buffer, factors) |*b, factor| {
+                        b.* *= factor;
+                    }
+
+                    // Reverse the DCT
+                    c.fftwf_execute_r2r(idct_plan, buffer.ptr, buffer.ptr);
+
+                    for (0..DCT_SIDE) |block_y| {
+                        for (0..DCT_SIDE) |block_x| {
+                            dstp[stride * (y + block_y) + x + block_x] = switch (T) {
+                                u8 => @intFromFloat(@round(buffer[DCT_SIDE * block_y + block_x])),
+                                u16 => std.math.clamp(@as(u16, @intFromFloat(@round(buffer[DCT_SIDE * block_y + block_x]))), 0, pixel_max),
+                                f16 => @floatCast(buffer[DCT_SIDE * block_y + block_x]),
+                                else => buffer[DCT_SIDE * block_y + block_x],
+                            };
+                        }
+                    }
+                }
+            }
         }
     };
 }
@@ -62,7 +107,7 @@ fn dctFilterGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque
 
         const dst = src_frame.newVideoFrame2(d.process);
 
-        const buffer = allocator.alignedAlloc(f32, .@"64", d.n * d.n) catch {
+        const buffer = allocator.alignedAlloc(f32, .@"64", DCT_SIZE) catch {
             dst.deinit();
             zapi.setFilterError("DCTFilter: Unable to allocate memory for fftw buffer");
             return null;
@@ -88,7 +133,9 @@ fn dctFilterGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque
             const srcp8: []const u8 = src_frame.getReadSlice(plane);
             const dstp8: []u8 = dst.getWriteSlice(plane);
 
-            processPlane(d.radius[plane], srcp8, dstp8, width, height, stride8);
+            const pixel_max = vscmn.getFormatMaximum(f32, d.vi.format, plane > 0);
+
+            processPlane(d.factors, buffer, d.dct_plan, d.idct_plan, pixel_max, srcp8, dstp8, width, height, stride8);
         }
 
         return dst.frame;
@@ -103,6 +150,14 @@ export fn dctFilterFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*co
 
     vsapi.?.freeNode.?(d.node);
 
+    allocator.free(d.factors);
+
+    {
+        c.fftwf_make_planner_thread_safe();
+        c.fftwf_destroy_plan(d.dct_plan);
+        c.fftwf_destroy_plan(d.idct_plan);
+    }
+
     allocator.destroy(d);
 }
 
@@ -112,9 +167,48 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 
+    //TODO: Support padding
+
     var d: DCTFilterData = undefined;
 
     d.node, d.vi = inz.getNodeVi("clip").?;
+
+    const factors = inz.getFloatArray("factors") orelse {
+        zapi.freeNode(d.node);
+        outz.setError("DCTFilter: 'factors' must be specified");
+        return;
+    };
+
+    for (factors) |f| if (f < 0.0 or f > 1.0) {
+        zapi.freeNode(d.node);
+        outz.setError("DCTFilter: 'factors' values must be between 0.0 and 1.0 (inclusive)");
+        return;
+    };
+
+    d.factors = allocator.alloc(f32, DCT_SIZE) catch {
+        zapi.freeNode(d.node);
+        outz.setError("DCTFilter: Unable to allocate memory for factors");
+        return;
+    };
+
+    for (0..DCT_SIDE) |y| {
+        for (0..DCT_SIDE) |x| {
+            d.factors[DCT_SIDE * y + x] = @floatCast(factors[y] * factors[x]);
+        }
+    }
+
+    const fftw_buffer = allocator.alignedAlloc(f32, .@"64", DCT_SIZE) catch {
+        zapi.freeNode(d.node);
+        outz.setError("DCTFilter: Unable to allocate buffer for fftw");
+        return;
+    };
+    defer allocator.free(fftw_buffer);
+
+    {
+        c.fftwf_make_planner_thread_safe();
+        d.dct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE, DCT_SIDE, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT10, c.FFTW_REDFT10, c.FFTW_PATIENT);
+        d.idct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE, DCT_SIDE, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT01, c.FFTW_REDFT01, c.FFTW_PATIENT);
+    }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
         zapi.freeNode(d.node);
@@ -126,11 +220,7 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
         return;
     };
 
-    d.process = [3]bool{
-        planes[0] and d.radius[0] > 0,
-        planes[1] and d.radius[1] > 0,
-        planes[2] and d.radius[2] > 0,
-    };
+    d.process = planes;
 
     const data: *DCTFilterData = allocator.create(DCTFilterData) catch unreachable;
     data.* = d;
@@ -146,5 +236,5 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("DCTFilter", "clip:vnode;factors:float[];planes:int[]:opt;n:int:opt;qps:float[]:opt;", "clip:vnode;", dctFilterCreate, null, plugin);
+    _ = vsapi.registerFunction.?("DCTFilter", "clip:vnode;factors:float[];planes:int[]:opt;", "clip:vnode;", dctFilterCreate, null, plugin);
 }

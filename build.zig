@@ -48,13 +48,18 @@ pub fn build(b: *std.Build) !void {
         .single_threaded = true,
 
         .strip = optimize == .ReleaseFast,
+
+        // Necessary to use the C memory allocator.
+        .link_libc = true,
     };
     const root_module = b.createModule(root_module_options);
+    // root_module.linkSystemLibrary("fftw3f", .{});
+    // We link against the "fftw3f_threads" library to ensure "make_planner_thread_safe" is available.
+    root_module.linkSystemLibrary("fftw3f_threads", .{});
 
     root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
     root_module.addOptions("config", options);
 
-    // const zsmooth_options: std.Build.SharedLibraryOptions = .{
     const lib_options: std.Build.LibraryOptions = .{
         .name = "zsmooth",
         .root_module = root_module,
@@ -68,8 +73,6 @@ pub fn build(b: *std.Build) !void {
     };
 
     const lib = b.addLibrary(lib_options);
-
-    lib.linkLibC(); // Necessary to use the C memory allocator.
 
     // Add check step for quick n easy build checking without
     // emitting binary output.

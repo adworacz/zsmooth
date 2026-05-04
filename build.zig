@@ -110,7 +110,7 @@ pub fn build(b: *std.Build) !void {
             .native => "native",
             .explicit => t.cpu_model.explicit.name,
         };
-        const output_dir = try std.fmt.allocPrint(b.allocator, "{s}-{s}", .{ try t.zigTriple(b.allocator), cpu_model_name });
+        const output_dir = b.fmt("{s}-{s}", .{ try t.zigTriple(b.allocator), cpu_model_name });
 
         const target_output = b.addInstallArtifact(release_lib, .{
             .dest_dir = .{ //

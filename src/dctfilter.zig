@@ -24,8 +24,8 @@ const st = vs.SampleType;
 
 const allocator = std.heap.c_allocator;
 
-const DCT_SIDE = 8;
-const DCT_SIZE = DCT_SIDE * DCT_SIDE;
+const DCT_SIDE_LEN = 8;
+const DCT_SIZE = DCT_SIDE_LEN * DCT_SIDE_LEN;
 
 const DCTFilterData = struct {
     // The clip on which we are operating.
@@ -52,13 +52,13 @@ fn DCTFilter(comptime T: type) type {
             const pixel_max: T = math.lossyCast(T, _pixel_max);
 
             var y: usize = 0;
-            while (y < height) : (y += DCT_SIDE) {
+            while (y < height) : (y += DCT_SIDE_LEN) {
                 var x: usize = 0;
-                while (x < width) : (x += DCT_SIDE) {
-                    for (0..DCT_SIDE) |block_y| {
-                        for (0..DCT_SIDE) |block_x| {
+                while (x < width) : (x += DCT_SIDE_LEN) {
+                    for (0..DCT_SIDE_LEN) |block_y| {
+                        for (0..DCT_SIDE_LEN) |block_x| {
                             const index = stride * (y + block_y) + x + block_x;
-                            buffer[DCT_SIDE * block_y + block_x] = switch(T) {
+                            buffer[DCT_SIDE_LEN * block_y + block_x] = switch(T) {
                                 u8, u16 => @as(f32, @floatFromInt(srcp[index])) * (1.0 / 256.0),
                                 else => srcp[index] * (1.0 / 256.0),
                             };
@@ -76,13 +76,13 @@ fn DCTFilter(comptime T: type) type {
                     // Reverse the DCT
                     c.fftwf_execute_r2r(idct_plan, buffer.ptr, buffer.ptr);
 
-                    for (0..DCT_SIDE) |block_y| {
-                        for (0..DCT_SIDE) |block_x| {
+                    for (0..DCT_SIDE_LEN) |block_y| {
+                        for (0..DCT_SIDE_LEN) |block_x| {
                             dstp[stride * (y + block_y) + x + block_x] = switch (T) {
-                                u8 => @intFromFloat(@round(buffer[DCT_SIDE * block_y + block_x])),
-                                u16 => std.math.clamp(@as(u16, @intFromFloat(@round(buffer[DCT_SIDE * block_y + block_x]))), 0, pixel_max),
-                                f16 => @floatCast(buffer[DCT_SIDE * block_y + block_x]),
-                                else => buffer[DCT_SIDE * block_y + block_x],
+                                u8 => @intFromFloat(@round(buffer[DCT_SIDE_LEN * block_y + block_x])),
+                                u16 => std.math.clamp(@as(u16, @intFromFloat(@round(buffer[DCT_SIDE_LEN * block_y + block_x]))), 0, pixel_max),
+                                f16 => @floatCast(buffer[DCT_SIDE_LEN * block_y + block_x]),
+                                else => buffer[DCT_SIDE_LEN * block_y + block_x],
                             };
                         }
                     }
@@ -191,9 +191,9 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
         return;
     };
 
-    for (0..DCT_SIDE) |y| {
-        for (0..DCT_SIDE) |x| {
-            d.factors[DCT_SIDE * y + x] = @floatCast(factors[y] * factors[x]);
+    for (0..DCT_SIDE_LEN) |y| {
+        for (0..DCT_SIDE_LEN) |x| {
+            d.factors[DCT_SIDE_LEN * y + x] = @floatCast(factors[y] * factors[x]);
         }
     }
 
@@ -205,9 +205,18 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
     defer allocator.free(fftw_buffer);
 
     {
+        //Note: Because fftw is statically linked, locking via
+        //fftwf_make_planner_thread_safe may not actually work. 
+        //
+        //I'm honestly not sure. 
+        //
+        //On the other hand, because of the static linking, it might not matter
+        //as much, because we potentially aren't conflicting with other plugins
+        //that might use dynamic linking. We still potentially conflict with
+        //multiple instances of zsmooth though, so we need *some* kind of locking.
         c.fftwf_make_planner_thread_safe();
-        d.dct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE, DCT_SIDE, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT10, c.FFTW_REDFT10, c.FFTW_PATIENT);
-        d.idct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE, DCT_SIDE, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT01, c.FFTW_REDFT01, c.FFTW_PATIENT);
+        d.dct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE_LEN, DCT_SIDE_LEN, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT10, c.FFTW_REDFT10, c.FFTW_PATIENT);
+        d.idct_plan = c.fftwf_plan_r2r_2d(DCT_SIDE_LEN, DCT_SIDE_LEN, fftw_buffer.ptr, fftw_buffer.ptr, c.FFTW_REDFT01, c.FFTW_REDFT01, c.FFTW_PATIENT);
     }
 
     const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {

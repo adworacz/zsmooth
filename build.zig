@@ -35,6 +35,13 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const fftw_dep = b.dependency("fftw", .{
+        .target = target,
+        .optimize = optimize,
+        .precision = .single,
+        .threads = true,
+    });
+
     const root_module_options: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/zsmooth.zig"),
         .target = target,
@@ -53,11 +60,9 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     };
     const root_module = b.createModule(root_module_options);
-    // root_module.linkSystemLibrary("fftw3f", .{});
-    // We link against the "fftw3f_threads" library to ensure "make_planner_thread_safe" is available.
-    root_module.linkSystemLibrary("fftw3f_threads", .{});
 
     root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
+    root_module.linkLibrary(fftw_dep.artifact("fftw3f"));
     root_module.addOptions("config", options);
 
     const lib_options: std.Build.LibraryOptions = .{

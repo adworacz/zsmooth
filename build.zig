@@ -101,6 +101,14 @@ pub fn build(b: *std.Build) !void {
         target_root_module.addImport("vapoursynth", vapoursynth_dep.module("vapoursynth"));
         target_root_module.addOptions("config", options);
 
+        const target_fftw_dep = b.dependency("fftw", .{
+            .target = target_root_module_options.target,
+            .optimize = optimize,
+            .precision = .single,
+            .threads = true,
+        });
+        target_root_module.linkLibrary(target_fftw_dep.artifact("fftw3f"));
+
         // copy lib options so we can operate on them separately.
         var target_lib_options = lib_options;
         target_lib_options.root_module = target_root_module;

@@ -32,8 +32,8 @@
             .hash = "vapoursynth-4.0.0-jLYMQw95AgBWLJymsYybHIFxNu7d6shoYn8y8WZfH8T3",
         },
         .fftw = .{
-            .url = "git+https://github.com/adworacz/fftw.git?ref=v3.3.11-1#bd8e92a6658ba39576c8d7051066cff5670d6819",
-            .hash = "fftw-3.3.11-1-EjV1I1XVAgBsoVRpk5ZPcXtlQuB5LF-vM5roKekfJclo",
+            .url = "git+https://github.com/adworacz/fftw.git?ref=v3.3.11-2#579b516e6b39a2a96200d248fc3c96d1ad7d9841",
+            .hash = "fftw-3.3.11-2-EjV1I17WAgD0Lnb_BKT51TNd_56-eY4NBOPHO2IH_WHZ",
         },
     },
     .paths = .{

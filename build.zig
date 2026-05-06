@@ -107,8 +107,6 @@ pub fn build(b: *std.Build) !void {
 
         const release_lib = b.addLibrary(target_lib_options);
 
-        release_lib.linkLibC(); // Necessary to use the C memory allocator.
-
         const cpu_model_name = switch (t.cpu_model) {
             .baseline => "baseline",
             .determined_by_arch_os => "default",
@@ -134,7 +132,6 @@ pub fn build(b: *std.Build) !void {
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
     });
-    lib_unit_tests.linkLibC();
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 

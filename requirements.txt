@@ -49,6 +49,7 @@ typing_extensions==4.15.0
 urllib3==2.6.3
 uv-build==0.11.11
 VapourSynth==75
+vapoursynth-bestsource==17.0
 vapoursynth-dctfilter==3.2
 vsjetengine==1.2.0
 vsjetpack==1.4.1

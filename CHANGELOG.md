@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0
+* Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency
+on any OS. And interestingly, it's also *faster* than the original plugin, by ~20% in my tests. Also supports f16
+(half float) formats.
+
 ## 0.15.5
 * Build wheels with *.avx2 and *.zn4 suffixes to match Vapoursynth r75 behavior. This changes from r74's "v2/v3/v4"
 behavior. See https://github.com/vapoursynth/vapoursynth/blob/7c014a375dad60c9f4362e91125257e1a9c8c6ca/src/core/vscore.cpp#L2150-L2153

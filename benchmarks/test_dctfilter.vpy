@@ -16,17 +16,18 @@ if is_preview():
 
 match format:
     case 'u8':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P8, color=[255, 128, 128], length=length)
+        # Use a mod-16 height to avoid the need for internal padding,
+        # thus allowing for more accurate benchmarking numbers (since we aren't calling Point + Crop internally) 
+        clip = core.std.BlankClip(width=1920,height=1088, format=vs.YUV420P8, color=[255, 128, 128], length=length)
     case 'u16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P16, color=[255, 128, 128], length=length)
+        clip = core.std.BlankClip(width=1920,height=1088, format=vs.YUV420P16, color=[255, 128, 128], length=length)
     case 'f16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PH, color=[1.0, 0, 0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1088, format=vs.YUV420PH, color=[1.0, 0, 0], length=length)
     case 'f32':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PS, color=[1.0, 0, 0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1088, format=vs.YUV420PS, color=[1.0, 0, 0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4")
-        clip = clip.resize.Point(width=1920, height=1088, src_width=1920, src_height=1088)
 
 # from vstools import depth
 # clip = depth(clip, 10)

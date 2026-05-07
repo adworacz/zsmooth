@@ -167,11 +167,14 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 
-    //TODO: Support padding
-
     var d: DCTFilterData = undefined;
 
     d.node, d.vi = inz.getNodeVi("clip").?;
+
+    // Calculate any necessary padding to ensure the clip is mod 16
+    const padWidth: u32 = if (d.vi.width & 15 != 0) 16 - @as(u32, @intCast(d.vi.width)) % 16 else 0;
+    const padHeight: u32 = if (d.vi.height & 15 != 0) 16 - @as(u32, @intCast(d.vi.height)) % 16 else 0;
+    const needsPadding = (padWidth != 0) or (padHeight != 0);
 
     const factors = inz.getFloatArray("factors") orelse {
         zapi.freeNode(d.node);
@@ -231,6 +234,34 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
 
     d.process = planes;
 
+    // Add padding
+    if (needsPadding) {
+        const args = zapi.createZMap();
+        defer args.free();
+
+        _ = args.consumeNode("clip", d.node, .Replace);
+
+        const width: u32 = @intCast(d.vi.width);
+        const height: u32 = @intCast(d.vi.height);
+        args.setInt("width", width + padWidth, .Replace);
+        args.setInt("height", height + padHeight, .Replace);
+        args.setFloat("src_width", @floatFromInt(width + padWidth), .Replace);
+        args.setFloat("src_height", @floatFromInt(height + padHeight), .Replace);
+
+        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Point", args.map));
+        defer ret.free();
+
+        if (ret.getError()) |e| {
+            // Don't love this manual string length calculation, but it works for now.
+            // Should probably upstream this to vapoursynth-zig
+            const index = std.mem.indexOfSentinel(u8, 0, e);
+            outz.setError(e[0..index :0]);
+            return;
+        }
+
+        d.node, d.vi = ret.getNodeVi("clip").?;
+    }
+
     const data: *DCTFilterData = allocator.create(DCTFilterData) catch unreachable;
     data.* = d;
 
@@ -242,6 +273,32 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
     };
 
     zapi.createVideoFilter(out, "DCTFilter", d.vi, dctFilterGetFrame, dctFilterFree, fm.Parallel, &deps, data);
+
+    // Remove padding
+    if (needsPadding) {
+        const node = outz.getNode("clip");
+        outz.clear();
+
+        const args = zapi.createZMap();
+        defer args.free();
+
+        _ = args.consumeNode("clip", node, .Replace);
+        args.setInt("right", padWidth, .Replace);
+        args.setInt("bottom", padHeight, .Replace);
+
+        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "Crop", args.map));
+        defer ret.free();
+
+        if (ret.getError()) |e| {
+            // Don't love this manual string length calculation, but it works for now.
+            // Should probably upstream this to vapoursynth-zig
+            const index = std.mem.indexOfSentinel(u8, 0, e);
+            outz.setError(e[0..index :0]);
+            return;
+        }
+
+        _ = outz.consumeNode("clip", ret.getNode("clip"), .Replace);
+    }
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

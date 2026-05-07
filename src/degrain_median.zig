@@ -574,7 +574,7 @@ fn DegrainMedian(comptime T: type) type {
             };
             const dstp: []T = @ptrCast(@alignCast(dstp8));
 
-            const limit: T  = math.lossyCast(T, _limit);
+            const limit: T = math.lossyCast(T, _limit);
             const pixel_min: T = math.lossyCast(T, _pixel_min);
             const pixel_max: T = math.lossyCast(T, _pixel_max);
 
@@ -626,9 +626,9 @@ fn degrainMedianGetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyop
                 continue;
             }
 
-            const width= dst.getWidth(plane);
-            const height= dst.getHeight(plane);
-            const stride8= dst.getStride(plane);
+            const width = dst.getWidth(plane);
+            const height = dst.getHeight(plane);
+            const stride8 = dst.getStride(plane);
 
             const srcp8 = [3][]const u8{
                 src_frames[0].getReadSlice(plane),

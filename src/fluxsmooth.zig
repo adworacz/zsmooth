@@ -637,7 +637,6 @@ export fn fluxSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*c
 }
 
 export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
-
     const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
@@ -703,7 +702,6 @@ export fn fluxSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyop
         planes[0] and (d.temporal_threshold[0] >= 0 or d.spatial_threshold[0] >= 0),
         planes[1] and (d.temporal_threshold[1] >= 0 or d.spatial_threshold[1] >= 0),
         planes[2] and (d.temporal_threshold[2] >= 0 or d.spatial_threshold[2] >= 0),
-
     };
     const data: *FluxSmoothData = allocator.create(FluxSmoothData) catch unreachable;
     data.* = d;

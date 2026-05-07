@@ -140,7 +140,6 @@ test "vector gather" {
     try std.testing.expect(result[0] == 'e');
     try std.testing.expect(result[1] == 'l');
     try std.testing.expect(result[2] == ' ');
-
 }
 
 test "vector gather array" {

@@ -563,12 +563,11 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     const scaled_diameter: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(d.diameter)) * d.scale));
     if (scaled_diameter > d.vi.width or scaled_diameter > d.vi.height) {
-        outz.setError(string.printf(allocator, "Scale {} produces a scaled filter diameter of {}, which is beyond the width {} or height {}. Reduce the scale amount.", .{ d.scale, scaled_diameter, d.vi.width, d.vi.height}));
+        outz.setError(string.printf(allocator, "Scale {} produces a scaled filter diameter of {}, which is beyond the width {} or height {}. Reduce the scale amount.", .{ d.scale, scaled_diameter, d.vi.width, d.vi.height }));
         zapi.freeNode(d.node);
         allocator.free(d.points);
         return;
     }
-    
 
     // Sort points to ensure optimal (cache aware) lookups.
     std.sort.insertion(Point, d.points, {}, less_than_points);

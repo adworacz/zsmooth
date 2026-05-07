@@ -160,7 +160,6 @@ fn VerticalCleaner(comptime T: type) type {
                 else => unreachable,
             }
         }
-        
     };
 }
 
@@ -208,7 +207,7 @@ fn verticalCleanerGetFrame(n: c_int, activation_reason: ar, instance_data: ?*any
             const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, plane);
             const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 
-            processPlane(d.modes[plane], chroma, bits_per_sample, dstp8, srcp8, width, height, stride8); 
+            processPlane(d.modes[plane], chroma, bits_per_sample, dstp8, srcp8, width, height, stride8);
         }
 
         return dst.frame;

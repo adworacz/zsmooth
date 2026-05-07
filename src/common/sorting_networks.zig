@@ -373,76 +373,76 @@ test "Sorting Networks - Median" {
     try std.testing.expectEqual(1, median(u8, &input1));
 
     var input2 = [_]u8{ 1, 3 };
-    try std.testing.expectEqual(2, median(u8,  &input2));
+    try std.testing.expectEqual(2, median(u8, &input2));
 
     // Ensure we handle overflow
     var input2large = [_]u8{ 255, 255 };
-    try std.testing.expectEqual(255, median(u8,  &input2large));
+    try std.testing.expectEqual(255, median(u8, &input2large));
 
     var input3 = [_]u8{ 3, 1, 2 };
-    try std.testing.expectEqual(2, median(u8,  &input3));
+    try std.testing.expectEqual(2, median(u8, &input3));
 
     var input4 = [_]u8{ 3, 1, 2, 4 };
-    try std.testing.expectEqual(2, median(u8,  &input4));
+    try std.testing.expectEqual(2, median(u8, &input4));
 
     var input5 = [_]u8{ 3, 1, 5, 2, 4 };
-    try std.testing.expectEqual(3, median(u8,  &input5));
+    try std.testing.expectEqual(3, median(u8, &input5));
 
     var input6 = [_]u8{ 3, 1, 5, 6, 2, 4 };
-    try std.testing.expectEqual(3, median(u8,  &input6));
+    try std.testing.expectEqual(3, median(u8, &input6));
 
     var input7 = [_]u8{ 6, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(4, median(u8,  &input7));
+    try std.testing.expectEqual(4, median(u8, &input7));
 
     var input8 = [_]u8{ 6, 3, 1, 5, 2, 4, 7, 8 };
-    try std.testing.expectEqual(4, median(u8,  &input8));
+    try std.testing.expectEqual(4, median(u8, &input8));
     try std.testing.expectEqual(4, input8[input8.len / 2 - 1]);
     try std.testing.expectEqual(5, input8[input8.len / 2]);
 
     var input9 = [_]u8{ 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(5, median(u8,  &input9));
+    try std.testing.expectEqual(5, median(u8, &input9));
 
     var input10 = [_]u8{ 6, 8, 9, 3, 1, 5, 10, 2, 4, 7 };
-    try std.testing.expectEqual(5, median(u8,  &input10));
+    try std.testing.expectEqual(5, median(u8, &input10));
 
     var input11 = [_]u8{ 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(6, median(u8,  &input11));
+    try std.testing.expectEqual(6, median(u8, &input11));
 
     var input12 = [_]u8{ 10, 11, 6, 8, 12, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(6, median(u8,  &input12));
+    try std.testing.expectEqual(6, median(u8, &input12));
 
     var input13 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(7, median(u8,  &input13));
+    try std.testing.expectEqual(7, median(u8, &input13));
 
     var input14 = [_]u8{ 12, 13, 10, 11, 6, 8, 9, 3, 14, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(7, median(u8,  &input14));
+    try std.testing.expectEqual(7, median(u8, &input14));
 
     var input15 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(8, median(u8,  &input15));
+    try std.testing.expectEqual(8, median(u8, &input15));
 
     var input16 = [_]u8{ 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 16, 5, 2, 4, 7 };
-    try std.testing.expectEqual(8, median(u8,  &input16));
+    try std.testing.expectEqual(8, median(u8, &input16));
 
     var input17 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(9, median(u8,  &input17));
+    try std.testing.expectEqual(9, median(u8, &input17));
 
     var input18 = [_]u8{ 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 18, 5, 2, 4, 7 };
-    try std.testing.expectEqual(9, median(u8,  &input18));
+    try std.testing.expectEqual(9, median(u8, &input18));
 
     var input19 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(10, median(u8,  &input19));
+    try std.testing.expectEqual(10, median(u8, &input19));
 
     var input20 = [_]u8{ 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 20, 5, 2, 4, 7 };
-    try std.testing.expectEqual(10, median(u8,  &input20));
+    try std.testing.expectEqual(10, median(u8, &input20));
 
     var input21 = [_]u8{ 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(11, median(u8,  &input21));
+    try std.testing.expectEqual(11, median(u8, &input21));
 
     var input25 = [_]u8{ 24, 25, 22, 23, 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(13, median(u8,  &input25));
+    try std.testing.expectEqual(13, median(u8, &input25));
 
     var input49 = [_]u8{ 48, 49, 46, 47, 44, 45, 42, 43, 40, 41, 38, 39, 36, 37, 34, 35, 32, 33, 30, 31, 28, 29, 26, 27, 24, 25, 22, 23, 20, 21, 18, 19, 16, 17, 14, 15, 12, 13, 10, 11, 6, 8, 9, 3, 1, 5, 2, 4, 7 };
-    try std.testing.expectEqual(25, median(u8,  &input49));
+    try std.testing.expectEqual(25, median(u8, &input49));
 }
 
 /// Computes the median of any 3 values.

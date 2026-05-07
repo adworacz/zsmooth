@@ -554,7 +554,7 @@ fn ttempSmoothGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopa
             const dstp8: []u8 = dst.getWriteSlice(plane);
             const threshold: f32 = vscmn.scaleToFormat(f32, d.vi.format, d.threshold[plane], 0);
 
-            processPlane(d.weight_mode[plane], from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, d.temporal_weights[plane], d.temporal_difference_weights[plane], dstp8, srcp8[0..diameter], if(has_pfclip) pfp8[0..diameter] else srcp8[0..diameter], width, height, stride8);
+            processPlane(d.weight_mode[plane], from_frame_idx, to_frame_idx, d.maxr, threshold, d.fp, shift, d.center_weight, d.temporal_weights[plane], d.temporal_difference_weights[plane], dstp8, srcp8[0..diameter], if (has_pfclip) pfp8[0..diameter] else srcp8[0..diameter], width, height, stride8);
         }
 
         return dst.frame;

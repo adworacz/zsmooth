@@ -58,7 +58,7 @@ fn DCTFilter(comptime T: type) type {
                     for (0..DCT_SIDE_LEN) |block_y| {
                         for (0..DCT_SIDE_LEN) |block_x| {
                             const index = stride * (y + block_y) + x + block_x;
-                            buffer[DCT_SIDE_LEN * block_y + block_x] = switch(T) {
+                            buffer[DCT_SIDE_LEN * block_y + block_x] = switch (T) {
                                 u8, u16 => @as(f32, @floatFromInt(srcp[index])) * (1.0 / 256.0),
                                 else => srcp[index] * (1.0 / 256.0),
                             };
@@ -206,9 +206,9 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
 
     {
         //Note: Because fftw is statically linked, locking via
-        //fftwf_make_planner_thread_safe may not actually work. 
+        //fftwf_make_planner_thread_safe may not actually work.
         //
-        //I'm honestly not sure. 
+        //I'm honestly not sure.
         //
         //On the other hand, because of the static linking, it might not matter
         //as much, because we potentially aren't conflicting with other plugins

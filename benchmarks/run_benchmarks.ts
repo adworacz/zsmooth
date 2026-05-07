@@ -99,6 +99,21 @@ const BENCHMARKS: Benchmarks[] = [
     ],
   },
   {
+    filter: 'DCTFilter',
+    benchmarkPath: 'test_dctfilter.vpy',
+    // biome-ignore format:
+    specs: [
+      { plugin: 'zsmooth' , format:'u8'  , args: [] , frames: DEFAULT_NUM_FRAMES / 8     , } ,
+      { plugin: 'dctf'    , format:'u8'  , args: [] , frames: DEFAULT_NUM_FRAMES / 8     , } ,
+
+      { plugin: 'zsmooth' , format:'u16' , args: [] , frames: DEFAULT_NUM_FRAMES / 8 / 2 , } ,
+      { plugin: 'dctf'    , format:'u16' , args: [] , frames: DEFAULT_NUM_FRAMES / 8 / 2 , } ,
+
+      { plugin: 'zsmooth' , format:'f32' , args: [] , frames: DEFAULT_NUM_FRAMES / 8 / 4 , } ,
+      { plugin: 'dctf'    , format:'f32' , args: [] , frames: DEFAULT_NUM_FRAMES / 8 / 4 , } ,
+    ],
+  },
+  {
     filter: 'DegrainMedian',
     benchmarkPath: 'test_degrain_median.vpy',
     // biome-ignore format:

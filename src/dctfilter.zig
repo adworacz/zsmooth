@@ -43,13 +43,12 @@ const DCTFilterData = struct {
 
 fn DCTFilter(comptime T: type) type {
     return struct {
-        fn processPlane(noalias factors: []const f32, noalias buffer: []f32, dct_plan: c.fftwf_plan, idct_plan: c.fftwf_plan, _pixel_max: f32, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
+        fn processPlane(noalias factors: []const f32, noalias buffer: []f32, dct_plan: c.fftwf_plan, idct_plan: c.fftwf_plan, pixel_max: f32, noalias srcp8: []const u8, noalias dstp8: []u8, width: usize, height: usize, stride8: usize) void {
             std.debug.assert(factors.len == buffer.len);
 
             const stride = stride8 / @sizeOf(T);
             const srcp: []const T = @ptrCast(@alignCast(srcp8));
             const dstp: []T = @ptrCast(@alignCast(dstp8));
-            const pixel_max: T = math.lossyCast(T, _pixel_max);
 
             var y: usize = 0;
             while (y < height) : (y += DCT_SIDE_LEN) {
@@ -79,8 +78,10 @@ fn DCTFilter(comptime T: type) type {
                     for (0..DCT_SIDE_LEN) |block_y| {
                         for (0..DCT_SIDE_LEN) |block_x| {
                             dstp[stride * (y + block_y) + x + block_x] = switch (T) {
-                                u8 => @intFromFloat(@round(buffer[DCT_SIDE_LEN * block_y + block_x])),
-                                u16 => std.math.clamp(@as(u16, @intFromFloat(@round(buffer[DCT_SIDE_LEN * block_y + block_x]))), 0, pixel_max),
+                                // Clamp output of buffer to prevent overflows for integers.
+                                // They're unlikely, but they could happen in theory.
+                                u8 => @intFromFloat(std.math.clamp(@round(buffer[DCT_SIDE_LEN * block_y + block_x]), 0, 255)),
+                                u16 => @intFromFloat(std.math.clamp(@round(buffer[DCT_SIDE_LEN * block_y + block_x]), 0, pixel_max)),
                                 f16 => @floatCast(buffer[DCT_SIDE_LEN * block_y + block_x]),
                                 else => buffer[DCT_SIDE_LEN * block_y + block_x],
                             };

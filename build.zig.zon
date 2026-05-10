@@ -35,6 +35,10 @@
             .url = "git+https://github.com/adworacz/fftw.git?ref=v3.3.11-2#579b516e6b39a2a96200d248fc3c96d1ad7d9841",
             .hash = "fftw-3.3.11-2-EjV1I17WAgD0Lnb_BKT51TNd_56-eY4NBOPHO2IH_WHZ",
         },
+        .translate_c = .{
+            .url = "git+https://codeberg.org/ziglang/translate-c#2802d5ecd54daa6da0e01b5eb1c890e17a923000",
+            .hash = "translate_c-0.0.0-Q_BUWjr2BgDepbA-CuV1XXo9IvB7MGaL5AzHru_fzuLk",
+        },
     },
     .paths = .{
         "build.zig",

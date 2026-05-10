@@ -96,7 +96,7 @@ fn TemporalMedian(comptime T: type) type {
 
             const radius = 4;
             const diameter = radius * 2 + 1;
-            const expectedMedian = ([_]T{radius + 1} ** size)[0..];
+            const expectedMedian: [size]T = @splat(radius + 1);
 
             var src: [diameter][]const T = undefined;
             for (0..diameter) |i| {

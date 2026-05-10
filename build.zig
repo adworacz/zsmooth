@@ -1,6 +1,7 @@
 const std = @import("std");
 const x86 = std.Target.x86;
 const zon = @import("build.zig.zon");
+const Translator = @import("translate_c").Translator;
 
 // Compile for target CPUs based on Myrsloik's "essay"
 // https://github.com/vapoursynth/vapoursynth/issues/1185#issuecomment-4235066569
@@ -42,6 +43,13 @@ pub fn build(b: *std.Build) !void {
         .threads = true,
     });
 
+    const translate_c = b.dependency("translate_c", .{});
+    const translator: Translator = .init(translate_c, .{
+        .c_source_file = b.path("src/c.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const root_module_options: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/zsmooth.zig"),
         .target = target,
@@ -58,6 +66,13 @@ pub fn build(b: *std.Build) !void {
 
         // Necessary to use the C memory allocator.
         .link_libc = true,
+
+        .imports = &.{
+            .{
+                .name = "c",
+                .module = translator.mod,
+            }
+        }
     };
     const root_module = b.createModule(root_module_options);
 

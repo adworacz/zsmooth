@@ -3,9 +3,7 @@ const vapoursynth = @import("vapoursynth");
 const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
-const c = @cImport({
-    @cInclude("fftw3.h");
-});
+const c = @import("c");
 
 const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");

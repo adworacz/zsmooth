@@ -165,7 +165,7 @@ fn TemporalSoften(comptime T: type) type {
             const radius = 2;
             const diameter = radius * 2 + 1;
             const threshold = 4;
-            const expectedAverage = ([_]T{3} ** size)[0..];
+            const expectedAverage: [size]T = @splat(3);
 
             var src: [MAX_DIAMETER][]const T = undefined;
             for (0..diameter) |i| {

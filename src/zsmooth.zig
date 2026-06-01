@@ -16,6 +16,7 @@ const temporalRepair = @import("temporal_repair.zig");
 const smartMedian = @import("smart_median.zig");
 const ccd = @import("ccd.zig");
 const dctfilter = @import("dctfilter.zig");
+const cnr3 = @import("cnr3.zig");
 
 const version = @import("config").version;
 
@@ -37,4 +38,5 @@ export fn VapourSynthPluginInit2(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI)
     smartMedian.registerFunction(plugin, vsapi);
     ccd.registerFunction(plugin, vsapi);
     dctfilter.registerFunction(plugin, vsapi);
+    cnr3.registerFunction(plugin, vsapi);
 }

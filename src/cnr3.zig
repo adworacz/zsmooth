@@ -65,7 +65,7 @@ fn Cnr3(comptime T: type) type {
             }
         }
 
-        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, dstp8: [2][]u8, scratch_y8: [2][]u8, tables: [3][]const u8, opt: struct {
+        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, dstp8: [2][]u8, scratch_y8: [3][]u8, tables: [3][]const u8, opt: struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -88,17 +88,26 @@ fn Cnr3(comptime T: type) type {
                 @ptrCast(curr8[2]),
             };
 
+            const next: [3][]const T = .{
+                @ptrCast(next8[0]),
+                @ptrCast(next8[1]),
+                @ptrCast(next8[2]),
+            };
+
             const dst_u: []T = @ptrCast(dstp8[0]);
             const dst_v: []T = @ptrCast(dstp8[1]);
 
             const prev_y: []T = @ptrCast(scratch_y8[0]);
             const curr_y: []T = @ptrCast(scratch_y8[1]);
+            const next_y: []T = @ptrCast(scratch_y8[2]);
 
             const prev_u = prev[1];
             const curr_u = curr[1];
+            const next_u = next[1];
 
             const prev_v = prev[2];
             const curr_v = curr[2];
+            const next_v = next[2];
 
             const table_y = tables[0];
             const table_u = tables[1];
@@ -115,24 +124,42 @@ fn Cnr3(comptime T: type) type {
 
             downSampleLuma(prev[0], prev_y, downsample_opts);
             downSampleLuma(curr[0], curr_y, downsample_opts);
+            downSampleLuma(next[0], next_y, downsample_opts);
 
             for (0..opt.height_uv) |y| {
                 for (0..opt.width_uv) |x| {
                     const y_index = y * opt.stride_scratch + x;
                     const uv_index = y * opt.stride_uv + x;
-                    const abs_diff_y = math.absDiff(curr_y[y_index], prev_y[y_index]);
-                    const abs_diff_u = math.absDiff(curr_u[uv_index], prev_u[uv_index]);
-                    const abs_diff_v = math.absDiff(curr_v[uv_index], prev_v[uv_index]);
 
-                    const weight_u: BUAT = @as(UAT, table_y[abs_diff_y]) * table_u[abs_diff_u];
-                    const weight_v: BUAT = @as(UAT, table_y[abs_diff_y]) * table_v[abs_diff_v];
+                    const abs_diff_prev_y = math.absDiff(curr_y[y_index], prev_y[y_index]);
+                    const abs_diff_prev_u = math.absDiff(curr_u[uv_index], prev_u[uv_index]);
+                    const abs_diff_prev_v = math.absDiff(curr_v[uv_index], prev_v[uv_index]);
+
+                    const abs_diff_next_y = math.absDiff(curr_y[y_index], next_y[y_index]);
+                    const abs_diff_next_u = math.absDiff(curr_u[uv_index], next_u[uv_index]);
+                    const abs_diff_next_v = math.absDiff(curr_v[uv_index], next_v[uv_index]);
+
+                    const abs_diff_prev = abs_diff_prev_y + abs_diff_prev_u + abs_diff_prev_v;
+                    const abs_diff_next = abs_diff_next_y + abs_diff_next_u + abs_diff_next_v;
+
+                    const weight_prev_u: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_u[abs_diff_prev_u];
+                    const weight_prev_v: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_v[abs_diff_prev_v];
+
+                    const weight_next_u: BUAT = @as(UAT, table_y[abs_diff_next_y]) * table_u[abs_diff_next_u];
+                    const weight_next_v: BUAT = @as(UAT, table_y[abs_diff_next_y]) * table_v[abs_diff_next_v];
 
                     const shift = @typeInfo(UAT).int.bits;
                     const max = 1 << shift;
                     const round = 1 << (shift - 1);
 
-                    dst_u[uv_index] = @intCast((weight_u * prev_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
-                    dst_v[uv_index] = @intCast((weight_v * prev_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> shift);
+                    const result_prev_u: T = @intCast((weight_prev_u * prev_u[uv_index] + (max - weight_prev_u) * curr_u[uv_index] + round) >> shift);
+                    const result_next_u: T = @intCast((weight_next_u * next_u[uv_index] + (max - weight_next_u) * curr_u[uv_index] + round) >> shift);
+
+                    const result_prev_v: T = @intCast((weight_prev_v * prev_v[uv_index] + (max - weight_prev_v) * curr_v[uv_index] + round) >> shift);
+                    const result_next_v: T = @intCast((weight_next_v * next_v[uv_index] + (max - weight_next_v) * curr_v[uv_index] + round) >> shift);
+
+                    dst_u[uv_index] = if (abs_diff_prev < abs_diff_next) result_prev_u else result_next_u;
+                    dst_v[uv_index] = if (abs_diff_prev < abs_diff_next) result_prev_v else result_next_v;
                 }
             }
         }
@@ -149,9 +176,10 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     if (activation_reason == ar.Initial) {
         zapi.requestFrameFilter(@max(n - 1, 0), d.node);
         zapi.requestFrameFilter(n, d.node);
+        zapi.requestFrameFilter(@min(n + 1, d.vi.numFrames - 1), d.node);
     } else if (activation_reason == ar.AllFramesReady) {
         // Don't process the first and last frames
-        if (n < 1) {
+        if (n < 1 or n == d.vi.numFrames - 1) {
             //TODO: Handle this case better when I support bidirectional filtering,
             //since we can use the next frame for filtering.
             return zapi.getFrameFilter(n, d.node);
@@ -163,6 +191,9 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const curr_frame = zapi.initZFrame(d.node, n);
         defer curr_frame.deinit();
 
+        const next_frame = zapi.initZFrame(d.node, n + 1);
+        defer next_frame.deinit();
+
         // copy the luma plane only
         const dst = curr_frame.newVideoFrame2(.{ false, true, true });
 
@@ -172,9 +203,11 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         // Allocate scratch buffers for downsampled luma planes
         const prev_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
         const curr_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
+        const next_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
         defer {
             prev_y.deinit();
             curr_y.deinit();
+            next_y.deinit();
         }
 
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
@@ -194,12 +227,17 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             curr_frame.getReadSlice(1),
             curr_frame.getReadSlice(2),
         }, .{
+            next_frame.getReadSlice(0),
+            next_frame.getReadSlice(1),
+            next_frame.getReadSlice(2),
+        }, .{
             // Only writing to the chroma planes
             dst.getWriteSlice(1),
             dst.getWriteSlice(2),
         }, .{
             prev_y.getWriteSlice(0),
             curr_y.getWriteSlice(0),
+            next_y.getWriteSlice(0),
         }, .{
             d.table_y,
             d.table_u,

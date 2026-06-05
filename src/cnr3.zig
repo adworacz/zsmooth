@@ -98,7 +98,7 @@ fn Cnr3(comptime T: type) type {
             const curr_u = curr[1];
 
             const prev_v = prev[2];
-            const curr_v = prev[2];
+            const curr_v = curr[2];
 
             const table_y = tables[0];
             const table_u = tables[1];
@@ -127,8 +127,8 @@ fn Cnr3(comptime T: type) type {
                     const weight_u: BUAT = @as(UAT, table_y[abs_diff_y]) * table_u[abs_diff_u];
                     const weight_v: BUAT = @as(UAT, table_y[abs_diff_y]) * table_v[abs_diff_v];
 
-                    const max = std.math.maxInt(T) * std.math.maxInt(T);
                     const shift = @typeInfo(UAT).int.bits;
+                    const max = 1 << shift;
                     const round = 1 << (shift - 1);
 
                     dst_u[uv_index] = @intCast((weight_u * prev_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
@@ -213,8 +213,8 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
             .stride_y = dst.getStride(0),
             .stride_uv = dst.getStride(1),
-
             .stride_scratch = prev_y.getStride(0),
+
             .subsampling_w = @intCast(d.vi.format.subSamplingW),
             .subsampling_h = @intCast(d.vi.format.subSamplingH),
         });
@@ -349,55 +349,63 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     @memset(d.table_u, 0);
     @memset(d.table_v, 0);
 
-    //TODO: inline casts once we're using Zig 0.16.0+
-    const l_strf: f32 = @floatFromInt(l_str);
-    const l_sensef: f32 = @floatFromInt(l_sense);
-    const u_strf: f32 = @floatFromInt(u_str);
-    const u_sensef: f32 = @floatFromInt(u_sense);
-    const v_strf: f32 = @floatFromInt(v_str);
-    const v_sensef: f32 = @floatFromInt(v_sense);
-
-    var l: u9 = 0;
-    while (l <= l_str) : (l += 1) {
-        const lf: f32 = @floatFromInt(l);
-        d.table_y[l] = switch (mode[0]) {
-            'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
-            'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
-            else => {
-                outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
-                zapi.freeNode(d.node);
-                return;
-            },
-        };
+    // Create separate scopes to reduce chance of bugs from variable reuse (which happened)
+    {
+        //TODO: inline casts once we're using Zig 0.16.0+
+        const l_strf: f32 = @floatFromInt(l_str);
+        const l_sensef: f32 = @floatFromInt(l_sense);
+        var l: u9 = 0;
+        while (l <= l_str) : (l += 1) {
+            const lf: f32 = @floatFromInt(l);
+            d.table_y[l] = switch (mode[0]) {
+                'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
+                'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
+                else => {
+                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    zapi.freeNode(d.node);
+                    return;
+                },
+            };
+        }
     }
 
-    var u: u9 = 0;
-    while (u <= u_str) : (u += 1) {
-        const uf: f32 = @floatFromInt(u);
-        d.table_u[u] = switch (mode[1]) {
-            'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
-            'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
-            else => {
-                outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
-                zapi.freeNode(d.node);
-                return;
-            },
-        };
+    {
+        const u_strf: f32 = @floatFromInt(u_str);
+        const u_sensef: f32 = @floatFromInt(u_sense);
+        var u: u9 = 0;
+        while (u <= u_str) : (u += 1) {
+            const uf: f32 = @floatFromInt(u);
+            d.table_u[u] = switch (mode[1]) {
+                'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
+                'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
+                else => {
+                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    zapi.freeNode(d.node);
+                    return;
+                },
+            };
+        }
     }
 
-    var v: u9 = 0;
-    while (v <= v_str) : (v += 1) {
-        const vf: f32 = @floatFromInt(v);
-        d.table_v[l] = switch (mode[2]) {
-            'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
-            'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
-            else => {
-                outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
-                zapi.freeNode(d.node);
-                return;
-            },
-        };
+    {
+        const v_strf: f32 = @floatFromInt(v_str);
+        const v_sensef: f32 = @floatFromInt(v_sense);
+        var v: u9 = 0;
+        while (v <= v_str) : (v += 1) {
+            const vf: f32 = @floatFromInt(v);
+            d.table_v[v] = switch (mode[2]) {
+                'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
+                'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
+                else => {
+                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    zapi.freeNode(d.node);
+                    return;
+                },
+            };
+        }
     }
+
+    std.debug.print("Table y {}, u {}, v {}\n", .{ d.table_y[0], d.table_u[0], d.table_v[0] });
 
     const data: *Cnr3Data = allocator.create(Cnr3Data) catch unreachable;
     data.* = d;

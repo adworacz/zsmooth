@@ -11,6 +11,7 @@ const vscmn = @import("common/vapoursynth.zig");
 const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
 const math = @import("common/math.zig");
+const types = @import("common/type.zig");
 
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
@@ -33,14 +34,108 @@ const Cnr3Data = struct {
     table_y: []u8,
     table_u: []u8,
     table_v: []u8,
-
-    // Which planes to process.
-    process: [3]bool,
 };
 
 fn Cnr3(comptime T: type) type {
+    const UAT = types.UnsignedArithmeticType(T);
+    const BUAT = types.BigUnsignedArithmeticType(T);
+
     return struct {
-        fn processPlane() void {}
+        const DownSampleOpts = struct {
+            dst_width: usize,
+            dst_height: usize,
+            dst_stride: usize,
+            src_stride: usize,
+            subsampling_h: u2,
+            subsampling_w: u2,
+        };
+
+        fn downSampleLuma(noalias srcp: []const T, noalias dstp: []T, opt: DownSampleOpts) void {
+            for (0..opt.dst_height) |y| {
+                for (0..opt.dst_width) |x| {
+                    const dst_index = y * opt.dst_stride + x;
+                    const src_x = x << opt.subsampling_w;
+                    const src_index = (y * opt.src_stride << opt.subsampling_h) + src_x;
+
+                    dstp[dst_index] = @intCast((@as(UAT, srcp[src_index]) +
+                        srcp[src_index + opt.subsampling_w] +
+                        srcp[src_index + (opt.src_stride * opt.subsampling_h)] +
+                        srcp[src_index + (opt.src_stride * opt.subsampling_h) + opt.subsampling_w] + 2) >> 2);
+                }
+            }
+        }
+
+        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, dstp8: [2][]u8, scratch_y8: [2][]u8, tables: [3][]const u8, opt: struct {
+            width_y: usize,
+            height_y: usize,
+            width_uv: usize,
+            height_uv: usize,
+            stride_y: usize,
+            stride_uv: usize,
+            stride_scratch: usize,
+            subsampling_h: u2,
+            subsampling_w: u2,
+        }) void {
+            const prev: [3][]const T = .{
+                @ptrCast(prev8[0]),
+                @ptrCast(prev8[1]),
+                @ptrCast(prev8[2]),
+            };
+
+            const curr: [3][]const T = .{
+                @ptrCast(curr8[0]),
+                @ptrCast(curr8[1]),
+                @ptrCast(curr8[2]),
+            };
+
+            const dst_u: []T = @ptrCast(dstp8[0]);
+            const dst_v: []T = @ptrCast(dstp8[1]);
+
+            const prev_y: []T = @ptrCast(scratch_y8[0]);
+            const curr_y: []T = @ptrCast(scratch_y8[1]);
+
+            const prev_u = prev[1];
+            const curr_u = curr[1];
+
+            const prev_v = prev[2];
+            const curr_v = prev[2];
+
+            const table_y = tables[0];
+            const table_u = tables[1];
+            const table_v = tables[2];
+
+            const downsample_opts: DownSampleOpts = .{
+                .dst_width = opt.width_y >> opt.subsampling_w,
+                .dst_height = opt.height_y >> opt.subsampling_h,
+                .dst_stride = opt.stride_scratch,
+                .src_stride = opt.stride_y,
+                .subsampling_w = opt.subsampling_w,
+                .subsampling_h = opt.subsampling_h,
+            };
+
+            downSampleLuma(prev[0], prev_y, downsample_opts);
+            downSampleLuma(curr[0], curr_y, downsample_opts);
+
+            for (0..opt.height_uv) |y| {
+                for (0..opt.width_uv) |x| {
+                    const y_index = y * opt.stride_scratch + x;
+                    const uv_index = y * opt.stride_uv + x;
+                    const abs_diff_y = math.absDiff(curr_y[y_index], prev_y[y_index]);
+                    const abs_diff_u = math.absDiff(curr_u[uv_index], prev_u[uv_index]);
+                    const abs_diff_v = math.absDiff(curr_v[uv_index], prev_v[uv_index]);
+
+                    const weight_u: BUAT = @as(UAT, table_y[abs_diff_y]) * table_u[abs_diff_u];
+                    const weight_v: BUAT = @as(UAT, table_y[abs_diff_y]) * table_v[abs_diff_v];
+
+                    const max = std.math.maxInt(T) * std.math.maxInt(T);
+                    const shift = @typeInfo(UAT).int.bits;
+                    const round = 1 << (shift - 1);
+
+                    dst_u[uv_index] = @intCast((weight_u * prev_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
+                    dst_v[uv_index] = @intCast((weight_v * prev_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> shift);
+                }
+            }
+        }
     };
 }
 
@@ -52,36 +147,77 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     const d: *Cnr3Data = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
+        zapi.requestFrameFilter(@max(n - 1, 0), d.node);
         zapi.requestFrameFilter(n, d.node);
     } else if (activation_reason == ar.AllFramesReady) {
-        const src_frame = zapi.initZFrame(d.node, n);
-        defer src_frame.deinit();
+        // Don't process the first and last frames
+        if (n < 1) {
+            //TODO: Handle this case better when I support bidirectional filtering,
+            //since we can use the next frame for filtering.
+            return zapi.getFrameFilter(n, d.node);
+        }
 
-        const dst = src_frame.newVideoFrame2(d.process);
+        const prev_frame = zapi.initZFrame(d.node, n - 1);
+        defer prev_frame.deinit();
 
-        const processPlane = switch (vscmn.FormatType.getDataType(d.vi.format)) {
-            .U8 => &Cnr3(u8).processPlane,
+        const curr_frame = zapi.initZFrame(d.node, n);
+        defer curr_frame.deinit();
+
+        // copy the luma plane only
+        const dst = curr_frame.newVideoFrame2(.{ false, true, true });
+
+        var grey_format: vs.VideoFormat = undefined;
+        _ = zapi.queryVideoFormat(&grey_format, .Gray, d.vi.format.sampleType, d.vi.format.bitsPerSample, 0, 0);
+
+        // Allocate scratch buffers for downsampled luma planes
+        const prev_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
+        const curr_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
+        defer {
+            prev_y.deinit();
+            curr_y.deinit();
+        }
+
+        const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &Cnr3(u8).processFrame,
+            else => unreachable,
             // .U16 => &Cnr3(u16).processPlane,
             // .F16 => &Cnr3(f16).processPlane,
             // .F32 => &Cnr3(f32).processPlane,
         };
 
-        for (0..@intCast(d.vi.format.numPlanes)) |plane| {
-            // Skip planes we aren't supposed to process
-            if (!d.process[plane]) {
-                continue;
-            }
+        processFrame(.{
+            prev_frame.getReadSlice(0),
+            prev_frame.getReadSlice(1),
+            prev_frame.getReadSlice(2),
+        }, .{
+            curr_frame.getReadSlice(0),
+            curr_frame.getReadSlice(1),
+            curr_frame.getReadSlice(2),
+        }, .{
+            // Only writing to the chroma planes
+            dst.getWriteSlice(1),
+            dst.getWriteSlice(2),
+        }, .{
+            prev_y.getWriteSlice(0),
+            curr_y.getWriteSlice(0),
+        }, .{
+            d.table_y,
+            d.table_u,
+            d.table_v,
+        }, .{
+            .width_y = curr_frame.getWidth(0),
+            .width_uv = curr_frame.getWidth(1),
 
-            const width: usize = dst.getWidth(plane);
-            const height: usize = dst.getHeight(plane);
-            const stride8: usize = dst.getStride(plane);
-            const srcp8: []const u8 = src_frame.getReadSlice(plane);
-            const dstp8: []u8 = dst.getWriteSlice(plane);
+            .height_y = curr_frame.getHeight(0),
+            .height_uv = curr_frame.getHeight(1),
 
-            const pixel_max = vscmn.getFormatMaximum(f32, d.vi.format, plane > 0);
+            .stride_y = dst.getStride(0),
+            .stride_uv = dst.getStride(1),
 
-            processPlane();
-        }
+            .stride_scratch = prev_y.getStride(0),
+            .subsampling_w = @intCast(d.vi.format.subSamplingW),
+            .subsampling_h = @intCast(d.vi.format.subSamplingH),
+        });
 
         return dst.frame;
     }
@@ -213,6 +349,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     @memset(d.table_u, 0);
     @memset(d.table_v, 0);
 
+    //TODO: inline casts once we're using Zig 0.16.0+
     const l_strf: f32 = @floatFromInt(l_str);
     const l_sensef: f32 = @floatFromInt(l_sense);
     const u_strf: f32 = @floatFromInt(u_str);
@@ -220,7 +357,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     const v_strf: f32 = @floatFromInt(v_str);
     const v_sensef: f32 = @floatFromInt(v_sense);
 
-    var l: u8 = 0;
+    var l: u9 = 0;
     while (l <= l_str) : (l += 1) {
         const lf: f32 = @floatFromInt(l);
         d.table_y[l] = switch (mode[0]) {
@@ -234,7 +371,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         };
     }
 
-    var u: u8 = 0;
+    var u: u9 = 0;
     while (u <= u_str) : (u += 1) {
         const uf: f32 = @floatFromInt(u);
         d.table_u[u] = switch (mode[1]) {
@@ -248,7 +385,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         };
     }
 
-    var v: u8 = 0;
+    var v: u9 = 0;
     while (v <= v_str) : (v += 1) {
         const vf: f32 = @floatFromInt(v);
         d.table_v[l] = switch (mode[2]) {

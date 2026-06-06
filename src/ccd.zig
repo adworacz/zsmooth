@@ -389,7 +389,6 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        // fn processPlanes(_threshold: f32, scale: f32, points: []Point, diameter: u8, temporal_radius: u8, weights: [MAX_TEMPORAL_DIAMETER]f32, chroma: bool, bits_per_sample: u6, srcp8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, dstp8: [3][]u8, width: usize, height: usize, stride8: usize) void {
         fn processPlanes(srcp8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, noalias dstp_y8: []u8, noalias dstp_u8: []u8, noalias dstp_v8: []u8, opt: struct {
             width: usize,
             height: usize,
@@ -493,11 +492,6 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
             break :blk s;
         };
-        // const dstp8: [3][]u8 = .{
-        //     dst.getWriteSlice(0),
-        //     dst.getWriteSlice(1),
-        //     dst.getWriteSlice(2),
-        // };
         const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, 0);
         const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 

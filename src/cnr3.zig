@@ -65,7 +65,9 @@ fn Cnr3(comptime T: type) type {
             }
         }
 
-        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, dstp8: [2][]u8, scratch_y8: [3][]u8, tables: [3][]const u8, opt: struct {
+        // Use separate dstp pointers so we can use noalias,
+        // which leads to a *substantial speedup*: ~290fps -> 513 fps
+        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, noalias dstp8_u: []u8, noalias dstp8_v: []u8, scratch_y8: [3][]u8, tables: [3][]const u8, opt: struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -94,8 +96,8 @@ fn Cnr3(comptime T: type) type {
                 @ptrCast(next8[2]),
             };
 
-            const dst_u: []T = @ptrCast(dstp8[0]);
-            const dst_v: []T = @ptrCast(dstp8[1]);
+            const dst_u: []T = @ptrCast(dstp8_u);
+            const dst_v: []T = @ptrCast(dstp8_v);
 
             const prev_y: []T = @ptrCast(scratch_y8[0]);
             const curr_y: []T = @ptrCast(scratch_y8[1]);
@@ -158,7 +160,7 @@ fn Cnr3(comptime T: type) type {
                     const result_prev_v = ((weight_prev_v * prev_v[uv_index] + (max - weight_prev_v) * curr_v[uv_index] + round) >> shift);
                     const result_next_v = ((weight_next_v * next_v[uv_index] + (max - weight_next_v) * curr_v[uv_index] + round) >> shift);
 
-                    // Inverse weight the results so that results derived 
+                    // Inverse weight the results so that results derived
                     // from large difference frames have a lower weight, and vice versa.
                     const shift2 = shift + 1;
                     const round2 = 1 << (shift2 - 1);
@@ -239,11 +241,7 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             next_frame.getReadSlice(0),
             next_frame.getReadSlice(1),
             next_frame.getReadSlice(2),
-        }, .{
-            // Only writing to the chroma planes
-            dst.getWriteSlice(1),
-            dst.getWriteSlice(2),
-        }, .{
+        }, dst.getWriteSlice(1), dst.getWriteSlice(2), .{
             prev_y.getWriteSlice(0),
             curr_y.getWriteSlice(0),
             next_y.getWriteSlice(0),

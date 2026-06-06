@@ -52,7 +52,7 @@ zsmooth = clip.zsmooth.Cnr3(mode='oxx')
 match output:
     case 'zsmooth':
         zsmooth.set_output()
-    case 'ccd':
+    case 'cnr2':
         cnr2.set_output()
     case 'all':
         clip.set_output(0)

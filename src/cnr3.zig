@@ -139,8 +139,8 @@ fn Cnr3(comptime T: type) type {
                     const abs_diff_next_u = math.absDiff(curr_u[uv_index], next_u[uv_index]);
                     const abs_diff_next_v = math.absDiff(curr_v[uv_index], next_v[uv_index]);
 
-                    // const abs_diff_prev = abs_diff_prev_y + abs_diff_prev_u + abs_diff_prev_v;
-                    // const abs_diff_next = abs_diff_next_y + abs_diff_next_u + abs_diff_next_v;
+                    const abs_diff_prev = @as(BUAT, abs_diff_prev_y) + abs_diff_prev_u + abs_diff_prev_v;
+                    const abs_diff_next = @as(BUAT, abs_diff_next_y) + abs_diff_next_u + abs_diff_next_v;
 
                     const weight_prev_u: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_u[abs_diff_prev_u];
                     const weight_prev_v: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_v[abs_diff_prev_v];
@@ -158,8 +158,17 @@ fn Cnr3(comptime T: type) type {
                     const result_prev_v = ((weight_prev_v * prev_v[uv_index] + (max - weight_prev_v) * curr_v[uv_index] + round) >> shift);
                     const result_next_v = ((weight_next_v * next_v[uv_index] + (max - weight_next_v) * curr_v[uv_index] + round) >> shift);
 
-                    dst_u[uv_index] = @intCast((result_prev_u + result_next_u + 1) / 2);
-                    dst_v[uv_index] = @intCast((result_prev_v + result_next_v + 1) / 2);
+                    // Inverse weight the results so that results derived 
+                    // from large difference frames have a lower weight, and vice versa.
+                    const shift2 = shift + 1;
+                    const round2 = 1 << (shift2 - 1);
+                    dst_u[uv_index] = @intCast(((max - abs_diff_prev) * result_prev_u +
+                        (max - abs_diff_next) * result_next_u +
+                        round2) >> shift2);
+
+                    dst_v[uv_index] = @intCast(((max - abs_diff_prev) * result_prev_v +
+                        (max - abs_diff_next) * result_next_v +
+                        round2) >> shift2);
                 }
             }
         }

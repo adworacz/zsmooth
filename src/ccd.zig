@@ -185,15 +185,23 @@ fn CCD(comptime T: type) type {
             const calculated_g: F = lossyCast(F, total_g) / lossyCast(F, count + 1);
             const calculated_b: F = lossyCast(F, total_b) / lossyCast(F, count + 1);
 
-            return if (types.isFloat(T)) .{
-                calculated_r,
-                calculated_g,
-                calculated_b,
-            } else .{
-                // Round and clamp integer formats so that we can handle things like 10-bit.
-                std.math.clamp(lossyCast(T, @round(calculated_r)), 0, format_max),
-                std.math.clamp(lossyCast(T, @round(calculated_g)), 0, format_max),
-                std.math.clamp(lossyCast(T, @round(calculated_b)), 0, format_max),
+            return switch (T) {
+                u8 => .{
+                    @intFromFloat(@round(calculated_r)),
+                    @intFromFloat(@round(calculated_g)),
+                    @intFromFloat(@round(calculated_b)),
+                },
+                u16 => .{
+                    // Round and clamp integer formats so that we can handle things like 10-bit.
+                    std.math.clamp(lossyCast(T, @round(calculated_r)), 0, format_max),
+                    std.math.clamp(lossyCast(T, @round(calculated_g)), 0, format_max),
+                    std.math.clamp(lossyCast(T, @round(calculated_b)), 0, format_max),
+                },
+                else => .{
+                    calculated_r,
+                    calculated_g,
+                    calculated_b,
+                },
             };
         }
 
@@ -279,15 +287,23 @@ fn CCD(comptime T: type) type {
             const calculated_g: F = lossyCast(F, total_g) / lossyCast(F, count + one);
             const calculated_b: F = lossyCast(F, total_b) / lossyCast(F, count + one);
 
-            return if (types.isFloat(T)) .{
-                calculated_r,
-                calculated_g,
-                calculated_b,
-            } else .{
-                // Round and clamp integer formats so that we can handle things like 10-bit.
-                std.math.clamp(lossyCast(VT, @round(calculated_r)), zero, format_max),
-                std.math.clamp(lossyCast(VT, @round(calculated_g)), zero, format_max),
-                std.math.clamp(lossyCast(VT, @round(calculated_b)), zero, format_max),
+            return switch (T) {
+                u8 => .{
+                     @intFromFloat(@round(calculated_r)),
+                     @intFromFloat(@round(calculated_g)),
+                     @intFromFloat(@round(calculated_b)),
+                },
+                u16 => .{
+                    // Round and clamp integer formats so that we can handle things like 10-bit.
+                    std.math.clamp(lossyCast(VT, @round(calculated_r)), zero, format_max),
+                    std.math.clamp(lossyCast(VT, @round(calculated_g)), zero, format_max),
+                    std.math.clamp(lossyCast(VT, @round(calculated_b)), zero, format_max),
+                },
+                else => .{
+                    calculated_r,
+                    calculated_g,
+                    calculated_b,
+                },
             };
         }
 

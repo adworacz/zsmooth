@@ -10,21 +10,21 @@ length = 30000
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    temporal_radius = 0
+    # temporal_radius = 0
     # format = 'u8'
 
 # Handle strings passed in by vspipe args.
-temporal_radius = int(temporal_radius)
+# temporal_radius = int(temporal_radius)
 
 match format:
     case 'u8':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P8, color=[255, 255, 255], length=length)
     case 'u16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48, color=[255, 255, 255], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420P16, color=[255, 255, 255], length=length)
     case 'f16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH, color=[1.0, 1.0, 1.0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PH, color=[1.0, 1.0, 1.0], length=length)
     case 'f32':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, color=[1.0, 1.0, 1.0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.YUV420PS, color=[1.0, 1.0, 1.0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/test.webm")

@@ -28,12 +28,17 @@ const allocator = std.heap.c_allocator;
 // Align LUTs to a reasonable cache size.
 // Maybe change this for Mac targets, which have larger cache sizes...
 const LUT_ALIGN = 64;
+const MAX_RADIUS = 10;
+const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
+const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
 const Cnr3Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
+
+    radius: u8,
 
     table_y: []align(LUT_ALIGN) u8,
     table_u: []align(LUT_ALIGN) u8,
@@ -69,56 +74,21 @@ fn Cnr3(comptime T: type) type {
             }
         }
 
-        // Use separate dstp pointers so we can use noalias,
-        // which leads to a *substantial speedup*: ~290fps -> 513 fps
-        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, noalias dstp8_u: []u8, noalias dstp8_v: []u8, scratch_y8: [3][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, scratch_y: []const []T, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
             height_uv: usize,
+
             stride_y: usize,
             stride_uv: usize,
             stride_scratch: usize,
+
             subsampling_h: u2,
             subsampling_w: u2,
+
+            table_idx_shift: u4,
         }) void {
-            const prev: [3][]const T = .{
-                @ptrCast(prev8[0]),
-                @ptrCast(prev8[1]),
-                @ptrCast(prev8[2]),
-            };
-
-            const curr: [3][]const T = .{
-                @ptrCast(curr8[0]),
-                @ptrCast(curr8[1]),
-                @ptrCast(curr8[2]),
-            };
-
-            const next: [3][]const T = .{
-                @ptrCast(next8[0]),
-                @ptrCast(next8[1]),
-                @ptrCast(next8[2]),
-            };
-
-            const dst_u: []T = @ptrCast(dstp8_u);
-            const dst_v: []T = @ptrCast(dstp8_v);
-
-            const prev_y: []T = @ptrCast(scratch_y8[0]);
-            const curr_y: []T = @ptrCast(scratch_y8[1]);
-            const next_y: []T = @ptrCast(scratch_y8[2]);
-
-            const prev_u = prev[1];
-            const curr_u = curr[1];
-            const next_u = next[1];
-
-            const prev_v = prev[2];
-            const curr_v = curr[2];
-            const next_v = next[2];
-
-            const table_y = tables[0];
-            const table_u = tables[1];
-            const table_v = tables[2];
-
             const downsample_opts: DownSampleOpts = .{
                 .dst_width = opt.width_y >> opt.subsampling_w,
                 .dst_height = opt.height_y >> opt.subsampling_h,
@@ -127,55 +97,139 @@ fn Cnr3(comptime T: type) type {
                 .subsampling_w = opt.subsampling_w,
                 .subsampling_h = opt.subsampling_h,
             };
-
-            downSampleLuma(prev[0], prev_y, downsample_opts);
+            const curr_y: []T = scratch_y[0];
+            const curr_u = curr[1];
+            const curr_v = curr[2];
             downSampleLuma(curr[0], curr_y, downsample_opts);
-            downSampleLuma(next[0], next_y, downsample_opts);
 
+            // Downsample all other luma planes
+            for (src, scratch_y[1..]) |other, scratch| {
+                downSampleLuma(other[0], scratch, downsample_opts);
+            }
+
+            const table_y = tables[0];
+            const table_u = tables[1];
+            const table_v = tables[2];
+
+            var results_u: [MAX_DIAMETER]UAT = @splat(0);
+            var results_v: [MAX_DIAMETER]UAT = @splat(0);
+            var abs_diffs: [MAX_DIAMETER]UAT = @splat(0);
+
+            // Constants for pixel combinations using shifts or divides.
+            const shift = @typeInfo(UAT).int.bits;
+            const weight_shift = if (T == u16) shift / 2 else 0;
+            const max: BUAT = 1 << shift;
+            const round = 1 << (shift - 1);
+            const divisor = @as(BUAT, max) * (radius * 2);
+            const round2 = divisor / 2;
+
+            // Calculate past frames
             for (0..opt.height_uv) |y| {
                 for (0..opt.width_uv) |x| {
                     const y_index = y * opt.stride_scratch + x;
                     const uv_index = y * opt.stride_uv + x;
 
-                    const abs_diff_prev_y = math.absDiff(curr_y[y_index], prev_y[y_index]);
-                    const abs_diff_prev_u = math.absDiff(curr_u[uv_index], prev_u[uv_index]);
-                    const abs_diff_prev_v = math.absDiff(curr_v[uv_index], prev_v[uv_index]);
+                    for (0..radius * 2, src, scratch_y[1..]) |i, other, other_y| {
+                        const other_u = other[1];
+                        const other_v = other[2];
 
-                    const abs_diff_next_y = math.absDiff(curr_y[y_index], next_y[y_index]);
-                    const abs_diff_next_u = math.absDiff(curr_u[uv_index], next_u[uv_index]);
-                    const abs_diff_next_v = math.absDiff(curr_v[uv_index], next_v[uv_index]);
+                        const abs_diff_y = math.absDiff(curr_y[y_index], other_y[y_index]);
+                        const abs_diff_u = math.absDiff(curr_u[uv_index], other_u[uv_index]);
+                        const abs_diff_v = math.absDiff(curr_v[uv_index], other_v[uv_index]);
 
-                    const abs_diff_prev = @as(BUAT, abs_diff_prev_y) + abs_diff_prev_u + abs_diff_prev_v;
-                    const abs_diff_next = @as(BUAT, abs_diff_next_y) + abs_diff_next_u + abs_diff_next_v;
+                        const abs_diff = @as(UAT, abs_diff_y) + abs_diff_u + abs_diff_v;
 
-                    const weight_prev_u: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_u[abs_diff_prev_u];
-                    const weight_prev_v: BUAT = @as(UAT, table_y[abs_diff_prev_y]) * table_v[abs_diff_prev_v];
+                        const table_idx_y: usize = switch (T) {
+                            u8 => abs_diff_y,
+                            u16 => abs_diff_y >> opt.table_idx_shift,
+                            else => @trunc(abs_diff_y * 255.0),
+                        };
+                        const table_idx_u: usize = switch (T) {
+                            u8 => abs_diff_u,
+                            u16 => abs_diff_u >> opt.table_idx_shift,
+                            else => @trunc(abs_diff_u * 255.0),
+                        };
+                        const table_idx_v: usize = switch (T) {
+                            u8 => abs_diff_v,
+                            u16 => abs_diff_v >> opt.table_idx_shift,
+                            else => @trunc(abs_diff_v * 255.0),
+                        };
 
-                    const weight_next_u: BUAT = @as(UAT, table_y[abs_diff_next_y]) * table_u[abs_diff_next_u];
-                    const weight_next_v: BUAT = @as(UAT, table_y[abs_diff_next_y]) * table_v[abs_diff_next_v];
+                        const weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;
+                        const weight_v: BUAT = (@as(UAT, table_y[table_idx_y]) * table_v[table_idx_v]) << weight_shift;
 
-                    const shift = @typeInfo(UAT).int.bits;
-                    const max = 1 << shift;
-                    const round = 1 << (shift - 1);
+                        const result_u = ((weight_u * other_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
+                        const result_v = ((weight_v * other_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> shift);
 
-                    const result_prev_u = ((weight_prev_u * prev_u[uv_index] + (max - weight_prev_u) * curr_u[uv_index] + round) >> shift);
-                    const result_next_u = ((weight_next_u * next_u[uv_index] + (max - weight_next_u) * curr_u[uv_index] + round) >> shift);
-
-                    const result_prev_v = ((weight_prev_v * prev_v[uv_index] + (max - weight_prev_v) * curr_v[uv_index] + round) >> shift);
-                    const result_next_v = ((weight_next_v * next_v[uv_index] + (max - weight_next_v) * curr_v[uv_index] + round) >> shift);
+                        results_u[i] = @intCast(result_u);
+                        results_v[i] = @intCast(result_v);
+                        abs_diffs[i] = abs_diff;
+                    }
 
                     // Inverse weight the results so that results derived
                     // from large difference frames have a lower weight, and vice versa.
-                    const shift2 = shift + 1;
-                    const round2 = 1 << (shift2 - 1);
-                    dst_u[uv_index] = @intCast(((max - abs_diff_prev) * result_prev_u +
-                        (max - abs_diff_next) * result_next_u +
-                        round2) >> shift2);
+                    var result_u: BUAT = 0;
+                    var result_v: BUAT = 0;
 
-                    dst_v[uv_index] = @intCast(((max - abs_diff_prev) * result_prev_v +
-                        (max - abs_diff_next) * result_next_v +
-                        round2) >> shift2);
+                    for (0..radius * 2) |i| {
+                        result_u += (max - abs_diffs[i]) * results_u[i];
+                        result_v += (max - abs_diffs[i]) * results_v[i];
+                    }
+
+                    dst_u[uv_index] = @intCast((result_u + round2) / divisor);
+                    dst_v[uv_index] = @intCast((result_v + round2) / divisor);
                 }
+            }
+        }
+
+        // Use separate dstp pointers so we can use `noalias`,
+        // which leads to a *substantial speedup*: ~290fps -> 513 fps
+        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch_y8: []const []u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+            radius: u8,
+
+            width_y: usize,
+            height_y: usize,
+            width_uv: usize,
+            height_uv: usize,
+
+            stride_y: usize,
+            stride_uv: usize,
+            stride_scratch: usize,
+
+            subsampling_h: u2,
+            subsampling_w: u2,
+
+            table_idx_shift: u4,
+        }) void {
+            const curr: [3][]const T = .{
+                @ptrCast(@alignCast(curr8[0])),
+                @ptrCast(@alignCast(curr8[1])),
+                @ptrCast(@alignCast(curr8[2])),
+            };
+
+            const src: []const [3][]const T = @ptrCast(@alignCast(src8));
+            const scratch_y: []const []T = @ptrCast(@alignCast(scratch_y8));
+
+            const dst_u: []T = @ptrCast(@alignCast(dst8_u));
+            const dst_v: []T = @ptrCast(@alignCast(dst8_v));
+
+            switch (opt.radius) {
+                inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, scratch_y, tables, .{
+                    .width_y = opt.width_y,
+                    .height_y = opt.height_y,
+                    .width_uv = opt.width_uv,
+                    .height_uv = opt.height_uv,
+
+                    .stride_y = opt.stride_uv / @sizeOf(T),
+                    .stride_uv = opt.stride_uv / @sizeOf(T),
+                    .stride_scratch = opt.stride_scratch / @sizeOf(T),
+
+                    .subsampling_h = opt.subsampling_h,
+                    .subsampling_w = opt.subsampling_w,
+
+                    .table_idx_shift = opt.table_idx_shift,
+                }),
+                else => unreachable,
             }
         }
     };
@@ -189,83 +243,100 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     const d: *Cnr3Data = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
-        zapi.requestFrameFilter(@max(n - 1, 0), d.node);
-        zapi.requestFrameFilter(n, d.node);
-        zapi.requestFrameFilter(@min(n + 1, d.vi.numFrames - 1), d.node);
+        var i: i8 = -@as(i8, @intCast(d.radius));
+        while (i <= d.radius) : (i += 1) {
+            zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node);
+        }
     } else if (activation_reason == ar.AllFramesReady) {
         // Don't process the first and last frames
-        if (n < 1 or n == d.vi.numFrames - 1) {
-            //TODO: Handle this case better when I support bidirectional filtering,
-            //since we can use the next frame for filtering.
-            return zapi.getFrameFilter(n, d.node);
+        // if (n < 1 or n == d.vi.numFrames - 1) {
+        //     return zapi.getFrameFilter(n, d.node);
+        // }
+
+        var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var frame_count: u8 = 0;
+
+        {
+            var i: i8 = -@as(i8, @intCast(d.radius));
+            while (i <= d.radius) : (i += 1) {
+                if (i != 0) {
+                    //Grab all frames *except* the current frame, which we retrieve separately later.
+                    src_frames[frame_count] = zapi.initZFrame(d.node, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                    frame_count += 1;
+                }
+            }
         }
 
-        const prev_frame = zapi.initZFrame(d.node, n - 1);
-        defer prev_frame.deinit();
+        var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
 
-        const curr_frame = zapi.initZFrame(d.node, n);
-        defer curr_frame.deinit();
-
-        const next_frame = zapi.initZFrame(d.node, n + 1);
-        defer next_frame.deinit();
-
-        // copy the luma plane only
-        const dst = curr_frame.newVideoFrame2(.{ false, true, true });
-
+        // Allocate scratch buffers for downsampled luma planes
+        var scratch_frames: [MAX_DIAMETER]ZAPI.ZFrame(*vs.Frame) = undefined;
+        var scratch_planes: [MAX_DIAMETER][]u8 = undefined;
         var grey_format: vs.VideoFormat = undefined;
         _ = zapi.queryVideoFormat(&grey_format, .Gray, d.vi.format.sampleType, d.vi.format.bitsPerSample, 0, 0);
 
-        // Allocate scratch buffers for downsampled luma planes
-        const prev_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
-        const curr_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
-        const next_y = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
-        defer {
-            prev_y.deinit();
-            curr_y.deinit();
-            next_y.deinit();
+        // Get read slices and setup scratch buffers.
+        for (0..frame_count) |i| {
+            src_planes[i][0] = src_frames[i].getReadSlice(0);
+            src_planes[i][1] = src_frames[i].getReadSlice(1);
+            src_planes[i][2] = src_frames[i].getReadSlice(2);
         }
+        // frame_count + 1 to ensure we have a scratch buffer for the current frame
+        for (0..frame_count + 1) |i| {
+            scratch_frames[i] = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
+            scratch_planes[i] = scratch_frames[i].getWriteSlice(0);
+        }
+
+        // Cleanup
+        defer for (0..frame_count) |i| src_frames[i].deinit();
+        defer for (0..frame_count + 1) |i| scratch_frames[i].deinit();
+
+        //TODO: Handle scene changes
+        //TODO: Return the current frame if the total frame count < 3 (radius 1)
+        const start_idx = 0;
+        const end_idx = frame_count;
+
+        const curr = zapi.initZFrame(d.node, n);
+        defer curr.deinit();
+
+        // copy the luma plane only
+        const dst = curr.newVideoFrame2(.{ false, true, true });
+
+        const table_idx_shift: u4 = if (d.vi.format.sampleType == .Integer) @intCast(d.vi.format.bitsPerSample - 8) else 0;
 
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Cnr3(u8).processFrame,
+            .U16 => &Cnr3(u16).processFrame,
             else => unreachable,
-            // .U16 => &Cnr3(u16).processPlane,
             // .F16 => &Cnr3(f16).processPlane,
             // .F32 => &Cnr3(f32).processPlane,
         };
 
         processFrame(.{
-            prev_frame.getReadSlice(0),
-            prev_frame.getReadSlice(1),
-            prev_frame.getReadSlice(2),
-        }, .{
-            curr_frame.getReadSlice(0),
-            curr_frame.getReadSlice(1),
-            curr_frame.getReadSlice(2),
-        }, .{
-            next_frame.getReadSlice(0),
-            next_frame.getReadSlice(1),
-            next_frame.getReadSlice(2),
-        }, dst.getWriteSlice(1), dst.getWriteSlice(2), .{
-            prev_y.getWriteSlice(0),
-            curr_y.getWriteSlice(0),
-            next_y.getWriteSlice(0),
-        }, .{
+            curr.getReadSlice(0),
+            curr.getReadSlice(1),
+            curr.getReadSlice(2),
+        }, src_planes[start_idx..end_idx], dst.getWriteSlice(1), dst.getWriteSlice(2), scratch_planes[0 .. frame_count + 1], .{
             d.table_y,
             d.table_u,
             d.table_v,
         }, .{
-            .width_y = curr_frame.getWidth(0),
-            .width_uv = curr_frame.getWidth(1),
+            .radius = d.radius,
 
-            .height_y = curr_frame.getHeight(0),
-            .height_uv = curr_frame.getHeight(1),
+            .width_y = curr.getWidth(0),
+            .width_uv = curr.getWidth(1),
+
+            .height_y = curr.getHeight(0),
+            .height_uv = curr.getHeight(1),
 
             .stride_y = dst.getStride(0),
             .stride_uv = dst.getStride(1),
-            .stride_scratch = prev_y.getStride(0),
+            .stride_scratch = scratch_frames[0].getStride(0),
 
             .subsampling_w = @intCast(d.vi.format.subSamplingW),
             .subsampling_h = @intCast(d.vi.format.subSamplingH),
+
+            .table_idx_shift = table_idx_shift,
         });
 
         return dst.frame;
@@ -300,7 +371,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     if (!vsh.isConstantVideoFormat(d.vi) or
         d.vi.format.colorFamily != .YUV or
         d.vi.format.sampleType != .Integer or
-        d.vi.format.bitsPerSample != 8 or // TODO fix this
+        d.vi.format.bitsPerSample < 8 or d.vi.format.bitsPerSample > 16 or
         d.vi.format.subSamplingW > 1 or
         d.vi.format.subSamplingH > 1)
     {
@@ -318,60 +389,70 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         break :blk _mode;
     } else "oxx";
 
-    // Sensitivies
-    const l_sense: u8 = if (inz.getInt(i32, "ln")) |ln| blk: {
-        if (ln < 0 or ln > 255) {
-            outz.setError("Cnr3: ln must be between 0 and 255");
+    d.radius = if (inz.getInt(i32, "radius")) |radius| blk: {
+        if (radius < 1 or radius > MAX_RADIUS) {
+            outz.setError("Cnr3: radius must be between 1 and 10");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(ln);
+
+        break :blk @intCast(radius);
+    } else 1;
+
+    // Sensitivies
+    const sense_l: u8 = if (inz.getInt(i32, "sense_l")) |sense_l| blk: {
+        if (sense_l < 0 or sense_l > 255) {
+            outz.setError("Cnr3: sense_l must be between 0 and 255");
+            zapi.freeNode(d.node);
+            return;
+        }
+        break :blk @intCast(sense_l);
     } else 35;
 
-    const u_sense: u8 = if (inz.getInt(i32, "un")) |un| blk: {
-        if (un < 0 or un > 255) {
-            outz.setError("Cnr3: un must be between 0 and 255");
+    const sense_u: u8 = if (inz.getInt(i32, "sense_u")) |sense_u| blk: {
+        if (sense_u < 0 or sense_u > 255) {
+            outz.setError("Cnr3: sense_u must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(un);
+        break :blk @intCast(sense_u);
     } else 47;
 
-    const v_sense: u8 = if (inz.getInt(i32, "vn")) |vn| blk: {
-        if (vn < 0 or vn > 255) {
-            outz.setError("Cnr3: vn must be between 0 and 255");
+    const sense_v: u8 = if (inz.getInt(i32, "sense_v")) |sense_v| blk: {
+        if (sense_v < 0 or sense_v > 255) {
+            outz.setError("Cnr3: sense_v must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(vn);
+        break :blk @intCast(sense_v);
     } else 47;
 
     // Strengths
-    const l_str: u8 = if (inz.getInt(i32, "lm")) |lm| blk: {
-        if (lm < 0 or lm > 255) {
-            outz.setError("Cnr3: lm must be between 0 and 255");
+    const str_l: u8 = if (inz.getInt(i32, "str_l")) |str_l| blk: {
+        if (str_l < 0 or str_l > 255) {
+            outz.setError("Cnr3: str_l must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(lm);
+        break :blk @intCast(str_l);
     } else 192;
 
-    const u_str: u8 = if (inz.getInt(i32, "um")) |um| blk: {
-        if (um < 0 or um > 255) {
-            outz.setError("Cnr3: um must be between 0 and 255");
+    const str_u: u8 = if (inz.getInt(i32, "str_u")) |str_u| blk: {
+        if (str_u < 0 or str_u > 255) {
+            outz.setError("Cnr3: str_u must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(um);
+        break :blk @intCast(str_u);
     } else 255;
 
-    const v_str: u8 = if (inz.getInt(i32, "vm")) |vm| blk: {
-        if (vm < 0 or vm > 255) {
-            outz.setError("Cnr3: vm must be between 0 and 255");
+    const str_v: u8 = if (inz.getInt(i32, "str_v")) |str_v| blk: {
+        if (str_v < 0 or str_v > 255) {
+            outz.setError("Cnr3: str_v must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(vm);
+        break :blk @intCast(str_v);
     } else 255;
 
     // Using an aligned alloc for potential SIMD/autovec friendliness
@@ -401,14 +482,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     // Create separate scopes to reduce chance of bugs from variable reuse (which happened)
     {
         //TODO: inline casts once we're using Zig 0.16.0+
-        const l_strf: f32 = @floatFromInt(l_str);
-        const l_sensef: f32 = @floatFromInt(l_sense);
+        const str_lf: f32 = @floatFromInt(str_l);
+        const sense_lf: f32 = @floatFromInt(sense_l);
         var l: u9 = 0;
-        while (l <= l_str) : (l += 1) {
+        while (l <= str_l) : (l += 1) {
             const lf: f32 = @floatFromInt(l);
             d.table_y[l] = switch (mode[0]) {
-                'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
-                'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
+                'o' => @intFromFloat(str_lf / 2 * (1 + @cos(lf * lf * std.math.pi / (sense_lf * sense_lf)))),
+                'x' => @intFromFloat(str_lf / 2 * (1 + @cos(lf * std.math.pi / sense_lf))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -419,14 +500,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     }
 
     {
-        const u_strf: f32 = @floatFromInt(u_str);
-        const u_sensef: f32 = @floatFromInt(u_sense);
+        const str_uf: f32 = @floatFromInt(str_u);
+        const sense_uf: f32 = @floatFromInt(sense_u);
         var u: u9 = 0;
-        while (u <= u_str) : (u += 1) {
+        while (u <= str_u) : (u += 1) {
             const uf: f32 = @floatFromInt(u);
             d.table_u[u] = switch (mode[1]) {
-                'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
-                'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
+                'o' => @intFromFloat(str_uf / 2 * (1 + @cos(uf * uf * std.math.pi / (sense_uf * sense_uf)))),
+                'x' => @intFromFloat(str_uf / 2 * (1 + @cos(uf * std.math.pi / sense_uf))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -437,14 +518,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     }
 
     {
-        const v_strf: f32 = @floatFromInt(v_str);
-        const v_sensef: f32 = @floatFromInt(v_sense);
+        const str_vf: f32 = @floatFromInt(str_v);
+        const sense_vf: f32 = @floatFromInt(sense_v);
         var v: u9 = 0;
-        while (v <= v_str) : (v += 1) {
+        while (v <= str_v) : (v += 1) {
             const vf: f32 = @floatFromInt(v);
             d.table_v[v] = switch (mode[2]) {
-                'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
-                'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
+                'o' => @intFromFloat(str_vf / 2 * (1 + @cos(vf * vf * std.math.pi / (sense_vf * sense_vf)))),
+                'x' => @intFromFloat(str_vf / 2 * (1 + @cos(vf * std.math.pi / sense_vf))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -453,8 +534,6 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
             };
         }
     }
-
-    std.debug.print("Table y {}, u {}, v {}\n", .{ d.table_y[0], d.table_u[0], d.table_v[0] });
 
     const data: *Cnr3Data = allocator.create(Cnr3Data) catch unreachable;
     data.* = d;
@@ -472,12 +551,11 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr3", "clip:vnode;" ++
         "mode:data:opt;" ++
-        "scdthr:int:opt;" ++
-        "ln:int:opt;" ++
-        "lm:int:opt;" ++
-        "un:int:opt;" ++
-        "um:int:opt;" ++
-        "vn:int:opt;" ++
-        "vm:int:opt;" ++
-        "scenechroma:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
+        "radius:int:opt;" ++
+        "sense_l:int:opt;" ++
+        "str_l:int:opt;" ++
+        "sense_u:int:opt;" ++
+        "str_u:int:opt;" ++
+        "sense_v:int:opt;" ++
+        "str_u:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
 }

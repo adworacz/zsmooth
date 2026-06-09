@@ -25,15 +25,19 @@ const st = vs.SampleType;
 
 const allocator = std.heap.c_allocator;
 
+// Align LUTs to a reasonable cache size.
+// Maybe change this for Mac targets, which have larger cache sizes...
+const LUT_ALIGN = 64;
+
 const Cnr3Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
 
-    table_y: []u8,
-    table_u: []u8,
-    table_v: []u8,
+    table_y: []align(LUT_ALIGN) u8,
+    table_u: []align(LUT_ALIGN) u8,
+    table_v: []align(LUT_ALIGN) u8,
 };
 
 fn Cnr3(comptime T: type) type {
@@ -67,7 +71,7 @@ fn Cnr3(comptime T: type) type {
 
         // Use separate dstp pointers so we can use noalias,
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
-        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, noalias dstp8_u: []u8, noalias dstp8_v: []u8, scratch_y8: [3][]u8, tables: [3][]const u8, opt: struct {
+        fn processFrame(prev8: [3][]const u8, curr8: [3][]const u8, next8: [3][]const u8, noalias dstp8_u: []u8, noalias dstp8_v: []u8, scratch_y8: [3][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -372,18 +376,18 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     // Using an aligned alloc for potential SIMD/autovec friendliness
     // Might not make any difference, but it doesn't hurt
-    const table_size = 256 + 1;
-    d.table_y = allocator.alignedAlloc(u8, .@"64", table_size) catch {
+    const table_size = 256;
+    d.table_y = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
         outz.setError("Cnr3: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;
     };
-    d.table_u = allocator.alignedAlloc(u8, .@"64", table_size) catch {
+    d.table_u = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
         outz.setError("Cnr3: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;
     };
-    d.table_v = allocator.alignedAlloc(u8, .@"64", table_size) catch {
+    d.table_v = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
         outz.setError("Cnr3: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;

@@ -108,17 +108,17 @@ fn Cnr3(comptime T: type) type {
                         const table_idx_y: usize = switch (T) {
                             u8 => abs_diff_y,
                             u16 => abs_diff_y >> opt.table_idx_shift,
-                            else => @trunc(abs_diff_y * 255.0),
+                            else => @trunc(@min(abs_diff_y, 1.0) * 255.0), 
                         };
                         const table_idx_u: usize = switch (T) {
                             u8 => abs_diff_u,
                             u16 => abs_diff_u >> opt.table_idx_shift,
-                            else => @trunc(abs_diff_u * 255.0),
+                            else => @trunc(@min(abs_diff_u, 1.0) * 255.0),
                         };
                         const table_idx_v: usize = switch (T) {
                             u8 => abs_diff_v,
                             u16 => abs_diff_v >> opt.table_idx_shift,
-                            else => @trunc(abs_diff_v * 255.0),
+                            else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
                         };
 
                         const weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;

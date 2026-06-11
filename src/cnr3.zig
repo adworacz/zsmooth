@@ -45,6 +45,8 @@ const Cnr3Data = struct {
     table_y: []align(LUT_ALIGN) u8,
     table_u: []align(LUT_ALIGN) u8,
     table_v: []align(LUT_ALIGN) u8,
+
+    scenechange: bool,
 };
 
 fn Cnr3(comptime T: type) type {
@@ -52,30 +54,6 @@ fn Cnr3(comptime T: type) type {
     const BUAT = types.BigUnsignedArithmeticType(T);
 
     return struct {
-        const DownSampleOpts = struct {
-            dst_width: usize,
-            dst_height: usize,
-            dst_stride: usize,
-            src_stride: usize,
-            subsampling_h: u2,
-            subsampling_w: u2,
-        };
-
-        fn downSampleLuma(noalias srcp: []const T, noalias dstp: []T, opt: DownSampleOpts) void {
-            for (0..opt.dst_height) |y| {
-                for (0..opt.dst_width) |x| {
-                    const dst_index = y * opt.dst_stride + x;
-                    const src_x = x << opt.subsampling_w;
-                    const src_index = (y * opt.src_stride << opt.subsampling_h) + src_x;
-
-                    dstp[dst_index] = @intCast((@as(UAT, srcp[src_index]) +
-                        srcp[src_index + opt.subsampling_w] +
-                        srcp[src_index + (opt.src_stride * opt.subsampling_h)] +
-                        srcp[src_index + (opt.src_stride * opt.subsampling_h) + opt.subsampling_w] + 2) >> 2);
-                }
-            }
-        }
-
         fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             width_y: usize,
             height_y: usize,
@@ -252,22 +230,9 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
 
-        // Get read slices and setup scratch buffers.
-        for (0..frame_count) |i| {
-            src_planes[i][0] = luma_frames[i].getReadSlice(0);
-            src_planes[i][1] = src_frames[i].getReadSlice(1);
-            src_planes[i][2] = src_frames[i].getReadSlice(2);
-        }
-
         // Cleanup
         defer for (0..frame_count) |i| src_frames[i].deinit();
         defer for (0..frame_count) |i| luma_frames[i].deinit();
-
-        //TODO: Handle scene changes
-        //TODO: Pad frames with current frame if total number of frames isn't
-        //supported by filter (like if total frames is < 3 for radius 1)
-        const start_idx = 0;
-        const end_idx = frame_count;
 
         const curr = zapi.initZFrame(d.node, n);
         const curr_luma = zapi.initZFrame(d.node_luma, n);
@@ -278,6 +243,74 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const dst = curr.newVideoFrame2(.{ false, true, true });
 
         const table_idx_shift: u4 = if (d.vi.format.sampleType == .Integer) @intCast(d.vi.format.bitsPerSample - 8) else 0;
+
+        var start_idx: usize = 0;
+        var end_idx: usize = frame_count - 1;
+        if (d.scenechange) {
+            // Quick check to ensure that the scenechange properties are present.
+            const props = src_frames[0].getPropertiesRO();
+            if (props.getSceneChangePrev() == null or props.getSceneChangeNext() == null) {
+                zapi.setFilterError("Cnr4: Scene change handling enabled, but input frame is missing scene change properties. " ++
+                    "Either set scenechange=False or run scene change detection on your input clip.");
+                dst.deinit();
+                return null;
+            }
+
+            // Start in the left (prev) and walk backwards
+            {
+                var i = frame_count / 2 - 1;
+                while (i > 0) : (i -= 1) {
+                    if (src_frames[i].getPropertiesRO().getSceneChangePrev() == true) {
+                        start_idx = i;
+                        break;
+                    }
+                }
+            }
+
+            //Start in the right (next) and walk forwards
+            {
+                var i = frame_count / 2;
+                while (i < frame_count - 1) : (i += 1) {
+                    if (src_frames[i].getPropertiesRO().getSceneChangeNext() == true) {
+                        end_idx = i;
+                        break;
+                    }
+                }
+            }
+
+            if (curr.getPropertiesRO().getSceneChangePrev() == true) {
+                start_idx = frame_count / 2;
+            }
+            if (curr.getPropertiesRO().getSceneChangeNext() == true) {
+                end_idx = frame_count / 2 - 1;
+            }
+        }
+
+        // Replace unusable frames with the current frame so that we always
+        // have a consistent number of frames
+        for (0..start_idx) |i| {
+            src_frames[i].deinit();
+            luma_frames[i].deinit();
+
+            // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+        }
+        for (end_idx + 1..frame_count) |i| {
+            src_frames[i].deinit();
+            luma_frames[i].deinit();
+
+            // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+        }
+
+        // Get read slices and setup scratch buffers.
+        for (0..frame_count) |i| {
+            src_planes[i][0] = luma_frames[i].getReadSlice(0);
+            src_planes[i][1] = src_frames[i].getReadSlice(1);
+            src_planes[i][2] = src_frames[i].getReadSlice(2);
+        }
 
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Cnr3(u8).processFrame,
@@ -291,7 +324,7 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             curr_luma.getReadSlice(0),
             curr.getReadSlice(1),
             curr.getReadSlice(2),
-        }, src_planes[start_idx..end_idx], dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+        }, src_planes[0..frame_count], dst.getWriteSlice(1), dst.getWriteSlice(2), .{
             d.table_y,
             d.table_u,
             d.table_v,
@@ -373,6 +406,8 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
         break :blk @intCast(radius);
     } else 1;
+
+    d.scenechange = inz.getBool("scenechange") orelse true;
 
     // Sensitivies
     const sense_l: u8 = if (inz.getInt(i32, "sense_l")) |sense_l| blk: {
@@ -584,5 +619,6 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
         "sense_u:int:opt;" ++
         "str_u:int:opt;" ++
         "sense_v:int:opt;" ++
-        "str_u:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
+        "str_u:int:opt;" ++
+        "scenechange:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
 }

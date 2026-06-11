@@ -29,9 +29,10 @@ match format:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/test.webm")
         clip = core.bs.VideoSource("/home/adub/Videos/Audi R8.mp4", cachemode=3)
+        # clip = core.bs.VideoSource("/home/adub/Videos/test.webm", cachemode=3)
         #clip = core.bs.VideoSource("/home/adub/Videos/test.mp4")
 
-from vstools import depth
+from vstools import depth, sc_detect
 # clip = depth(clip, 10)
 # clip = depth(clip, 16)
 # clip = depth(clip, 16, sample_type=vs.FLOAT)
@@ -47,7 +48,8 @@ clip.set_output(0)
 if output in ['cnr2', 'all']:
     cnr2 = clip.cnr2.Cnr2(mode='oxx')
 
-zsmooth = clip.zsmooth.Cnr3(mode='oxx')
+# clip = sc_detect(clip)
+zsmooth = clip.zsmooth.Cnr3(mode='oxx', scenechange=False)
 
 match output:
     case 'zsmooth':

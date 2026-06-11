@@ -410,59 +410,59 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     d.scenechange = inz.getBool("scenechange") orelse true;
 
     // Sensitivies
-    const sense_l: u8 = if (inz.getInt(i32, "sense_l")) |sense_l| blk: {
-        if (sense_l < 0 or sense_l > 255) {
-            outz.setError("Cnr3: sense_l must be between 0 and 255");
+    const l_sense: u8 = if (inz.getInt(i32, "l_sense")) |l_sense| blk: {
+        if (l_sense < 0 or l_sense > 255) {
+            outz.setError("Cnr3: l_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(sense_l);
+        break :blk @intCast(l_sense);
     } else 35;
 
-    const sense_u: u8 = if (inz.getInt(i32, "sense_u")) |sense_u| blk: {
-        if (sense_u < 0 or sense_u > 255) {
-            outz.setError("Cnr3: sense_u must be between 0 and 255");
+    const u_sense: u8 = if (inz.getInt(i32, "u_sense")) |u_sense| blk: {
+        if (u_sense < 0 or u_sense > 255) {
+            outz.setError("Cnr3: u_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(sense_u);
+        break :blk @intCast(u_sense);
     } else 47;
 
-    const sense_v: u8 = if (inz.getInt(i32, "sense_v")) |sense_v| blk: {
-        if (sense_v < 0 or sense_v > 255) {
-            outz.setError("Cnr3: sense_v must be between 0 and 255");
+    const v_sense: u8 = if (inz.getInt(i32, "v_sense")) |v_sense| blk: {
+        if (v_sense < 0 or v_sense > 255) {
+            outz.setError("Cnr3: v_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(sense_v);
+        break :blk @intCast(v_sense);
     } else 47;
 
     // Strengths
-    const str_l: u8 = if (inz.getInt(i32, "str_l")) |str_l| blk: {
-        if (str_l < 0 or str_l > 255) {
-            outz.setError("Cnr3: str_l must be between 0 and 255");
+    const l_str: u8 = if (inz.getInt(i32, "l_str")) |l_str| blk: {
+        if (l_str < 0 or l_str > 255) {
+            outz.setError("Cnr3: l_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(str_l);
+        break :blk @intCast(l_str);
     } else 192;
 
-    const str_u: u8 = if (inz.getInt(i32, "str_u")) |str_u| blk: {
-        if (str_u < 0 or str_u > 255) {
-            outz.setError("Cnr3: str_u must be between 0 and 255");
+    const u_str: u8 = if (inz.getInt(i32, "u_str")) |u_str| blk: {
+        if (u_str < 0 or u_str > 255) {
+            outz.setError("Cnr3: u_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(str_u);
+        break :blk @intCast(u_str);
     } else 255;
 
-    const str_v: u8 = if (inz.getInt(i32, "str_v")) |str_v| blk: {
-        if (str_v < 0 or str_v > 255) {
-            outz.setError("Cnr3: str_v must be between 0 and 255");
+    const v_str: u8 = if (inz.getInt(i32, "v_str")) |v_str| blk: {
+        if (v_str < 0 or v_str > 255) {
+            outz.setError("Cnr3: v_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(str_v);
+        break :blk @intCast(v_str);
     } else 255;
 
     // Using an aligned alloc for potential SIMD/autovec friendliness
@@ -492,14 +492,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     // Create separate scopes to reduce chance of bugs from variable reuse (which happened)
     {
         //TODO: inline casts once we're using Zig 0.16.0+
-        const str_lf: f32 = @floatFromInt(str_l);
-        const sense_lf: f32 = @floatFromInt(sense_l);
+        const l_strf: f32 = @floatFromInt(l_str);
+        const l_sensef: f32 = @floatFromInt(l_sense);
         var l: u9 = 0;
-        while (l <= str_l) : (l += 1) {
+        while (l <= l_str) : (l += 1) {
             const lf: f32 = @floatFromInt(l);
             d.table_y[l] = switch (mode[0]) {
-                'o' => @intFromFloat(str_lf / 2 * (1 + @cos(lf * lf * std.math.pi / (sense_lf * sense_lf)))),
-                'x' => @intFromFloat(str_lf / 2 * (1 + @cos(lf * std.math.pi / sense_lf))),
+                'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
+                'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -510,14 +510,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     }
 
     {
-        const str_uf: f32 = @floatFromInt(str_u);
-        const sense_uf: f32 = @floatFromInt(sense_u);
+        const u_strf: f32 = @floatFromInt(u_str);
+        const u_sensef: f32 = @floatFromInt(u_sense);
         var u: u9 = 0;
-        while (u <= str_u) : (u += 1) {
+        while (u <= u_str) : (u += 1) {
             const uf: f32 = @floatFromInt(u);
             d.table_u[u] = switch (mode[1]) {
-                'o' => @intFromFloat(str_uf / 2 * (1 + @cos(uf * uf * std.math.pi / (sense_uf * sense_uf)))),
-                'x' => @intFromFloat(str_uf / 2 * (1 + @cos(uf * std.math.pi / sense_uf))),
+                'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
+                'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -528,14 +528,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     }
 
     {
-        const str_vf: f32 = @floatFromInt(str_v);
-        const sense_vf: f32 = @floatFromInt(sense_v);
+        const v_strf: f32 = @floatFromInt(v_str);
+        const v_sensef: f32 = @floatFromInt(v_sense);
         var v: u9 = 0;
-        while (v <= str_v) : (v += 1) {
+        while (v <= v_str) : (v += 1) {
             const vf: f32 = @floatFromInt(v);
             d.table_v[v] = switch (mode[2]) {
-                'o' => @intFromFloat(str_vf / 2 * (1 + @cos(vf * vf * std.math.pi / (sense_vf * sense_vf)))),
-                'x' => @intFromFloat(str_vf / 2 * (1 + @cos(vf * std.math.pi / sense_vf))),
+                'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
+                'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
                 else => {
                     outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -614,11 +614,11 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr3", "clip:vnode;" ++
         "mode:data:opt;" ++
         "radius:int:opt;" ++
-        "sense_l:int:opt;" ++
-        "str_l:int:opt;" ++
-        "sense_u:int:opt;" ++
-        "str_u:int:opt;" ++
-        "sense_v:int:opt;" ++
-        "str_u:int:opt;" ++
+        "l_sense:int:opt;" ++
+        "l_str:int:opt;" ++
+        "u_sense:int:opt;" ++
+        "u_str:int:opt;" ++
+        "v_sense:int:opt;" ++
+        "v_str:int:opt;" ++
         "scenechange:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
 }

@@ -295,6 +295,7 @@ export fn dctFilterCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopa
             // Should probably upstream this to vapoursynth-zig
             const index = std.mem.indexOfSentinel(u8, 0, e);
             outz.setError(e[0..index :0]);
+            zapi.freeNode(d.node);
             return;
         }
 

@@ -16,6 +16,7 @@ const types = @import("common/type.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
+const vsc = vapoursynth.vsconstants;
 const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
@@ -35,6 +36,7 @@ const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 const Cnr3Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
+    node_luma: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
 
@@ -74,7 +76,7 @@ fn Cnr3(comptime T: type) type {
             }
         }
 
-        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, scratch_y: []const []T, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -82,30 +84,15 @@ fn Cnr3(comptime T: type) type {
 
             stride_y: usize,
             stride_uv: usize,
-            stride_scratch: usize,
 
             subsampling_h: u2,
             subsampling_w: u2,
 
             table_idx_shift: u4,
         }) void {
-            const downsample_opts: DownSampleOpts = .{
-                .dst_width = opt.width_y >> opt.subsampling_w,
-                .dst_height = opt.height_y >> opt.subsampling_h,
-                .dst_stride = opt.stride_scratch,
-                .src_stride = opt.stride_y,
-                .subsampling_w = opt.subsampling_w,
-                .subsampling_h = opt.subsampling_h,
-            };
-            const curr_y: []T = scratch_y[0];
+            const curr_y = curr[0];
             const curr_u = curr[1];
             const curr_v = curr[2];
-            downSampleLuma(curr[0], curr_y, downsample_opts);
-
-            // Downsample all other luma planes
-            for (src, scratch_y[1..]) |other, scratch| {
-                downSampleLuma(other[0], scratch, downsample_opts);
-            }
 
             const table_y = tables[0];
             const table_u = tables[1];
@@ -126,10 +113,11 @@ fn Cnr3(comptime T: type) type {
             // Calculate past frames
             for (0..opt.height_uv) |y| {
                 for (0..opt.width_uv) |x| {
-                    const y_index = y * opt.stride_scratch + x;
+                    const y_index = y * opt.stride_y + x;
                     const uv_index = y * opt.stride_uv + x;
 
-                    for (0..radius * 2, src, scratch_y[1..]) |i, other, other_y| {
+                    for (0..radius * 2, src) |i, other| {
+                        const other_y = other[0];
                         const other_u = other[1];
                         const other_v = other[2];
 
@@ -184,7 +172,7 @@ fn Cnr3(comptime T: type) type {
 
         // Use separate dstp pointers so we can use `noalias`,
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
-        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch_y8: []const []u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             radius: u8,
 
             width_y: usize,
@@ -194,7 +182,6 @@ fn Cnr3(comptime T: type) type {
 
             stride_y: usize,
             stride_uv: usize,
-            stride_scratch: usize,
 
             subsampling_h: u2,
             subsampling_w: u2,
@@ -208,13 +195,12 @@ fn Cnr3(comptime T: type) type {
             };
 
             const src: []const [3][]const T = @ptrCast(@alignCast(src8));
-            const scratch_y: []const []T = @ptrCast(@alignCast(scratch_y8));
 
             const dst_u: []T = @ptrCast(@alignCast(dst8_u));
             const dst_v: []T = @ptrCast(@alignCast(dst8_v));
 
             switch (opt.radius) {
-                inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, scratch_y, tables, .{
+                inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, tables, .{
                     .width_y = opt.width_y,
                     .height_y = opt.height_y,
                     .width_uv = opt.width_uv,
@@ -222,7 +208,6 @@ fn Cnr3(comptime T: type) type {
 
                     .stride_y = opt.stride_uv / @sizeOf(T),
                     .stride_uv = opt.stride_uv / @sizeOf(T),
-                    .stride_scratch = opt.stride_scratch / @sizeOf(T),
 
                     .subsampling_h = opt.subsampling_h,
                     .subsampling_w = opt.subsampling_w,
@@ -246,14 +231,11 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         var i: i8 = -@as(i8, @intCast(d.radius));
         while (i <= d.radius) : (i += 1) {
             zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node);
+            zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node_luma);
         }
     } else if (activation_reason == ar.AllFramesReady) {
-        // Don't process the first and last frames
-        // if (n < 1 or n == d.vi.numFrames - 1) {
-        //     return zapi.getFrameFilter(n, d.node);
-        // }
-
         var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var luma_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
         var frame_count: u8 = 0;
 
         {
@@ -262,6 +244,7 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 if (i != 0) {
                     //Grab all frames *except* the current frame, which we retrieve separately later.
                     src_frames[frame_count] = zapi.initZFrame(d.node, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                    luma_frames[frame_count] = zapi.initZFrame(d.node_luma, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
                     frame_count += 1;
                 }
             }
@@ -269,35 +252,27 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
 
-        // Allocate scratch buffers for downsampled luma planes
-        var scratch_frames: [MAX_DIAMETER]ZAPI.ZFrame(*vs.Frame) = undefined;
-        var scratch_planes: [MAX_DIAMETER][]u8 = undefined;
-        var grey_format: vs.VideoFormat = undefined;
-        _ = zapi.queryVideoFormat(&grey_format, .Gray, d.vi.format.sampleType, d.vi.format.bitsPerSample, 0, 0);
-
         // Get read slices and setup scratch buffers.
         for (0..frame_count) |i| {
-            src_planes[i][0] = src_frames[i].getReadSlice(0);
+            src_planes[i][0] = luma_frames[i].getReadSlice(0);
             src_planes[i][1] = src_frames[i].getReadSlice(1);
             src_planes[i][2] = src_frames[i].getReadSlice(2);
-        }
-        // frame_count + 1 to ensure we have a scratch buffer for the current frame
-        for (0..frame_count + 1) |i| {
-            scratch_frames[i] = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
-            scratch_planes[i] = scratch_frames[i].getWriteSlice(0);
         }
 
         // Cleanup
         defer for (0..frame_count) |i| src_frames[i].deinit();
-        defer for (0..frame_count + 1) |i| scratch_frames[i].deinit();
+        defer for (0..frame_count) |i| luma_frames[i].deinit();
 
         //TODO: Handle scene changes
-        //TODO: Return the current frame if the total frame count < 3 (radius 1)
+        //TODO: Pad frames with current frame if total number of frames isn't
+        //supported by filter (like if total frames is < 3 for radius 1)
         const start_idx = 0;
         const end_idx = frame_count;
 
         const curr = zapi.initZFrame(d.node, n);
+        const curr_luma = zapi.initZFrame(d.node_luma, n);
         defer curr.deinit();
+        defer curr_luma.deinit();
 
         // copy the luma plane only
         const dst = curr.newVideoFrame2(.{ false, true, true });
@@ -313,10 +288,10 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         };
 
         processFrame(.{
-            curr.getReadSlice(0),
+            curr_luma.getReadSlice(0),
             curr.getReadSlice(1),
             curr.getReadSlice(2),
-        }, src_planes[start_idx..end_idx], dst.getWriteSlice(1), dst.getWriteSlice(2), scratch_planes[0 .. frame_count + 1], .{
+        }, src_planes[start_idx..end_idx], dst.getWriteSlice(1), dst.getWriteSlice(2), .{
             d.table_y,
             d.table_u,
             d.table_v,
@@ -329,9 +304,8 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             .height_y = curr.getHeight(0),
             .height_uv = curr.getHeight(1),
 
-            .stride_y = dst.getStride(0),
-            .stride_uv = dst.getStride(1),
-            .stride_scratch = scratch_frames[0].getStride(0),
+            .stride_y = curr_luma.getStride(0),
+            .stride_uv = curr.getStride(1),
 
             .subsampling_w = @intCast(d.vi.format.subSamplingW),
             .subsampling_h = @intCast(d.vi.format.subSamplingH),
@@ -350,6 +324,7 @@ export fn cnr3Free(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const v
     const d: *Cnr3Data = @ptrCast(@alignCast(instance_data));
 
     vsapi.?.freeNode.?(d.node);
+    vsapi.?.freeNode.?(d.node_luma);
 
     allocator.free(d.table_y);
     allocator.free(d.table_u);
@@ -380,13 +355,13 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         return;
     }
 
-    const mode: []const u8 = if (inz.getData("mode", 0)) |_mode| blk: {
-        if (_mode.len != 3) {
+    const mode: []const u8 = if (inz.getData("mode", 0)) |mode| blk: {
+        if (mode.len != 3) {
             outz.setError("Cnr3: mode must have 3 characters");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk _mode;
+        break :blk mode;
     } else "oxx";
 
     d.radius = if (inz.getInt(i32, "radius")) |radius| blk: {
@@ -533,6 +508,58 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
                 },
             };
         }
+    }
+
+    // Call bilinear resize to handle the luma downscaling.
+    const needs_resize = d.vi.format.subSamplingW > 0 or d.vi.format.subSamplingH > 0;
+
+    // Extract luma plane
+    {
+        const args = zapi.createZMap();
+        defer args.free();
+
+        _ = args.setNode("clips", d.node, .Append);
+        args.setInt("planes", 0, .Append);
+        args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.Gray), .Append);
+
+        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "ShufflePlanes", args.map));
+        defer ret.free();
+
+        if (ret.getError()) |e| {
+            // Don't love this manual string length calculation, but it works for now.
+            // Should probably upstream this to vapoursynth-zig
+            const index = std.mem.indexOfSentinel(u8, 0, e);
+            outz.setError(e[0..index :0]);
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        d.node_luma = ret.getNode("clip").?;
+    }
+
+    // Resize the luma
+    if (needs_resize) {
+        const args = zapi.createZMap();
+        defer args.free();
+
+        _ = args.consumeNode("clip", d.node_luma, .Append);
+        args.setInt("width", d.vi.width >> @intCast(d.vi.format.subSamplingW), .Append);
+        args.setInt("height", d.vi.height >> @intCast(d.vi.format.subSamplingH), .Append);
+        //TODO: Add chroma location support for sub-pixel accuracy.
+
+        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Bilinear", args.map));
+        defer ret.free();
+
+        if (ret.getError()) |e| {
+            // Don't love this manual string length calculation, but it works for now.
+            // Should probably upstream this to vapoursynth-zig
+            const index = std.mem.indexOfSentinel(u8, 0, e);
+            outz.setError(e[0..index :0]);
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        d.node_luma = ret.getNode("clip").?;
     }
 
     const data: *Cnr3Data = allocator.create(Cnr3Data) catch unreachable;

@@ -10,11 +10,13 @@ length = 30000
 from vspreview.api import is_preview
 if is_preview():
     output = 'all'
-    # temporal_radius = 0
+    radius = 1
+    tmode = 1
     # format = 'u8'
 
 # Handle strings passed in by vspipe args.
-# temporal_radius = int(temporal_radius)
+radius = int(radius)
+tmode = int(tmode)
 
 match format:
     case 'u8':
@@ -49,7 +51,7 @@ if output in ['cnr2', 'all']:
     cnr2 = clip.cnr2.Cnr2(mode='oxx')
 
 # clip = sc_detect(clip)
-zsmooth = clip.zsmooth.Cnr4(mode='oxx', scenechange=False, tmode=0, radius=2)
+zsmooth = clip.zsmooth.Cnr4(mode='oxx', scenechange=False, tmode=tmode, radius=radius)
 
 match output:
     case 'zsmooth':

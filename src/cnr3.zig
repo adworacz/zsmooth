@@ -284,23 +284,25 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
         }
 
-        // Replace unusable frames with closest appropriate frame
-        // in either direction
+        // Replace unusable frames with center frame. 
+        // Using the center frame instead of frames on either end (start_idx or end_idx)
+        // produces less ghosting artifacts on scene changes in my tests. 
+        // They are still there, but much less offensive.
         for (0..start_idx) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
             // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(src_frames[start_idx].frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(luma_frames[start_idx].frame).?);
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
         }
         for (end_idx + 1..frame_count) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
             // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(src_frames[end_idx].frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(luma_frames[end_idx].frame).?);
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
         }
 
         // Get read slices and setup scratch buffers.

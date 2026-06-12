@@ -88,7 +88,6 @@ fn Cnr3(comptime T: type) type {
             const divisor = @as(BUAT, max) * (radius * 2);
             const round2 = divisor / 2;
 
-            // Calculate past frames
             for (0..opt.height_uv) |y| {
                 for (0..opt.width_uv) |x| {
                     const y_index = y * opt.stride_y + x;
@@ -228,7 +227,6 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
         }
 
-        var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
 
         // Cleanup
         defer for (0..frame_count) |i| src_frames[i].deinit();
@@ -286,26 +284,27 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
         }
 
-        // Replace unusable frames with the current frame so that we always
-        // have a consistent number of frames
+        // Replace unusable frames with closest appropriate frame
+        // in either direction
         for (0..start_idx) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
             // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(src_frames[start_idx].frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(luma_frames[start_idx].frame).?);
         }
         for (end_idx + 1..frame_count) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
             // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(src_frames[end_idx].frame).?);
+            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(luma_frames[end_idx].frame).?);
         }
 
         // Get read slices and setup scratch buffers.
+        var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
         for (0..frame_count) |i| {
             src_planes[i][0] = luma_frames[i].getReadSlice(0);
             src_planes[i][1] = src_frames[i].getReadSlice(1);

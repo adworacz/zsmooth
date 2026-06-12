@@ -2,7 +2,7 @@ import vapoursynth as vs
 
 core = vs.core
 core.max_cache_size = 1024
-core.num_threads = 1
+# core.num_threads = 1
 
 # format = 'u8'
 length = 30000
@@ -49,7 +49,7 @@ if output in ['cnr2', 'all']:
     cnr2 = clip.cnr2.Cnr2(mode='oxx')
 
 # clip = sc_detect(clip)
-zsmooth = clip.zsmooth.Cnr3(mode='oxx', scenechange=False)
+zsmooth = clip.zsmooth.Cnr4(mode='oxx', scenechange=False, tmode=0, radius=2)
 
 match output:
     case 'zsmooth':

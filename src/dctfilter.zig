@@ -8,7 +8,6 @@ const c = @cImport({
 });
 
 const vscmn = @import("common/vapoursynth.zig");
-const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
 const math = @import("common/math.zig");
 
@@ -20,7 +19,6 @@ const vsh = vapoursynth.vshelper;
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
 const fm = vs.FilterMode;
-const st = vs.SampleType;
 
 const allocator = std.heap.c_allocator;
 

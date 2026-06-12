@@ -3,12 +3,7 @@ const vapoursynth = @import("vapoursynth");
 const ZAPI = vapoursynth.ZAPI;
 const testing = @import("std").testing;
 
-const c = @cImport({
-    @cInclude("fftw3.h");
-});
-
 const vscmn = @import("common/vapoursynth.zig");
-const gridcmn = @import("common/array_grid.zig");
 const vec = @import("common/vector.zig");
 const math = @import("common/math.zig");
 const types = @import("common/type.zig");
@@ -16,13 +11,11 @@ const types = @import("common/type.zig");
 const float_mode: std.builtin.FloatMode = if (@import("config").optimize_float) .optimized else .strict;
 
 const vs = vapoursynth.vapoursynth4;
-const vsc = vapoursynth.vsconstants;
 const vsh = vapoursynth.vshelper;
 
 const ar = vs.ActivationReason;
 const rp = vs.RequestPattern;
 const fm = vs.FilterMode;
-const st = vs.SampleType;
 
 const allocator = std.heap.c_allocator;
 
@@ -38,7 +31,7 @@ const TemporalMode = enum {
     inv_diff,
 };
 
-const Cnr3Data = struct {
+const Cnr4Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
     node_luma: ?*vs.Node,
@@ -55,7 +48,7 @@ const Cnr3Data = struct {
     scenechange: bool,
 };
 
-fn Cnr3(comptime T: type) type {
+fn Cnr4(comptime T: type) type {
     const UAT = types.UnsignedArithmeticType(T);
     const BUAT = types.BigUnsignedArithmeticType(T);
 
@@ -247,12 +240,12 @@ fn Cnr3(comptime T: type) type {
     };
 }
 
-fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
+fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, frame_data: ?*?*anyopaque, frame_ctx: ?*vs.FrameContext, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) ?*const vs.Frame {
     // Assign frame_data to nothing to stop compiler complaints
     _ = frame_data;
 
     const zapi = ZAPI.init(vsapi, core, frame_ctx);
-    const d: *Cnr3Data = @ptrCast(@alignCast(instance_data));
+    const d: *Cnr4Data = @ptrCast(@alignCast(instance_data));
 
     if (activation_reason == ar.Initial) {
         var i: i8 = -@as(i8, @intCast(d.radius));
@@ -388,11 +381,11 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         defer if (d.tmode == .cnr2) for (scratch_frames) |f| f.deinit();
 
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
-            .U8 => &Cnr3(u8).processFrame,
-            .U16 => &Cnr3(u16).processFrame,
+            .U8 => &Cnr4(u8).processFrame,
+            .U16 => &Cnr4(u16).processFrame,
             else => unreachable,
-            // .F16 => &Cnr3(f16).processPlane,
-            // .F32 => &Cnr3(f32).processPlane,
+            // .F16 => &Cnr4(f16).processPlane,
+            // .F32 => &Cnr4(f32).processPlane,
         };
 
         processFrame(.{
@@ -428,9 +421,9 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     return null;
 }
 
-export fn cnr3Free(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
+export fn cnr4Free(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
-    const d: *Cnr3Data = @ptrCast(@alignCast(instance_data));
+    const d: *Cnr4Data = @ptrCast(@alignCast(instance_data));
 
     vsapi.?.freeNode.?(d.node);
     vsapi.?.freeNode.?(d.node_luma);
@@ -442,13 +435,13 @@ export fn cnr3Free(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const v
     allocator.destroy(d);
 }
 
-export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
+export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = user_data;
     const zapi = ZAPI.init(vsapi, core, null);
     const inz = zapi.initZMap(in);
     const outz = zapi.initZMap(out);
 
-    var d: Cnr3Data = undefined;
+    var d: Cnr4Data = undefined;
 
     d.node, d.vi = inz.getNodeVi("clip").?;
 
@@ -459,14 +452,14 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         d.vi.format.subSamplingW > 1 or
         d.vi.format.subSamplingH > 1)
     {
-        outz.setError("Cnr3: clip must have constant format and dimensions, and it must be integer YUV420, YUV422, YUV440, or YUV444.");
+        outz.setError("Cnr4: clip must have constant format and dimensions, and it must be integer YUV420, YUV422, YUV440, or YUV444.");
         zapi.freeNode(d.node);
         return;
     }
 
     const mode: []const u8 = if (inz.getData("mode", 0)) |mode| blk: {
         if (mode.len != 3) {
-            outz.setError("Cnr3: mode must have 3 characters");
+            outz.setError("Cnr4: mode must have 3 characters");
             zapi.freeNode(d.node);
             return;
         }
@@ -475,7 +468,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     d.radius = if (inz.getInt(i32, "radius")) |radius| blk: {
         if (radius < 1 or radius > MAX_RADIUS) {
-            outz.setError("Cnr3: radius must be between 1 and 10");
+            outz.setError("Cnr4: radius must be between 1 and 10");
             zapi.freeNode(d.node);
             return;
         }
@@ -485,7 +478,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     d.tmode = if (inz.getInt(i32, "tmode")) |tmode| blk: {
         if (tmode < 0 or tmode > 1) {
-            outz.setError("Cnr3: tmode can only be 0 or 1");
+            outz.setError("Cnr4: tmode can only be 0 or 1");
             zapi.freeNode(d.node);
             return;
         }
@@ -504,7 +497,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     // Sensitivies
     const l_sense: u8 = if (inz.getInt(i32, "l_sense")) |l_sense| blk: {
         if (l_sense < 0 or l_sense > 255) {
-            outz.setError("Cnr3: l_sense must be between 0 and 255");
+            outz.setError("Cnr4: l_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -513,7 +506,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     const u_sense: u8 = if (inz.getInt(i32, "u_sense")) |u_sense| blk: {
         if (u_sense < 0 or u_sense > 255) {
-            outz.setError("Cnr3: u_sense must be between 0 and 255");
+            outz.setError("Cnr4: u_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -522,7 +515,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     const v_sense: u8 = if (inz.getInt(i32, "v_sense")) |v_sense| blk: {
         if (v_sense < 0 or v_sense > 255) {
-            outz.setError("Cnr3: v_sense must be between 0 and 255");
+            outz.setError("Cnr4: v_sense must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -532,7 +525,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     // Strengths
     const l_str: u8 = if (inz.getInt(i32, "l_str")) |l_str| blk: {
         if (l_str < 0 or l_str > 255) {
-            outz.setError("Cnr3: l_str must be between 0 and 255");
+            outz.setError("Cnr4: l_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -541,7 +534,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     const u_str: u8 = if (inz.getInt(i32, "u_str")) |u_str| blk: {
         if (u_str < 0 or u_str > 255) {
-            outz.setError("Cnr3: u_str must be between 0 and 255");
+            outz.setError("Cnr4: u_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -550,7 +543,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     const v_str: u8 = if (inz.getInt(i32, "v_str")) |v_str| blk: {
         if (v_str < 0 or v_str > 255) {
-            outz.setError("Cnr3: v_str must be between 0 and 255");
+            outz.setError("Cnr4: v_str must be between 0 and 255");
             zapi.freeNode(d.node);
             return;
         }
@@ -561,17 +554,17 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     // Might not make any difference, but it doesn't hurt
     const table_size = 256;
     d.table_y = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
-        outz.setError("Cnr3: Unable to allocate memory for internal tables");
+        outz.setError("Cnr4: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;
     };
     d.table_u = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
-        outz.setError("Cnr3: Unable to allocate memory for internal tables");
+        outz.setError("Cnr4: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;
     };
     d.table_v = allocator.alignedAlloc(u8, std.mem.Alignment.fromByteUnits(LUT_ALIGN), table_size) catch {
-        outz.setError("Cnr3: Unable to allocate memory for internal tables");
+        outz.setError("Cnr4: Unable to allocate memory for internal tables");
         zapi.freeNode(d.node);
         return;
     };
@@ -593,7 +586,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
                 'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
                 'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
                 else => {
-                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
                     return;
                 },
@@ -611,7 +604,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
                 'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
                 'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
                 else => {
-                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
                     return;
                 },
@@ -629,7 +622,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
                 'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
                 'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
                 else => {
-                    outz.setError("Cnr3: Only 'o' and 'x' are recognized characters in mode");
+                    outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
                     return;
                 },
@@ -689,7 +682,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         d.node_luma = ret.getNode("clip").?;
     }
 
-    const data: *Cnr3Data = allocator.create(Cnr3Data) catch unreachable;
+    const data: *Cnr4Data = allocator.create(Cnr4Data) catch unreachable;
     data.* = d;
 
     var deps = [_]vs.FilterDependency{
@@ -699,11 +692,11 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         },
     };
 
-    zapi.createVideoFilter(out, "Cnr3", d.vi, cnr3GetFrame, cnr3Free, fm.Parallel, &deps, data);
+    zapi.createVideoFilter(out, "Cnr4", d.vi, cnr4GetFrame, cnr4Free, fm.Parallel, &deps, data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("Cnr3", "clip:vnode;" ++
+    _ = vsapi.registerFunction.?("Cnr4", "clip:vnode;" ++
         "mode:data:opt;" ++
         "tmode:int:opt;" ++
         "radius:int:opt;" ++
@@ -713,5 +706,5 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
         "u_str:int:opt;" ++
         "v_sense:int:opt;" ++
         "v_str:int:opt;" ++
-        "scenechange:int:opt;", "clip:vnode;", cnr3Create, null, plugin);
+        "scenechange:int:opt;", "clip:vnode;", cnr4Create, null, plugin);
 }

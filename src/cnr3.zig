@@ -33,6 +33,11 @@ const MAX_RADIUS = 10;
 const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
 const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
+const TemporalMode = enum {
+    cnr2,
+    inv_diff,
+};
+
 const Cnr3Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
@@ -40,6 +45,7 @@ const Cnr3Data = struct {
 
     vi: *const vs.VideoInfo,
 
+    tmode: TemporalMode,
     radius: u8,
 
     table_y: []align(LUT_ALIGN) u8,
@@ -54,7 +60,7 @@ fn Cnr3(comptime T: type) type {
     const BUAT = types.BigUnsignedArithmeticType(T);
 
     return struct {
-        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        const ProcessOpts = struct {
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -67,7 +73,9 @@ fn Cnr3(comptime T: type) type {
             subsampling_w: u2,
 
             table_idx_shift: u4,
-        }) void {
+        };
+
+        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: ProcessOpts) void {
             const curr_y = curr[0];
             const curr_u = curr[1];
             const curr_v = curr[2];
@@ -107,7 +115,7 @@ fn Cnr3(comptime T: type) type {
                         const table_idx_y: usize = switch (T) {
                             u8 => abs_diff_y,
                             u16 => abs_diff_y >> opt.table_idx_shift,
-                            else => @trunc(@min(abs_diff_y, 1.0) * 255.0), 
+                            else => @trunc(@min(abs_diff_y, 1.0) * 255.0),
                         };
                         const table_idx_u: usize = switch (T) {
                             u8 => abs_diff_u,
@@ -149,7 +157,8 @@ fn Cnr3(comptime T: type) type {
 
         // Use separate dstp pointers so we can use `noalias`,
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
-        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch: [4][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+            tmode: TemporalMode,
             radius: u8,
 
             width_y: usize,
@@ -176,22 +185,63 @@ fn Cnr3(comptime T: type) type {
             const dst_u: []T = @ptrCast(@alignCast(dst8_u));
             const dst_v: []T = @ptrCast(@alignCast(dst8_v));
 
-            switch (opt.radius) {
-                inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, tables, .{
-                    .width_y = opt.width_y,
-                    .height_y = opt.height_y,
-                    .width_uv = opt.width_uv,
-                    .height_uv = opt.height_uv,
+            const opts: ProcessOpts = .{
+                .width_y = opt.width_y,
+                .height_y = opt.height_y,
+                .width_uv = opt.width_uv,
+                .height_uv = opt.height_uv,
 
-                    .stride_y = opt.stride_uv / @sizeOf(T),
-                    .stride_uv = opt.stride_uv / @sizeOf(T),
+                .stride_y = opt.stride_uv / @sizeOf(T),
+                .stride_uv = opt.stride_uv / @sizeOf(T),
 
-                    .subsampling_h = opt.subsampling_h,
-                    .subsampling_w = opt.subsampling_w,
+                .subsampling_h = opt.subsampling_h,
+                .subsampling_w = opt.subsampling_w,
 
-                    .table_idx_shift = opt.table_idx_shift,
-                }),
-                else => unreachable,
+                .table_idx_shift = opt.table_idx_shift,
+            };
+
+            if (opt.tmode == .inv_diff) {
+                // Inverse difference weight
+                switch (opt.radius) {
+                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, tables, opts),
+                    else => unreachable,
+                }
+            } else {
+                //CNR2
+
+                // Create mutable slice so we can swap in filtered frames as we go.
+                const srcs: [][3][]const T = @constCast(src);
+                const left_u: []T = @ptrCast(@alignCast(scratch[0]));
+                const left_v: []T = @ptrCast(@alignCast(scratch[1]));
+                const right_u: []T = @ptrCast(@alignCast(scratch[2]));
+                const right_v: []T = @ptrCast(@alignCast(scratch[3]));
+
+                //Process left frames, overwriting the current frame with the output
+                var i: usize = 1;
+                while (i < opt.radius) : (i += 1) {
+                    processFrameScalar(1, srcs[i], &.{ srcs[i - 1], srcs[i + 1] }, left_u, left_v, tables, opts);
+
+                    srcs[i] = .{
+                        srcs[i][0],
+                        left_u,
+                        left_v,
+                    };
+                }
+
+                //Process right frames, overwriting the current frame with the output
+                i = srcs.len - 2;
+                while (i > opt.radius) : (i -= 1) {
+                    processFrameScalar(1, srcs[i], &.{ srcs[i - 1], srcs[i + 1] }, right_u, right_v, tables, opts);
+
+                    srcs[i] = .{
+                        srcs[i][0],
+                        right_u,
+                        right_v,
+                    };
+                }
+
+                //combine the results for the current frame.
+                processFrameScalar(1, srcs[opt.radius], &.{ srcs[opt.radius - 1], srcs[opt.radius + 1] }, dst_u, dst_v, tables, opts);
             }
         }
     };
@@ -218,15 +268,16 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         {
             var i: i8 = -@as(i8, @intCast(d.radius));
             while (i <= d.radius) : (i += 1) {
-                if (i != 0) {
+                if (d.tmode == .inv_diff and i == 0) {
                     //Grab all frames *except* the current frame, which we retrieve separately later.
-                    src_frames[frame_count] = zapi.initZFrame(d.node, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
-                    luma_frames[frame_count] = zapi.initZFrame(d.node_luma, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
-                    frame_count += 1;
+                    //.cnr2 mode needs all frames
+                    continue;
                 }
+                src_frames[frame_count] = zapi.initZFrame(d.node, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                luma_frames[frame_count] = zapi.initZFrame(d.node_luma, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                frame_count += 1;
             }
         }
-
 
         // Cleanup
         defer for (0..frame_count) |i| src_frames[i].deinit();
@@ -244,6 +295,7 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         var start_idx: usize = 0;
         var end_idx: usize = frame_count - 1;
+
         if (d.scenechange) {
             // Quick check to ensure that the scenechange properties are present.
             const props = src_frames[0].getPropertiesRO();
@@ -256,7 +308,12 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
             // Start in the left (prev) and walk backwards
             {
-                var i = frame_count / 2 - 1;
+                var i = switch (d.tmode) {
+                    .cnr2 => frame_count / 2,
+                    // src_frames doesn't include the curr frame in inv_diff mode,
+                    // so prev frame is one less from the center.
+                    .inv_diff => frame_count / 2 - 1,
+                };
                 while (i > 0) : (i -= 1) {
                     if (src_frames[i].getPropertiesRO().getSceneChangePrev() == true) {
                         start_idx = i;
@@ -276,17 +333,21 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 }
             }
 
-            if (curr.getPropertiesRO().getSceneChangePrev() == true) {
-                start_idx = frame_count / 2;
-            }
-            if (curr.getPropertiesRO().getSceneChangeNext() == true) {
-                end_idx = frame_count / 2 - 1;
+            if (d.tmode == .inv_diff) {
+                // Process current frame separately in inv_diff mode since
+                // the current frame isn't in the src_frames array.
+                if (curr.getPropertiesRO().getSceneChangePrev() == true) {
+                    start_idx = frame_count / 2;
+                }
+                if (curr.getPropertiesRO().getSceneChangeNext() == true) {
+                    end_idx = frame_count / 2 - 1;
+                }
             }
         }
 
-        // Replace unusable frames with center frame. 
+        // Replace unusable frames with center frame.
         // Using the center frame instead of frames on either end (start_idx or end_idx)
-        // produces less ghosting artifacts on scene changes in my tests. 
+        // produces less ghosting artifacts on scene changes in my tests.
         // They are still there, but much less offensive.
         for (0..start_idx) |i| {
             src_frames[i].deinit();
@@ -313,6 +374,19 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             src_planes[i][2] = src_frames[i].getReadSlice(2);
         }
 
+        // Allocate scratch buffers for CNR2 mode to hold temporary frames.
+        var scratch_frames: [4]ZAPI.ZFrame(*vs.Frame) = undefined;
+        var scratch_planes: [4][]u8 = undefined;
+        var grey_format: vs.VideoFormat = undefined;
+        _ = zapi.queryVideoFormat(&grey_format, .Gray, d.vi.format.sampleType, d.vi.format.bitsPerSample, 0, 0);
+        if (d.tmode == .cnr2) {
+            for (0..4) |i| {
+                scratch_frames[i] = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
+                scratch_planes[i] = scratch_frames[i].getWriteSlice(0);
+            }
+        }
+        defer if (d.tmode == .cnr2) for (scratch_frames) |f| f.deinit();
+
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Cnr3(u8).processFrame,
             .U16 => &Cnr3(u16).processFrame,
@@ -325,11 +399,12 @@ fn cnr3GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             curr_luma.getReadSlice(0),
             curr.getReadSlice(1),
             curr.getReadSlice(2),
-        }, src_planes[0..frame_count], dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+        }, src_planes[0..frame_count], dst.getWriteSlice(1), dst.getWriteSlice(2), scratch_planes, .{
             d.table_y,
             d.table_u,
             d.table_v,
         }, .{
+            .tmode = d.tmode,
             .radius = d.radius,
 
             .width_y = curr.getWidth(0),
@@ -407,6 +482,22 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
         break :blk @intCast(radius);
     } else 1;
+
+    d.tmode = if (inz.getInt(i32, "tmode")) |tmode| blk: {
+        if (tmode < 0 or tmode > 1) {
+            outz.setError("Cnr3: tmode can only be 0 or 1");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk @enumFromInt(tmode);
+    } else .inv_diff;
+
+    // The effect is identical between temporal modes
+    // if the radius is 1, so just force it to the faster one.
+    if (d.radius == 1) {
+        d.tmode = .inv_diff;
+    }
 
     d.scenechange = inz.getBool("scenechange") orelse true;
 
@@ -614,6 +705,7 @@ export fn cnr3Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr3", "clip:vnode;" ++
         "mode:data:opt;" ++
+        "tmode:int:opt;" ++
         "radius:int:opt;" ++
         "l_sense:int:opt;" ++
         "l_str:int:opt;" ++

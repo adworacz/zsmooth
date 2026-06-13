@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.17.0
+* TBD
+
 ## 0.16.0
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency
 on any OS. And interestingly, it's also *faster* than the original plugin, by ~20% in my tests. Also supports f16

@@ -34,7 +34,9 @@ const TemporalMode = enum {
 const Cnr4Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
+    node_ref: ?*vs.Node,
     node_luma: ?*vs.Node,
+    node_ref_luma: ?*vs.Node,
 
     vi: *const vs.VideoInfo,
 
@@ -68,10 +70,13 @@ fn Cnr4(comptime T: type) type {
             table_idx_shift: u4,
         };
 
-        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, src: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: ProcessOpts) void {
-            const curr_y = curr[0];
+        fn processFrameScalar(radius: comptime_int, curr: [3][]const T, curr_ref: [3][]const T, src: []const [3][]const T, ref: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: ProcessOpts) void {
             const curr_u = curr[1];
             const curr_v = curr[2];
+
+            const curr_ref_y = curr_ref[0];
+            const curr_ref_u = curr_ref[1];
+            const curr_ref_v = curr_ref[2];
 
             const table_y = tables[0];
             const table_u = tables[1];
@@ -95,14 +100,17 @@ fn Cnr4(comptime T: type) type {
                     const y_index = y * opt.stride_y + x;
                     const uv_index = y * opt.stride_uv + x;
 
-                    for (0..radius * 2, src) |i, other| {
-                        const other_y = other[0];
+                    for (0..radius * 2, src, ref) |i, other, other_ref| {
                         const other_u = other[1];
                         const other_v = other[2];
 
-                        const abs_diff_y = math.absDiff(curr_y[y_index], other_y[y_index]);
-                        const abs_diff_u = math.absDiff(curr_u[uv_index], other_u[uv_index]);
-                        const abs_diff_v = math.absDiff(curr_v[uv_index], other_v[uv_index]);
+                        const other_ref_y = other_ref[0];
+                        const other_ref_u = other_ref[1];
+                        const other_ref_v = other_ref[2];
+
+                        const abs_diff_y = math.absDiff(curr_ref_y[y_index], other_ref_y[y_index]);
+                        const abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
+                        const abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
 
                         const table_idx_y: usize = switch (T) {
                             u8 => abs_diff_y,
@@ -150,7 +158,7 @@ fn Cnr4(comptime T: type) type {
 
         // Use separate dstp pointers so we can use `noalias`,
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
-        fn processFrame(curr8: [3][]const u8, src8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch: [4][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
+        fn processFrame(curr8: [3][]const u8, curr_ref8: [3][]const u8, src8: []const [3][]const u8, ref8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch: [4][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             tmode: TemporalMode,
             radius: u8,
 
@@ -173,7 +181,14 @@ fn Cnr4(comptime T: type) type {
                 @ptrCast(@alignCast(curr8[2])),
             };
 
+            const curr_ref: [3][]const T = .{
+                @ptrCast(@alignCast(curr_ref8[0])),
+                @ptrCast(@alignCast(curr_ref8[1])),
+                @ptrCast(@alignCast(curr_ref8[2])),
+            };
+
             const src: []const [3][]const T = @ptrCast(@alignCast(src8));
+            const ref: []const [3][]const T = @ptrCast(@alignCast(ref8));
 
             const dst_u: []T = @ptrCast(@alignCast(dst8_u));
             const dst_v: []T = @ptrCast(@alignCast(dst8_v));
@@ -196,7 +211,7 @@ fn Cnr4(comptime T: type) type {
             if (opt.tmode == .inv_diff) {
                 // Inverse difference weight
                 switch (opt.radius) {
-                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, src, dst_u, dst_v, tables, opts),
+                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, src, ref, dst_u, dst_v, tables, opts),
                     else => unreachable,
                 }
             } else {
@@ -204,6 +219,7 @@ fn Cnr4(comptime T: type) type {
 
                 // Create mutable slice so we can swap in filtered frames as we go.
                 const srcs: [][3][]const T = @constCast(src);
+                const refs: [][3][]const T = @constCast(ref);
                 const left_u: []T = @ptrCast(@alignCast(scratch[0]));
                 const left_v: []T = @ptrCast(@alignCast(scratch[1]));
                 const right_u: []T = @ptrCast(@alignCast(scratch[2]));
@@ -212,10 +228,15 @@ fn Cnr4(comptime T: type) type {
                 //Process left frames, overwriting the current frame with the output
                 var i: usize = 1;
                 while (i < opt.radius) : (i += 1) {
-                    processFrameScalar(1, srcs[i], &.{ srcs[i - 1], srcs[i + 1] }, left_u, left_v, tables, opts);
+                    processFrameScalar(1, srcs[i], refs[i], &.{ srcs[i - 1], srcs[i + 1] }, &.{ refs[i - 1], refs[i + 1] }, left_u, left_v, tables, opts);
 
                     srcs[i] = .{
                         srcs[i][0],
+                        left_u,
+                        left_v,
+                    };
+                    refs[i] = .{
+                        refs[i][0],
                         left_u,
                         left_v,
                     };
@@ -224,17 +245,22 @@ fn Cnr4(comptime T: type) type {
                 //Process right frames, overwriting the current frame with the output
                 i = srcs.len - 2;
                 while (i > opt.radius) : (i -= 1) {
-                    processFrameScalar(1, srcs[i], &.{ srcs[i - 1], srcs[i + 1] }, right_u, right_v, tables, opts);
+                    processFrameScalar(1, srcs[i], refs[i], &.{ srcs[i - 1], srcs[i + 1] }, &.{ refs[i - 1], refs[i + 1] }, right_u, right_v, tables, opts);
 
                     srcs[i] = .{
                         srcs[i][0],
                         right_u,
                         right_v,
                     };
+                    refs[i] = .{
+                        refs[i][0],
+                        right_u,
+                        right_v,
+                    };
                 }
 
                 //combine the results for the current frame.
-                processFrameScalar(1, srcs[opt.radius], &.{ srcs[opt.radius - 1], srcs[opt.radius + 1] }, dst_u, dst_v, tables, opts);
+                processFrameScalar(1, srcs[opt.radius], refs[opt.radius], &.{ srcs[opt.radius - 1], srcs[opt.radius + 1] }, &.{ refs[opt.radius - 1], refs[opt.radius + 1] }, dst_u, dst_v, tables, opts);
             }
         }
     };
@@ -252,10 +278,16 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         while (i <= d.radius) : (i += 1) {
             zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node);
             zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node_luma);
+            if (d.node_ref) |_| {
+                zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node_ref);
+                zapi.requestFrameFilter(std.math.clamp(n + i, 0, d.vi.numFrames - 1), d.node_ref_luma);
+            }
         }
     } else if (activation_reason == ar.AllFramesReady) {
         var src_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
         var luma_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var ref_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+        var ref_luma_frames: [MAX_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
         var frame_count: u8 = 0;
 
         {
@@ -268,18 +300,33 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 }
                 src_frames[frame_count] = zapi.initZFrame(d.node, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
                 luma_frames[frame_count] = zapi.initZFrame(d.node_luma, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                if (d.node_ref) |_| {
+                    ref_frames[frame_count] = zapi.initZFrame(d.node_ref, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                    ref_luma_frames[frame_count] = zapi.initZFrame(d.node_ref_luma, std.math.clamp(n + i, 0, d.vi.numFrames - 1));
+                }
                 frame_count += 1;
             }
         }
 
         // Cleanup
-        defer for (0..frame_count) |i| src_frames[i].deinit();
-        defer for (0..frame_count) |i| luma_frames[i].deinit();
+        defer for (0..frame_count) |i| {
+            src_frames[i].deinit();
+            luma_frames[i].deinit();
+            if (d.node_ref) |_| {
+                ref_frames[i].deinit();
+                ref_luma_frames[i].deinit();
+            }
+        };
 
         const curr = zapi.initZFrame(d.node, n);
         const curr_luma = zapi.initZFrame(d.node_luma, n);
         defer curr.deinit();
         defer curr_luma.deinit();
+
+        const curr_ref = if (d.node_ref) |_| zapi.initZFrame(d.node_ref, n) else curr.addFrameRef();
+        const curr_ref_luma = if (d.node_ref) |_| zapi.initZFrame(d.node_ref_luma, n) else curr_luma.addFrameRef();
+        defer curr_ref.deinit();
+        defer curr_ref_luma.deinit();
 
         // copy the luma plane only
         const dst = curr.newVideoFrame2(.{ false, true, true });
@@ -345,24 +392,36 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         for (0..start_idx) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
+            ref_frames[i].deinit();
+            ref_luma_frames[i].deinit();
 
             src_frames[i] = curr.addFrameRef();
             luma_frames[i] = curr_luma.addFrameRef();
+            ref_frames[i] = curr_ref.addFrameRef();
+            ref_luma_frames[i] = curr_ref_luma.addFrameRef();
         }
         for (end_idx + 1..frame_count) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
+            ref_frames[i].deinit();
+            ref_luma_frames[i].deinit();
 
             src_frames[i] = curr.addFrameRef();
             luma_frames[i] = curr_luma.addFrameRef();
+            ref_frames[i] = curr_ref.addFrameRef();
+            ref_luma_frames[i] = curr_ref_luma.addFrameRef();
         }
 
         // Get read slices and setup scratch buffers.
         var src_planes: [MAX_DIAMETER][3][]const u8 = undefined;
+        var ref_planes: [MAX_DIAMETER][3][]const u8 = undefined;
         for (0..frame_count) |i| {
             src_planes[i][0] = luma_frames[i].getReadSlice(0);
             src_planes[i][1] = src_frames[i].getReadSlice(1);
             src_planes[i][2] = src_frames[i].getReadSlice(2);
+            ref_planes[i][0] = if (d.node_ref) |_| ref_luma_frames[i].getReadSlice(0) else luma_frames[i].getReadSlice(0);
+            ref_planes[i][1] = if (d.node_ref) |_| ref_frames[i].getReadSlice(1) else src_frames[i].getReadSlice(1);
+            ref_planes[i][2] = if (d.node_ref) |_| ref_frames[i].getReadSlice(2) else src_frames[i].getReadSlice(2);
         }
 
         // Allocate scratch buffers for CNR2 mode to hold temporary frames.
@@ -390,7 +449,11 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             curr_luma.getReadSlice(0),
             curr.getReadSlice(1),
             curr.getReadSlice(2),
-        }, src_planes[0..frame_count], dst.getWriteSlice(1), dst.getWriteSlice(2), scratch_planes, .{
+        }, .{
+            if (d.node_ref) |_| curr_ref_luma.getReadSlice(0) else curr_luma.getReadSlice(0),
+            if (d.node_ref) |_| curr_ref.getReadSlice(1) else curr.getReadSlice(1),
+            if (d.node_ref) |_| curr_ref.getReadSlice(2) else curr.getReadSlice(2),
+        }, src_planes[0..frame_count], ref_planes[0..frame_count], dst.getWriteSlice(1), dst.getWriteSlice(2), scratch_planes, .{
             d.table_y,
             d.table_u,
             d.table_v,
@@ -425,6 +488,8 @@ export fn cnr4Free(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const v
 
     vsapi.?.freeNode.?(d.node);
     vsapi.?.freeNode.?(d.node_luma);
+    vsapi.?.freeNode.?(d.node_ref);
+    vsapi.?.freeNode.?(d.node_ref_luma);
 
     allocator.free(d.table_y);
     allocator.free(d.table_u);
@@ -628,56 +693,89 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         }
     }
 
+    d.node_ref = null;
+    d.node_ref_luma = null;
+    if (inz.getNodeVi2("ref")) |refvi| {
+        if (!vsh.isSameVideoInfo(d.vi, refvi.vi)) {
+            outz.setError("Cnr4: ref must be the same video format, width, and height as the source clip");
+            zapi.freeNode(d.node);
+            return;
+        }
+        d.node_ref = refvi.node;
+    }
+
     // Call bilinear resize to handle the luma downscaling.
     const needs_resize = d.vi.format.subSamplingW > 0 or d.vi.format.subSamplingH > 0;
 
     // Extract luma plane
     {
-        const args = zapi.createZMap();
-        defer args.free();
+        const NodePair = struct { node: ?*vs.Node, luma: *?*vs.Node };
+        for ([_]NodePair{
+            .{ .node = d.node, .luma = &d.node_luma },
+            .{ .node = d.node_ref, .luma = &d.node_ref_luma },
+        }) |n| {
+            if (n.node == null) {
+                // ref is optional, so skip it if its not set.
+                continue;
+            }
 
-        _ = args.setNode("clips", d.node, .Append);
-        args.setInt("planes", 0, .Append);
-        args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.Gray), .Append);
+            const args = zapi.createZMap();
+            defer args.free();
 
-        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "ShufflePlanes", args.map));
-        defer ret.free();
+            _ = args.setNode("clips", n.node, .Append);
+            args.setInt("planes", 0, .Append);
+            args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.Gray), .Append);
 
-        if (ret.getError()) |e| {
-            // Don't love this manual string length calculation, but it works for now.
-            // Should probably upstream this to vapoursynth-zig
-            const index = std.mem.indexOfSentinel(u8, 0, e);
-            outz.setError(e[0..index :0]);
-            zapi.freeNode(d.node);
-            return;
+            const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "ShufflePlanes", args.map));
+            defer ret.free();
+
+            if (ret.getError()) |e| {
+                // Don't love this manual string length calculation, but it works for now.
+                // Should probably upstream this to vapoursynth-zig
+                const index = std.mem.indexOfSentinel(u8, 0, e);
+                outz.setError(e[0..index :0]);
+                zapi.freeNode(n.node);
+                return;
+            }
+
+            n.luma.* = ret.getNode("clip").?;
         }
-
-        d.node_luma = ret.getNode("clip").?;
     }
+
 
     // Resize the luma
     if (needs_resize) {
-        const args = zapi.createZMap();
-        defer args.free();
+        for ([_]*?*vs.Node{
+            &d.node_luma,
+            &d.node_ref_luma,
+        }) |n| {
+            if (n.* == null) {
+                // ref is optional, so skip it if its not set.
+                continue;
+            }
 
-        _ = args.consumeNode("clip", d.node_luma, .Append);
-        args.setInt("width", d.vi.width >> @intCast(d.vi.format.subSamplingW), .Append);
-        args.setInt("height", d.vi.height >> @intCast(d.vi.format.subSamplingH), .Append);
-        //TODO: Add chroma location support for sub-pixel accuracy.
+            const args = zapi.createZMap();
+            defer args.free();
 
-        const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Bilinear", args.map));
-        defer ret.free();
+            _ = args.consumeNode("clip", n.*, .Append);
+            args.setInt("width", d.vi.width >> @intCast(d.vi.format.subSamplingW), .Append);
+            args.setInt("height", d.vi.height >> @intCast(d.vi.format.subSamplingH), .Append);
+            //TODO: Add chroma location support for sub-pixel accuracy.
 
-        if (ret.getError()) |e| {
-            // Don't love this manual string length calculation, but it works for now.
-            // Should probably upstream this to vapoursynth-zig
-            const index = std.mem.indexOfSentinel(u8, 0, e);
-            outz.setError(e[0..index :0]);
-            zapi.freeNode(d.node);
-            return;
+            const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Bilinear", args.map));
+            defer ret.free();
+
+            if (ret.getError()) |e| {
+                // Don't love this manual string length calculation, but it works for now.
+                // Should probably upstream this to vapoursynth-zig
+                const index = std.mem.indexOfSentinel(u8, 0, e);
+                outz.setError(e[0..index :0]);
+                zapi.freeNode(n.*);
+                return;
+            }
+
+            n.* = ret.getNode("clip").?;
         }
-
-        d.node_luma = ret.getNode("clip").?;
     }
 
     const data: *Cnr4Data = allocator.create(Cnr4Data) catch unreachable;
@@ -704,5 +802,6 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
         "u_str:int:opt;" ++
         "v_sense:int:opt;" ++
         "v_str:int:opt;" ++
-        "scenechange:int:opt;", "clip:vnode;", cnr4Create, null, plugin);
+        "scenechange:int:opt;" ++
+        "ref:vnode:opt;", "clip:vnode;", cnr4Create, null, plugin);
 }

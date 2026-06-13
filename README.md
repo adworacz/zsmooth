@@ -33,6 +33,7 @@ See [Benchmarks](BENCHMARKS.md)
   * [CCD](#ccd)
   * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
   * [Cnr4](#cnr4)
+  * [DCTFilter](#dctfilter)
   * [DegrainMedian](#degrainmedian)
   * [FluxSmooth(S|ST)](#fluxsmoothsst)
   * [InterQuartileMean](#interquartilemean)
@@ -222,6 +223,22 @@ lockstep.
 
 Also, play around the `tmode`. Sometimes *increasing* `radius` can actually *reduce* artifacts for a given mode,
 particularly `tmode=1`.
+
+### DCTFilter
+For each 8x8 block, DCTFilter will do a Discrete Cosine Transform (DCT), scale down the selected frequency values, 
+and then reverse the process with an Inverse Discrete Cosine Transform (IDCT).
+
+This implementation statically links fftw3 on all platforms, so no external libraries are required.
+
+```py
+core.zsmooth.DCTFilter(vnode clip, float[] factors[, int[] planes=[0, 1, 2]])
+```
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, 16-32 bit float, all formats | | Clip to process |
+| factors | float[] | A list of 8 floating point numbers, all of which must be specified as in the range (0.0 <= x <= 1.0). These correspond to scaling factors for the 8 rows and columns of the 8x8 DCT blocks. The leftmost number corresponds to the top row, left column. This would be the DC component of the transform and should always be left as 1.0. The row & column numbers are multiplied together to get the scale factor for each of the 64 values in a block. | 
+| planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
 
 ### DegrainMedian
 DegrainMedian is a spatio-temporal limited median denoiser. It uses various methods to replace every pixel with one

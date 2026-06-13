@@ -4,6 +4,7 @@
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency
 on any OS. And interestingly, it's also *faster* than the original plugin, by ~20% in my tests. Also supports f16
 (half float) formats.
+* Add Cnr4 - inspired by Cnr2, but with a large number of enhancements in speed, quality, and behavior.
 
 ## 0.15.5
 * Build wheels with *.avx2 and *.zn4 suffixes to match Vapoursynth r75 behavior. This changes from r74's "v2/v3/v4"

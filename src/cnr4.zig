@@ -77,9 +77,10 @@ fn Cnr4(comptime T: type) type {
             const table_u = tables[1];
             const table_v = tables[2];
 
-            var results_u: [MAX_DIAMETER]UAT = @splat(0);
-            var results_v: [MAX_DIAMETER]UAT = @splat(0);
-            var abs_diffs: [MAX_DIAMETER]UAT = @splat(0);
+            var results_u: [radius * 2]UAT = @splat(0);
+            var results_v: [radius * 2]UAT = @splat(0);
+            var abs_diffs_yu: [radius * 2]UAT = @splat(0);
+            var abs_diffs_yv: [radius * 2]UAT = @splat(0);
 
             // Constants for pixel combinations using shifts or divides.
             const shift = @typeInfo(UAT).int.bits;
@@ -102,8 +103,6 @@ fn Cnr4(comptime T: type) type {
                         const abs_diff_y = math.absDiff(curr_y[y_index], other_y[y_index]);
                         const abs_diff_u = math.absDiff(curr_u[uv_index], other_u[uv_index]);
                         const abs_diff_v = math.absDiff(curr_v[uv_index], other_v[uv_index]);
-
-                        const abs_diff = @as(UAT, abs_diff_y) + abs_diff_u + abs_diff_v;
 
                         const table_idx_y: usize = switch (T) {
                             u8 => abs_diff_y,
@@ -129,7 +128,8 @@ fn Cnr4(comptime T: type) type {
 
                         results_u[i] = @intCast(result_u);
                         results_v[i] = @intCast(result_v);
-                        abs_diffs[i] = abs_diff;
+                        abs_diffs_yu[i] = @as(UAT, abs_diff_y) + abs_diff_u;
+                        abs_diffs_yv[i] = @as(UAT, abs_diff_y) + abs_diff_v;
                     }
 
                     // Inverse weight the results so that results derived
@@ -138,8 +138,8 @@ fn Cnr4(comptime T: type) type {
                     var result_v: BUAT = 0;
 
                     for (0..radius * 2) |i| {
-                        result_u += (max - abs_diffs[i]) * results_u[i];
-                        result_v += (max - abs_diffs[i]) * results_v[i];
+                        result_u += (max - abs_diffs_yu[i]) * results_u[i];
+                        result_v += (max - abs_diffs_yv[i]) * results_v[i];
                     }
 
                     dst_u[uv_index] = @intCast((result_u + round2) / divisor);

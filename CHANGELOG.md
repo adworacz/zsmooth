@@ -1,7 +1,8 @@
 # Changelog
 
 ## 0.17.0
-* TBD
+* Cnr4: Adjust absolute difference influence so that each channel is handled separately. This prevents large differences
+in one channel negatively impacting the denoising results in a different channel.
 
 ## 0.16.0
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency

@@ -346,17 +346,15 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
-            // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+            src_frames[i] = curr.addFrameRef();
+            luma_frames[i] = curr_luma.addFrameRef();
         }
         for (end_idx + 1..frame_count) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
 
-            // TODO: Use better API once https://github.com/dnjulek/vapoursynth-zig/pull/14 is accepted.
-            src_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr.frame).?);
-            luma_frames[i] = ZAPI.ZFrame(*const vs.Frame).init(&zapi, zapi.addFrameRef(curr_luma.frame).?);
+            src_frames[i] = curr.addFrameRef();
+            luma_frames[i] = curr_luma.addFrameRef();
         }
 
         // Get read slices and setup scratch buffers.

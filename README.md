@@ -32,6 +32,7 @@ See [Benchmarks](BENCHMARKS.md)
 * [Function Documentation](#function-documentation)
   * [CCD](#ccd)
   * [Clense / ForwardClense / BackwardClense](#clense--forwardclense--backwardclense)
+  * [Cnr4](#cnr4)
   * [DegrainMedian](#degrainmedian)
   * [FluxSmooth(S|ST)](#fluxsmoothsst)
   * [InterQuartileMean](#interquartilemean)
@@ -145,6 +146,82 @@ core.zsmooth.BackwardClense(clip clip,[ int[] planes])
 | previous | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | (main clip) | Optional alternate clip from which to retrieve previous frames |
 | next | 8-16 bit integer, 16-32 bit float, RGB, YUV, GRAY | (main clip) | Optional alternate clip from which to retrieve next frames |
 | planes | int[] | ([0, 1, 2]) | Which planes to process. Any unfiltered planes are copied from the input clip. |
+
+### Cnr4
+Cnr4 is a temporal chroma denoiser, inspired by the original [Cnr2](http://avisynth.nl/index.php/Cnr2).
+
+It is particularly effective against stationary rainbows or huge analog chroma activity (like VHS).
+
+```py
+core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int tmode = 1, int radius = 1, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, bool scenechange = True])
+```
+
+Cnr4 currently supports 8-16 bit integer YUV clips, with float support planned.
+
+While Cnr4 is inspired by Cnr2, it provides several key improvements over the original:
+
+1. Multithreading friendly (the original Cnr2 was limited to serial processing).
+2. Roughly 2x faster single-threaded and 10x faster multithreaded.
+2. Better denoising quality due to the use of past and future frames. Cnr2 only used past frames.
+3. Significantly reduced ghosting compared.
+4. Adjustable temporal radius.
+5. Configurable temporal modes.
+
+#### Modes
+Cnr4 implements two modes (configurable using the `tmode` parameter) - "Cnr2" and "Inverse Difference Weight".
+
+Note that mode differences only appear for radius > 1. 
+
+##### Cnr2 mode
+Cnr2 mode is inspired by (surprise) Cnr2's original processing behavior. In the original Cnr2 would filter a frame,
+and then feed that filtered frame into the calculations for the subsequent frame. While effective, this caused the
+terrible multithreading performance because said behavior requires serial processing of frames. The mode implemented
+in this filter takes a different approach - frames on either side of the current frame are themselves filtered before 
+feeding said results back into the filtering of the current frame. In other words, the current frame is filtered based
+on the filtered results of the adjacent frames.
+
+Cnr2 mode actually runs inverse difference weight mode under the hood in order to produce the filtered results for the
+adjacent frames, and for combining said results into the current frame.
+
+##### Inverse Difference Weight mode
+Inverse difference weight mode operates by calculating the differences between the current frame and an adjacent frame.
+The greater the difference, the lower the weight of the adjacent frame in the final pixel calculation. This alone
+leads to a substantial increase in denoising performance and reduced ghosting when compared to the original Cnr2.
+
+| Parameter | Type | Options (Default) | Description |
+| --- | --- | --- | --- |
+| clip | 8-16 bit integer, YUV | | Clip to process |
+| mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective.|
+| tmode | int | 1 | tmode = 0 is Cnr2 mode, tmode = 1 is inverse difference mode. Only takes effect for `radius > 1`. See above for explanations. Neither is strictly better than the other. `tmode=0` can produce sharper chroma, while `tmode=1` can produce more temporally stable results and less artifacts at right radii. They handle different types of noise and can produce (or prevent) different artifacts. Try both on your source and pick whichever suits best. |
+| radius | int | 1 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
+| l_sense, u_sense, v_sense | int | (35, 47, 47) | Noise / motion sensitivity threshold. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
+| l_str, u_str, v_str | int | (192, 255, 255) | Denoising strength. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `*_sense` values. |
+| scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
+
+#### Cnr2 porting guide
+For those looking to upgrade from Cnr2, here's a rough approximation of equivalent settings.
+
+```py
+clip.cnr2.Cnr2(mode="oxx", scdthr=10.0, ln=35, lm=192, un=47, um=255, vn=47, vm=255)
+from vstools import sc_detect
+sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=0, radius=2, l_sense=35, l_str=192, u_sense=47, u_str=255, v_sense=47, v_str=255)
+```
+
+#### Tuning tips
+The defaults of Cnr4 are quite aggressive. The original plugin was designed to work with noisy sources and 
+the defaults show that. 
+
+When tuning parameters, it can be helpful to leave the `*_str` at default and tune `*_sense` parameters based on your
+noise patterns. You can likely lower `*_sense` until just before your noise coming back. Then try lowering `*_str` 
+values until your noise comes back and then raise up a bit.
+
+Noteably, the `*_sense` and `*_str` parameters are inter-related. While you can lower `*_sense`, you'll eventually 
+start to see artifacts that appear unless you correspondingly lower `*_str`. It may even be helpful to lower (divide)
+the `*_sense` and `*_str` variables by a shared constant, so you reduce motion sensitivity and denoising strength in
+lockstep.
+
+Also, play around the `tmode`. Sometimes *increasing* `radius` can actually *reduce* artifacts for a given mode,
+particularly `tmode=1`.
 
 ### DegrainMedian
 DegrainMedian is a spatio-temporal limited median denoiser. It uses various methods to replace every pixel with one

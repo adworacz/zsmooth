@@ -12,7 +12,6 @@ behavior. See https://github.com/vapoursynth/vapoursynth/blob/7c014a375dad60c9f4
 for refrence.
 * Upped VS dependency to r75 in pyproject.toml, for the above reason
 
-
 ## 0.15.4
 * Actually force (non-PyPi) builds to target Glibc 2.17 ABI compatibility
 * Prevent any non-library files from ending up in PyPi wheels. Windows wheels had extra *.lib files in them previously.

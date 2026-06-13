@@ -6,7 +6,7 @@ rm -rf zig-out build
 mkdir build
 
 # Build all platforms in parallel
-zig build release --release=fast
+zig build release -Doptimize=ReleaseFast
 
 # Windows
 zip -9 -j build/zsmooth-x86_64-windows.zip zig-out/x86_64-windows-haswell/zsmooth.dll

@@ -260,7 +260,25 @@ fn Cnr4(comptime T: type) type {
                 }
 
                 //combine the results for the current frame.
-                processFrameScalar(1, srcs[opt.radius], refs[opt.radius], &.{ srcs[opt.radius - 1], srcs[opt.radius + 1] }, &.{ refs[opt.radius - 1], refs[opt.radius + 1] }, dst_u, dst_v, tables, opts);
+                var tmp_srcs: [MAX_RADIUS * 2][3][]const T = undefined;
+                var tmp_refs: [MAX_RADIUS * 2][3][]const T = undefined;
+                var count: usize = 0;
+                for (0..opt.radius) |j| {
+                    // past frames
+                    tmp_srcs[count] = srcs[j];
+                    tmp_refs[count] = refs[j];
+
+                    //future frames
+                    tmp_srcs[opt.radius * 2 - 1 - count] = srcs[srcs.len - 1 - j];
+                    tmp_refs[opt.radius * 2 - 1 - count] = refs[refs.len - 1 - j];
+
+                    count += 1;
+                }
+
+                switch (opt.radius) {
+                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, tmp_srcs[0 .. opt.radius * 2], tmp_refs[0 .. opt.radius * 2], dst_u, dst_v, tables, opts),
+                    else => unreachable,
+                }
             }
         }
     };
@@ -741,7 +759,6 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
             n.luma.* = ret.getNode("clip").?;
         }
     }
-
 
     // Resize the luma
     if (needs_resize) {

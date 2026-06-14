@@ -225,35 +225,32 @@ fn Cnr4(comptime T: type) type {
                 const right_u: []T = @ptrCast(@alignCast(scratch[2]));
                 const right_v: []T = @ptrCast(@alignCast(scratch[3]));
 
-                //Process left frames, overwriting the current frame with the output
-                var i: usize = 1;
-                while (i < opt.radius) : (i += 1) {
-                    processFrameScalar(1, srcs[i], refs[i], &.{ srcs[i - 1], srcs[i + 1] }, &.{ refs[i - 1], refs[i + 1] }, left_u, left_v, tables, opts);
+                for (1..opt.radius) |i| {
+                    const l_idx = i;
+                    const r_idx = srcs.len - 1 - i;
 
-                    srcs[i] = .{
-                        srcs[i][0],
+                    // Left frames
+                    processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
+                    srcs[l_idx] = .{
+                        srcs[l_idx][0],
                         left_u,
                         left_v,
                     };
-                    refs[i] = .{
-                        refs[i][0],
+                    refs[l_idx] = .{
+                        refs[l_idx][0],
                         left_u,
                         left_v,
                     };
-                }
 
-                //Process right frames, overwriting the current frame with the output
-                i = srcs.len - 2;
-                while (i > opt.radius) : (i -= 1) {
-                    processFrameScalar(1, srcs[i], refs[i], &.{ srcs[i - 1], srcs[i + 1] }, &.{ refs[i - 1], refs[i + 1] }, right_u, right_v, tables, opts);
-
-                    srcs[i] = .{
-                        srcs[i][0],
+                    // Right frames
+                    processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
+                    srcs[r_idx] = .{
+                        srcs[r_idx][0],
                         right_u,
                         right_v,
                     };
-                    refs[i] = .{
-                        refs[i][0],
+                    refs[r_idx] = .{
+                        refs[r_idx][0],
                         right_u,
                         right_v,
                     };

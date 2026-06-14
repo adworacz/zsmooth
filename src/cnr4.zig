@@ -161,28 +161,30 @@ fn Cnr4(comptime T: type) type {
                         const other_ref_u = other_ref[1];
                         const other_ref_v = other_ref[2];
 
-                        var abs_diff_y = math.absDiff(curr_ref_y[y_index], other_ref_y[y_index]);
-                        var abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
-                        var abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
+                        const abs_diff_y = math.absDiff(curr_ref_y[y_index], other_ref_y[y_index]);
+                        const abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
+                        const abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
 
-                        abs_diff_y = @intCast(@min(@as(UAT, abs_diff_y) * aweight, 255));
-                        abs_diff_u = @intCast(@min(@as(UAT, abs_diff_u) * aweight, 255));
-                        abs_diff_v = @intCast(@min(@as(UAT, abs_diff_v) * aweight, 255));
+                        // Increase the weight of temporally distant neighbors
+                        // Avoids artifacts and increases detail retention, with some denoising reduction.
+                        const weighted_abs_diff_y: T = @intCast(@min(@as(UAT, abs_diff_y) * aweight, 255));
+                        const weighted_abs_diff_u: T = @intCast(@min(@as(UAT, abs_diff_u) * aweight, 255));
+                        const weighted_abs_diff_v: T = @intCast(@min(@as(UAT, abs_diff_v) * aweight, 255));
 
                         const table_idx_y: usize = switch (T) {
-                            u8 => abs_diff_y,
-                            u16 => abs_diff_y >> opt.table_idx_shift,
-                            else => @trunc(@min(abs_diff_y, 1.0) * 255.0),
+                            u8 => weighted_abs_diff_y,
+                            u16 => weighted_abs_diff_y >> opt.table_idx_shift,
+                            else => @trunc(@min(weighted_abs_diff_y, 1.0) * 255.0),
                         };
                         const table_idx_u: usize = switch (T) {
-                            u8 => abs_diff_u,
-                            u16 => abs_diff_u >> opt.table_idx_shift,
-                            else => @trunc(@min(abs_diff_u, 1.0) * 255.0),
+                            u8 => weighted_abs_diff_u,
+                            u16 => weighted_abs_diff_u >> opt.table_idx_shift,
+                            else => @trunc(@min(weighted_abs_diff_u, 1.0) * 255.0),
                         };
                         const table_idx_v: usize = switch (T) {
-                            u8 => abs_diff_v,
-                            u16 => abs_diff_v >> opt.table_idx_shift,
-                            else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
+                            u8 => weighted_abs_diff_v,
+                            u16 => weighted_abs_diff_v >> opt.table_idx_shift,
+                            else => @trunc(@min(weighted_abs_diff_v, 1.0) * 255.0),
                         };
 
                         var weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;

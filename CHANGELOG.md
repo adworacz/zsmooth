@@ -3,6 +3,12 @@
 ## 0.17.0
 * Cnr4: Adjust absolute difference influence so that each channel is handled separately. This prevents large differences
 in one channel negatively impacting the denoising results in a different channel.
+* Cnr4: Add ref clip support.
+* Cnr4: Adjusted Cnr2 mode so that it incorporates all available frames when calculating the current frame. This results
+in a more temporally stable output, and honestly is what I should have done originally.
+* Cnr4: Add `wmode` parameter support, which allows for incorporating temporal distance into weight calculations. The further 
+away a frame is, the less impact it has on the final result. This allows for greater detail retention at the cost of
+lesser denoising.
 
 ## 0.16.0
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency

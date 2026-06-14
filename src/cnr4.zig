@@ -31,6 +31,23 @@ const TemporalMode = enum {
     inv_diff,
 };
 
+const WeightMode = enum {
+    normal,
+    abs_diff, //much better detail retention, albeit less temporal smoothing
+    weight_div, //even better detail retention, but barely denoises.
+    both, // combo of above, lightest overall effect.
+    
+    const Self = @This();
+
+    fn processAbsDiff(self: Self) bool {
+        return self == .abs_diff or self == .both;
+    }
+
+    fn processWeights(self: Self) bool {
+        return self == .weight_div or self == .both;
+    }
+};
+
 const Cnr4Data = struct {
     // The clip on which we are operating.
     node: ?*vs.Node,
@@ -41,6 +58,7 @@ const Cnr4Data = struct {
     vi: *const vs.VideoInfo,
 
     tmode: TemporalMode,
+    wmode: WeightMode,
     radius: u8,
 
     table_y: []align(LUT_ALIGN) u8,
@@ -55,7 +73,29 @@ fn Cnr4(comptime T: type) type {
     const BUAT = types.BigUnsignedArithmeticType(T);
 
     return struct {
+        // Calculates weights for the temporal neighbors
+        // Calculation is slightly tricky since the array we operate
+        // on does *not* include the center frame.
+        fn calculateTemporalWeights(radius: comptime_int) [radius * 2]T {
+            var weights: [radius * 2]T = undefined;
+
+            for (0..radius * 2) |i| {
+                // Weight frames further away more heavily.
+                weights[i] = @intCast(if (i < radius) radius - i + 1 else i - radius + 2);
+            }
+
+            return weights;
+        }
+
+        test calculateTemporalWeights {
+            try std.testing.expectEqualDeep(.{ 3, 2, 2, 3 }, calculateTemporalWeights(2));
+            try std.testing.expectEqualDeep(.{ 4, 3, 2, 2, 3, 4 }, calculateTemporalWeights(3));
+            try std.testing.expectEqualDeep(.{ 5, 4, 3, 2, 2, 3, 4, 5 }, calculateTemporalWeights(4));
+        }
+
         const ProcessOpts = struct {
+            wmode: WeightMode,
+
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -82,13 +122,26 @@ fn Cnr4(comptime T: type) type {
             const table_u = tables[1];
             const table_v = tables[2];
 
+            const abs_diff_weights: [radius * 2]T = if (opt.wmode.processAbsDiff()) calculateTemporalWeights(radius) else @splat(1);
+
+            const mul_shift = @bitSizeOf(BUAT) / 2;
+            const round_mul_shift = 1 << (mul_shift - 1);
+            var weight_multipliers: [radius * 2]BUAT = @splat(1 << mul_shift);
+
+            if (opt.wmode.processWeights()) {
+                const weights = calculateTemporalWeights(radius);
+                for (&weight_multipliers, weights) |*wm, weight| {
+                    wm.* = wm.* / weight;
+                }
+            }
+
             var results_u: [radius * 2]UAT = @splat(0);
             var results_v: [radius * 2]UAT = @splat(0);
             var abs_diffs_yu: [radius * 2]UAT = @splat(0);
             var abs_diffs_yv: [radius * 2]UAT = @splat(0);
 
             // Constants for pixel combinations using shifts or divides.
-            const shift = @typeInfo(UAT).int.bits;
+            const shift = @bitSizeOf(UAT);
             const weight_shift = if (T == u16) shift / 2 else 0;
             const max: BUAT = 1 << shift;
             const round = 1 << (shift - 1);
@@ -100,7 +153,7 @@ fn Cnr4(comptime T: type) type {
                     const y_index = y * opt.stride_y + x;
                     const uv_index = y * opt.stride_uv + x;
 
-                    for (0..radius * 2, src, ref) |i, other, other_ref| {
+                    for (0..radius * 2, src, ref, abs_diff_weights, weight_multipliers) |i, other, other_ref, aweight, wmul| {
                         const other_u = other[1];
                         const other_v = other[2];
 
@@ -108,9 +161,13 @@ fn Cnr4(comptime T: type) type {
                         const other_ref_u = other_ref[1];
                         const other_ref_v = other_ref[2];
 
-                        const abs_diff_y = math.absDiff(curr_ref_y[y_index], other_ref_y[y_index]);
-                        const abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
-                        const abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
+                        var abs_diff_y = math.absDiff(curr_ref_y[y_index], other_ref_y[y_index]);
+                        var abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
+                        var abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
+
+                        abs_diff_y = @intCast(@min(@as(UAT, abs_diff_y) * aweight, 255));
+                        abs_diff_u = @intCast(@min(@as(UAT, abs_diff_u) * aweight, 255));
+                        abs_diff_v = @intCast(@min(@as(UAT, abs_diff_v) * aweight, 255));
 
                         const table_idx_y: usize = switch (T) {
                             u8 => abs_diff_y,
@@ -128,8 +185,11 @@ fn Cnr4(comptime T: type) type {
                             else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
                         };
 
-                        const weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;
-                        const weight_v: BUAT = (@as(UAT, table_y[table_idx_y]) * table_v[table_idx_v]) << weight_shift;
+                        var weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;
+                        var weight_v: BUAT = (@as(UAT, table_y[table_idx_y]) * table_v[table_idx_v]) << weight_shift;
+
+                        weight_u = (weight_u * wmul + round_mul_shift) >> mul_shift;
+                        weight_v = (weight_v * wmul + round_mul_shift) >> mul_shift;
 
                         const result_u = ((weight_u * other_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
                         const result_v = ((weight_v * other_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> shift);
@@ -160,6 +220,7 @@ fn Cnr4(comptime T: type) type {
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
         fn processFrame(curr8: [3][]const u8, curr_ref8: [3][]const u8, src8: []const [3][]const u8, ref8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch: [4][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
             tmode: TemporalMode,
+            wmode: WeightMode,
             radius: u8,
 
             width_y: usize,
@@ -194,6 +255,8 @@ fn Cnr4(comptime T: type) type {
             const dst_v: []T = @ptrCast(@alignCast(dst8_v));
 
             const opts: ProcessOpts = .{
+                .wmode = opt.wmode,
+
                 .width_y = opt.width_y,
                 .height_y = opt.height_y,
                 .width_uv = opt.width_uv,
@@ -474,6 +537,8 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             d.table_v,
         }, .{
             .tmode = d.tmode,
+            .wmode = d.wmode,
+
             .radius = d.radius,
 
             .width_y = curr.getWidth(0),
@@ -569,6 +634,16 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     if (d.radius == 1) {
         d.tmode = .inv_diff;
     }
+
+    d.wmode = if (inz.getInt(i32, "wmode")) |wmode| blk: {
+        if (wmode < 0 or wmode > 3) {
+            outz.setError("Cnr4: wmode can only be between 0 and 3");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk @enumFromInt(wmode);
+    } else .normal;
 
     d.scenechange = inz.getBool("scenechange") orelse true;
 
@@ -809,6 +884,7 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr4", "clip:vnode;" ++
         "mode:data:opt;" ++
         "tmode:int:opt;" ++
+        "wmode:int:opt;" ++
         "radius:int:opt;" ++
         "l_sense:int:opt;" ++
         "l_str:int:opt;" ++

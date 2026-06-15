@@ -118,6 +118,8 @@ fn Cnr4(comptime T: type) type {
         const ProcessOpts = struct {
             wmode: WeightMode,
 
+            depth: u6,
+
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -128,8 +130,6 @@ fn Cnr4(comptime T: type) type {
 
             subsampling_h: u2,
             subsampling_w: u2,
-
-            table_idx_shift: u4,
         };
 
         fn processFrameScalar(radius: comptime_int, curr: [3][]const T, curr_ref: [3][]const T, src: []const [3][]const T, ref: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: ProcessOpts) void {
@@ -146,6 +146,9 @@ fn Cnr4(comptime T: type) type {
 
             const abs_diff_weights: [radius * 2]T = if (opt.wmode.processAbsDiff()) calculateTemporalWeights(radius) else @splat(1);
 
+            // Division by reciprocal multiplication.
+            // Shifting depends on integer sizes, not bit depth of input,
+            // because it's focused on calculation accuracy.
             const mul_shift = @bitSizeOf(BUAT) / 2;
             const round_mul_shift = 1 << (mul_shift - 1);
             var weight_multipliers: [radius * 2]BUAT = @splat(1 << mul_shift);
@@ -162,11 +165,11 @@ fn Cnr4(comptime T: type) type {
             var abs_diffs_yu: [radius * 2]UAT = @splat(0);
             var abs_diffs_yv: [radius * 2]UAT = @splat(0);
 
-            // Constants for pixel combinations using shifts or divides.
-            const shift = @bitSizeOf(UAT);
-            const weight_shift = if (T == u16) shift / 2 else 0;
-            const max: BUAT = 1 << shift;
-            const round = 1 << (shift - 1);
+            const shift = opt.depth << 1;
+            const weight_shift = (opt.depth - 8) * 2;
+            const max = @as(BUAT, 1) << @intCast(shift);
+            const round = max / 2;
+
             const divisor = @as(BUAT, max) * (radius * 2);
             const round2 = divisor / 2;
 
@@ -187,36 +190,37 @@ fn Cnr4(comptime T: type) type {
                         const abs_diff_u = math.absDiff(curr_ref_u[uv_index], other_ref_u[uv_index]);
                         const abs_diff_v = math.absDiff(curr_ref_v[uv_index], other_ref_v[uv_index]);
 
-                        // Increase the weight of temporally distant neighbors
-                        // Avoids artifacts and increases detail retention, with some denoising reduction.
-                        const weighted_abs_diff_y: T = @intCast(@min(@as(UAT, abs_diff_y) * aweight, 255));
-                        const weighted_abs_diff_u: T = @intCast(@min(@as(UAT, abs_diff_u) * aweight, 255));
-                        const weighted_abs_diff_v: T = @intCast(@min(@as(UAT, abs_diff_v) * aweight, 255));
-
                         const table_idx_y: usize = switch (T) {
-                            u8 => weighted_abs_diff_y,
-                            u16 => weighted_abs_diff_y >> opt.table_idx_shift,
-                            else => @trunc(@min(weighted_abs_diff_y, 1.0) * 255.0),
+                            u8 => abs_diff_y,
+                            u16 => abs_diff_y >> @intCast(opt.depth - 8),
+                            else => @trunc(@min(abs_diff_y, 1.0) * 255.0),
                         };
                         const table_idx_u: usize = switch (T) {
-                            u8 => weighted_abs_diff_u,
-                            u16 => weighted_abs_diff_u >> opt.table_idx_shift,
-                            else => @trunc(@min(weighted_abs_diff_u, 1.0) * 255.0),
+                            u8 => abs_diff_u,
+                            u16 => abs_diff_u >> @intCast(opt.depth - 8),
+                            else => @trunc(@min(abs_diff_u, 1.0) * 255.0),
                         };
                         const table_idx_v: usize = switch (T) {
-                            u8 => weighted_abs_diff_v,
-                            u16 => weighted_abs_diff_v >> opt.table_idx_shift,
-                            else => @trunc(@min(weighted_abs_diff_v, 1.0) * 255.0),
+                            u8 => abs_diff_v,
+                            u16 => abs_diff_v >> @intCast(opt.depth - 8),
+                            else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
                         };
 
-                        var weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << weight_shift;
-                        var weight_v: BUAT = (@as(UAT, table_y[table_idx_y]) * table_v[table_idx_v]) << weight_shift;
+                        // Increase the weight of temporally distant neighbors
+                        // Avoids (some) artifacts (also can create a few)
+                        // and increases detail retention, with some denoising reduction.
+                        const weighted_table_idx_y = @min(table_idx_y * aweight, 255);
+                        const weighted_table_idx_u = @min(table_idx_u * aweight, 255);
+                        const weighted_table_idx_v = @min(table_idx_v * aweight, 255);
+
+                        var weight_u: BUAT = (@as(UAT, table_y[weighted_table_idx_y]) * table_u[weighted_table_idx_u]) << @intCast(weight_shift);
+                        var weight_v: BUAT = (@as(UAT, table_y[weighted_table_idx_y]) * table_v[weighted_table_idx_v]) << @intCast(weight_shift);
 
                         weight_u = (weight_u * wmul + round_mul_shift) >> mul_shift;
                         weight_v = (weight_v * wmul + round_mul_shift) >> mul_shift;
 
-                        const result_u = ((weight_u * other_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> shift);
-                        const result_v = ((weight_v * other_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> shift);
+                        const result_u = ((weight_u * other_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> @intCast(shift));
+                        const result_v = ((weight_v * other_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> @intCast(shift));
 
                         results_u[i] = @intCast(result_u);
                         results_v[i] = @intCast(result_v);
@@ -247,6 +251,8 @@ fn Cnr4(comptime T: type) type {
             wmode: WeightMode,
             radius: u8,
 
+            depth: u6,
+
             width_y: usize,
             height_y: usize,
             width_uv: usize,
@@ -257,8 +263,6 @@ fn Cnr4(comptime T: type) type {
 
             subsampling_h: u2,
             subsampling_w: u2,
-
-            table_idx_shift: u4,
         }) void {
             const curr: [3][]const T = .{
                 @ptrCast(@alignCast(curr8[0])),
@@ -281,6 +285,8 @@ fn Cnr4(comptime T: type) type {
             const opts: ProcessOpts = .{
                 .wmode = opt.wmode,
 
+                .depth = opt.depth,
+
                 .width_y = opt.width_y,
                 .height_y = opt.height_y,
                 .width_uv = opt.width_uv,
@@ -291,8 +297,6 @@ fn Cnr4(comptime T: type) type {
 
                 .subsampling_h = opt.subsampling_h,
                 .subsampling_w = opt.subsampling_w,
-
-                .table_idx_shift = opt.table_idx_shift,
             };
 
             if (opt.tmode == .inv_diff) {
@@ -479,8 +483,6 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         // copy the luma plane only
         const dst = curr.newVideoFrame2(.{ false, true, true });
 
-        const table_idx_shift: u4 = if (d.vi.format.sampleType == .Integer) @intCast(d.vi.format.bitsPerSample - 8) else 0;
-
         var start_idx: usize = 0;
         var end_idx: usize = frame_count - 1;
 
@@ -614,6 +616,8 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
             .radius = d.radius,
 
+            .depth = @intCast(d.vi.format.bitsPerSample),
+
             .width_y = curr.getWidth(0),
             .width_uv = curr.getWidth(1),
 
@@ -625,8 +629,6 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
             .subsampling_w = @intCast(d.vi.format.subSamplingW),
             .subsampling_h = @intCast(d.vi.format.subSamplingH),
-
-            .table_idx_shift = table_idx_shift,
         });
 
         return dst.frame;

@@ -27,8 +27,30 @@ const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
 const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
 const TemporalMode = enum {
-    cnr2,
-    inv_diff,
+    inv_diff, //Simple temporal inverse difference weighting
+    cnr2, // Backcalculating temporal inverse difference weighting with radius 1 backcalculation
+    cnr2_dynamic, // Backcalculating temporal inverse difference weighting with dymanic radius backcalculation
+
+    const Self = @This();
+
+    /// Whether or not we include the center in the
+    /// source frames.
+    fn srcIncludesCenter(self: Self) bool {
+        return switch (self) {
+            .inv_diff => false,
+            .cnr2 => true,
+            .cnr2_dynamic => true,
+        };
+    }
+
+    /// Needs scratch frames for processing.
+    fn needsScratchFrames(self: Self) bool {
+        return switch (self) {
+            .inv_diff => false,
+            .cnr2 => true,
+            .cnr2_dynamic => true,
+        };
+    }
 };
 
 const WeightMode = enum {
@@ -36,7 +58,7 @@ const WeightMode = enum {
     abs_diff, //much better detail retention, albeit less temporal smoothing
     weight_div, //even better detail retention, but barely denoises.
     both, // combo of above, lightest overall effect.
-    
+
     const Self = @This();
 
     fn processAbsDiff(self: Self) bool {
@@ -280,7 +302,7 @@ fn Cnr4(comptime T: type) type {
                     else => unreachable,
                 }
             } else {
-                //CNR2
+                //CNR2 
 
                 // Create mutable slice so we can swap in filtered frames as we go.
                 const srcs: [][3][]const T = @constCast(src);
@@ -290,12 +312,39 @@ fn Cnr4(comptime T: type) type {
                 const right_u: []T = @ptrCast(@alignCast(scratch[2]));
                 const right_v: []T = @ptrCast(@alignCast(scratch[3]));
 
+                var tmp_srcs: [MAX_RADIUS * 2][3][]const T = undefined;
+                var tmp_refs: [MAX_RADIUS * 2][3][]const T = undefined;
+                var tmp_count: usize = 0;
+
                 for (1..opt.radius) |i| {
                     const l_idx = i;
                     const r_idx = srcs.len - 1 - i;
+                    const radius = @min(opt.radius, l_idx);
 
                     // Left frames
-                    processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
+                    if (opt.tmode == .cnr2) {
+                        // Radius 1 backcalculating
+                        processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
+                    } else {
+                        // Dyanmic radius backcalculating
+                        tmp_count = 0;
+                        for (0..radius) |j| {
+                            // past frames
+                            tmp_srcs[tmp_count] = srcs[l_idx - radius + j];
+                            tmp_refs[tmp_count] = refs[l_idx - radius + j];
+
+                            //future frames
+                            tmp_srcs[radius * 2 - 1 - tmp_count] = srcs[l_idx + radius - j];
+                            tmp_refs[radius * 2 - 1 - tmp_count] = refs[l_idx + radius - j];
+
+                            tmp_count += 1;
+                        }
+
+                        switch (radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. radius * 2], tmp_refs[0 .. radius * 2], left_u, left_v, tables, opts),
+                            else => unreachable,
+                        }
+                    }
                     srcs[l_idx] = .{
                         srcs[l_idx][0],
                         left_u,
@@ -308,7 +357,28 @@ fn Cnr4(comptime T: type) type {
                     };
 
                     // Right frames
-                    processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
+                    if (opt.tmode == .cnr2) {
+                        // Radius 1 backcalculating
+                        processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
+                    } else {
+                        // Dyanmic radius backcalculating
+                        tmp_count = 0;
+                        for (0..radius) |j| {
+                            // past frames
+                            tmp_srcs[tmp_count] = srcs[r_idx - radius + j];
+                            tmp_refs[tmp_count] = refs[r_idx - radius + j];
+
+                            //future frames
+                            tmp_srcs[radius * 2 - 1 - tmp_count] = srcs[r_idx + radius - j];
+                            tmp_refs[radius * 2 - 1 - tmp_count] = refs[r_idx + radius - j];
+
+                            tmp_count += 1;
+                        }
+                        switch (radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. radius * 2], tmp_refs[0 .. radius * 2], right_u, right_v, tables, opts),
+                            else => unreachable,
+                        }
+                    }
                     srcs[r_idx] = .{
                         srcs[r_idx][0],
                         right_u,
@@ -322,19 +392,17 @@ fn Cnr4(comptime T: type) type {
                 }
 
                 //combine the results for the current frame.
-                var tmp_srcs: [MAX_RADIUS * 2][3][]const T = undefined;
-                var tmp_refs: [MAX_RADIUS * 2][3][]const T = undefined;
-                var count: usize = 0;
+                tmp_count = 0;
                 for (0..opt.radius) |j| {
                     // past frames
-                    tmp_srcs[count] = srcs[j];
-                    tmp_refs[count] = refs[j];
+                    tmp_srcs[tmp_count] = srcs[j];
+                    tmp_refs[tmp_count] = refs[j];
 
                     //future frames
-                    tmp_srcs[opt.radius * 2 - 1 - count] = srcs[srcs.len - 1 - j];
-                    tmp_refs[opt.radius * 2 - 1 - count] = refs[refs.len - 1 - j];
+                    tmp_srcs[opt.radius * 2 - 1 - tmp_count] = srcs[srcs.len - 1 - j];
+                    tmp_refs[opt.radius * 2 - 1 - tmp_count] = refs[refs.len - 1 - j];
 
-                    count += 1;
+                    tmp_count += 1;
                 }
 
                 switch (opt.radius) {
@@ -373,7 +441,7 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         {
             var i: i8 = -@as(i8, @intCast(d.radius));
             while (i <= d.radius) : (i += 1) {
-                if (d.tmode == .inv_diff and i == 0) {
+                if (!d.tmode.srcIncludesCenter() and i == 0) {
                     //Grab all frames *except* the current frame, which we retrieve separately later.
                     //.cnr2 mode needs all frames
                     continue;
@@ -428,12 +496,7 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
             // Start in the left (prev) and walk backwards
             {
-                var i = switch (d.tmode) {
-                    .cnr2 => frame_count / 2,
-                    // src_frames doesn't include the curr frame in inv_diff mode,
-                    // so prev frame is one less from the center.
-                    .inv_diff => frame_count / 2 - 1,
-                };
+                var i = if (d.tmode.srcIncludesCenter()) frame_count / 2 else frame_count / 2 - 1;
                 while (i > 0) : (i -= 1) {
                     if (src_frames[i].getPropertiesRO().getSceneChangePrev() == true) {
                         start_idx = i;
@@ -453,7 +516,7 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 }
             }
 
-            if (d.tmode == .inv_diff) {
+            if (!d.tmode.srcIncludesCenter()) {
                 // Process current frame separately in inv_diff mode since
                 // the current frame isn't in the src_frames array.
                 if (curr.getPropertiesRO().getSceneChangePrev() == true) {
@@ -509,13 +572,13 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         var scratch_planes: [4][]u8 = undefined;
         var grey_format: vs.VideoFormat = undefined;
         _ = zapi.queryVideoFormat(&grey_format, .Gray, d.vi.format.sampleType, d.vi.format.bitsPerSample, 0, 0);
-        if (d.tmode == .cnr2) {
+        if (d.tmode.needsScratchFrames()) {
             for (0..4) |i| {
                 scratch_frames[i] = ZAPI.ZFrame(*vs.Frame).init(&zapi, zapi.newVideoFrame(&grey_format, d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH), null).?);
                 scratch_planes[i] = scratch_frames[i].getWriteSlice(0);
             }
         }
-        defer if (d.tmode == .cnr2) for (scratch_frames) |f| f.deinit();
+        defer if (d.tmode.needsScratchFrames()) for (scratch_frames) |f| f.deinit();
 
         const processFrame = switch (vscmn.FormatType.getDataType(d.vi.format)) {
             .U8 => &Cnr4(u8).processFrame,
@@ -619,17 +682,17 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         }
 
         break :blk @intCast(radius);
-    } else 1;
+    } else 2;
 
     d.tmode = if (inz.getInt(i32, "tmode")) |tmode| blk: {
-        if (tmode < 0 or tmode > 1) {
-            outz.setError("Cnr4: tmode can only be 0 or 1");
+        if (tmode < 0 or tmode > 2) {
+            outz.setError("Cnr4: tmode can only be between 0 and 2");
             zapi.freeNode(d.node);
             return;
         }
 
         break :blk @enumFromInt(tmode);
-    } else .inv_diff;
+    } else .cnr2;
 
     // The effect is identical between temporal modes
     // if the radius is 1, so just force it to the faster one.

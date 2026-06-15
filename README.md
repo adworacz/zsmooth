@@ -154,7 +154,7 @@ Cnr4 is a temporal chroma denoiser, inspired by the original [Cnr2](http://avisy
 It is particularly effective against stationary rainbows or huge analog chroma activity (like VHS).
 
 ```py
-core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int tmode = 1, int radius = 1, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, bool scenechange = True])
+core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int tmode = 1, int radius = 2, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, bool scenechange = True])
 ```
 
 Cnr4 currently supports 8-16 bit integer YUV clips, with float support planned.
@@ -164,9 +164,10 @@ While Cnr4 is inspired by Cnr2, it provides several key improvements over the or
 1. Multithreading friendly (the original Cnr2 was limited to serial processing).
 2. Roughly 2x faster single-threaded and 10x faster multithreaded.
 2. Better denoising quality due to the use of past and future frames. Cnr2 only used past frames.
-3. Significantly reduced ghosting compared.
+3. Significantly reduced ghosting.
 4. Adjustable temporal radius.
 5. Configurable temporal modes.
+6. Temporal distance weighting modes.
 
 #### Modes
 Cnr4 implements two modes (configurable using the `tmode` parameter) - "Cnr2" and "Inverse Difference Weight".
@@ -193,11 +194,11 @@ leads to a substantial increase in denoising performance and reduced ghosting wh
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, YUV | | Clip to process |
 | mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective.|
-| tmode | int | 1 | tmode = 0 is Cnr2 mode, tmode = 1 is inverse difference mode. Only takes effect for `radius > 1`. See above for explanations. Neither is strictly better than the other. `tmode=0` can produce sharper chroma, while `tmode=1` can produce more temporally stable results and less artifacts at right radii. They handle different types of noise and can produce (or prevent) different artifacts. Try both on your source and pick whichever suits best. |
-| radius | int | 1 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
+| radius | int | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
 | l_sense, u_sense, v_sense | int | (35, 47, 47) | Noise / motion sensitivity threshold. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
 | l_str, u_str, v_str | int | (192, 255, 255) | Denoising strength. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `*_sense` values. |
 | scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
+| tmode | int | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
 
 #### Cnr2 porting guide
 For those looking to upgrade from Cnr2, here's a rough approximation of equivalent settings.
@@ -205,7 +206,7 @@ For those looking to upgrade from Cnr2, here's a rough approximation of equivale
 ```py
 clip.cnr2.Cnr2(mode="oxx", scdthr=10.0, ln=35, lm=192, un=47, um=255, vn=47, vm=255)
 from vstools import sc_detect
-sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=0, radius=2, l_sense=35, l_str=192, u_sense=47, u_str=255, v_sense=47, v_str=255)
+sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=1, radius=2, l_sense=35, l_str=192, u_sense=47, u_str=255, v_sense=47, v_str=255)
 ```
 
 #### Tuning tips

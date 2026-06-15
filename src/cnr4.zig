@@ -54,19 +54,19 @@ const TemporalMode = enum {
 };
 
 const WeightMode = enum {
-    normal,
-    abs_diff, //much better detail retention, albeit less temporal smoothing
-    weight_div, //even better detail retention, but barely denoises.
+    original, // The original weighting behavior of Cnr2
+    weight_abs_diff, // much better detail retention, albeit less temporal smoothing
+    total_weight_div, // even better detail retention, but barely denoises.
     both, // combo of above, lightest overall effect.
 
     const Self = @This();
 
     fn processAbsDiff(self: Self) bool {
-        return self == .abs_diff or self == .both;
+        return self == .weight_abs_diff or self == .both;
     }
 
     fn processWeights(self: Self) bool {
-        return self == .weight_div or self == .both;
+        return self == .total_weight_div or self == .both;
     }
 };
 
@@ -302,7 +302,7 @@ fn Cnr4(comptime T: type) type {
                     else => unreachable,
                 }
             } else {
-                //CNR2 
+                //CNR2
 
                 // Create mutable slice so we can swap in filtered frames as we go.
                 const srcs: [][3][]const T = @constCast(src);
@@ -708,7 +708,7 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         }
 
         break :blk @enumFromInt(wmode);
-    } else .normal;
+    } else .weight_abs_diff;
 
     d.scenechange = inz.getBool("scenechange") orelse true;
 
@@ -948,8 +948,6 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr4", "clip:vnode;" ++
         "mode:data:opt;" ++
-        "tmode:int:opt;" ++
-        "wmode:int:opt;" ++
         "radius:int:opt;" ++
         "l_sense:int:opt;" ++
         "l_str:int:opt;" ++
@@ -957,6 +955,8 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
         "u_str:int:opt;" ++
         "v_sense:int:opt;" ++
         "v_str:int:opt;" ++
+        "tmode:int:opt;" ++
+        "wmode:int:opt;" ++
         "scenechange:int:opt;" ++
         "ref:vnode:opt;", "clip:vnode;", cnr4Create, null, plugin);
 }

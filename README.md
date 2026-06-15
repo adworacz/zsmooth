@@ -154,7 +154,7 @@ Cnr4 is a temporal chroma denoiser, inspired by the original [Cnr2](http://avisy
 It is particularly effective against stationary rainbows or huge analog chroma activity (like VHS).
 
 ```py
-core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int tmode = 1, int radius = 2, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, bool scenechange = True])
+core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int radius = 2, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, int tmode = 1, int wmode = 1, bool scenechange = True, clip ref = None])
 ```
 
 Cnr4 currently supports 8-16 bit integer YUV clips, with float support planned.
@@ -194,11 +194,13 @@ leads to a substantial increase in denoising performance and reduced ghosting wh
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, YUV | | Clip to process |
 | mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective.|
-| radius | int | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
-| l_sense, u_sense, v_sense | int | (35, 47, 47) | Noise / motion sensitivity threshold. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
-| l_str, u_str, v_str | int | (192, 255, 255) | Denoising strength. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `*_sense` values. |
+| radius | int (1-10) | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
+| l_sense, u_sense, v_sense | int (0-255) | (35, 47, 47) | Noise / motion sensitivity threshold. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
+| l_str, u_str, v_str | int (0-255) | (192, 255, 255) | Denoising strength. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `*_sense` values. |
 | scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
-| tmode | int | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
+| tmode | int (0-2) | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
+| wmode | int (0-3) | 1 | Temporal weighting mode. In decreasing order of denoising strength. Mode 0 is the original behavior of Cnr2, while modes 1-3 reduce the influence of other frames the farther they are from the current frame. Mode 1 is a good balance of detail retention, artifact prevention, and denoising quality, with subsequent modes preserving more and denoising less.|
+| ref | clip | None | Reference clip. Used for weighting calculation. It can be useful to use a prefilter as a reference. Output seems only minorly effected by reference. |
 
 #### Cnr2 porting guide
 For those looking to upgrade from Cnr2, here's a rough approximation of equivalent settings.

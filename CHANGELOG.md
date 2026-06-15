@@ -13,6 +13,11 @@ lesser denoising.
 and next frame) when calculating frames prior to feeding back into calculating the current frame. The new mode uses larger 
 radii when it can (so as calculations move closer to the current frame). This results in better denoising and more
 detail retention, but it's much more computationally expensive, especially at higher radii.
+* Cnr4: Adjust defaults for better out of the box denoising and detail retention. Uses Cnr2 mode now with radius 2,
+which is the minimal effective radius for the mode. Also uses `wmode=1` for much better detail retention and artifact prevention 
+at the cost of reduced denoising strength by default. I think it's a worthy change in terms of defaults.
+* Cnr4: Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,
+and modes less likely to change at the end of the function.
 
 ## 0.16.0
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency

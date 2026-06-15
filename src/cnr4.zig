@@ -535,24 +535,32 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         for (0..start_idx) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
-            ref_frames[i].deinit();
-            ref_luma_frames[i].deinit();
+            if (d.node_ref) |_| {
+                ref_frames[i].deinit();
+                ref_luma_frames[i].deinit();
+            }
 
             src_frames[i] = curr.addFrameRef();
             luma_frames[i] = curr_luma.addFrameRef();
-            ref_frames[i] = curr_ref.addFrameRef();
-            ref_luma_frames[i] = curr_ref_luma.addFrameRef();
+            if (d.node_ref) |_| {
+                ref_frames[i] = curr_ref.addFrameRef();
+                ref_luma_frames[i] = curr_ref_luma.addFrameRef();
+            }
         }
         for (end_idx + 1..frame_count) |i| {
             src_frames[i].deinit();
             luma_frames[i].deinit();
-            ref_frames[i].deinit();
-            ref_luma_frames[i].deinit();
+            if (d.node_ref) |_| {
+                ref_frames[i].deinit();
+                ref_luma_frames[i].deinit();
+            }
 
             src_frames[i] = curr.addFrameRef();
             luma_frames[i] = curr_luma.addFrameRef();
-            ref_frames[i] = curr_ref.addFrameRef();
-            ref_luma_frames[i] = curr_ref_luma.addFrameRef();
+            if (d.node_ref) |_| {
+                ref_frames[i] = curr_ref.addFrameRef();
+                ref_luma_frames[i] = curr_ref_luma.addFrameRef();
+            }
         }
 
         // Get read slices and setup scratch buffers.

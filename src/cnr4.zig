@@ -704,13 +704,13 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
 
     d.tmode = if (inz.getInt(i32, "tmode")) |tmode| blk: {
         if (tmode < 0 or tmode > 4) {
-            outz.setError("Cnr4: tmode can only be between 0 and 2");
+            outz.setError("Cnr4: tmode can only be between 0 and 4");
             zapi.freeNode(d.node);
             return;
         }
 
         break :blk @enumFromInt(tmode);
-    } else .cnr2;
+    } else .inv_diff;
 
     // The effect is identical between temporal modes
     // if the radius is 1, so just force it to the faster one.
@@ -726,64 +726,81 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         }
 
         break :blk @enumFromInt(wmode);
-    } else .weight_abs_diff;
+    } else .original;
 
     d.scenechange = inz.getBool("scenechange") orelse true;
 
     // Sensitivies
-    const l_sense: u8 = if (inz.getInt(i32, "l_sense")) |l_sense| blk: {
-        if (l_sense < 0 or l_sense > 255) {
-            outz.setError("Cnr4: l_sense must be between 0 and 255");
+    if (inz.numElements("sense")) |n| {
+        if (n != 3) {
+            outz.setError("Cnr4: sense must have 3 elements");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(l_sense);
+    }
+
+    const l_sense: u8 = if (inz.getInt2(i32, "sense", 0)) |l_sense| blk: {
+        if (l_sense < -1 or l_sense > 255) {
+            outz.setError("Cnr4: sense must be between -1 and 255");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk if (l_sense == -1) 35 else @intCast(l_sense);
     } else 35;
 
-    const u_sense: u8 = if (inz.getInt(i32, "u_sense")) |u_sense| blk: {
-        if (u_sense < 0 or u_sense > 255) {
-            outz.setError("Cnr4: u_sense must be between 0 and 255");
+    const u_sense: u8 = if (inz.getInt2(i32, "sense", 1)) |u_sense| blk: {
+        if (u_sense < -1 or u_sense > 255) {
+            outz.setError("Cnr4: sense must be between -1 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(u_sense);
+        break :blk if (u_sense == -1) 47 else @intCast(u_sense);
     } else 47;
 
-    const v_sense: u8 = if (inz.getInt(i32, "v_sense")) |v_sense| blk: {
-        if (v_sense < 0 or v_sense > 255) {
-            outz.setError("Cnr4: v_sense must be between 0 and 255");
+    const v_sense: u8 = if (inz.getInt2(i32, "sense", 2)) |v_sense| blk: {
+        if (v_sense < -1 or v_sense > 255) {
+            outz.setError("Cnr4: sense must be between -1 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(v_sense);
+        break :blk if (v_sense == -1) 47 else @intCast(v_sense);
     } else 47;
 
     // Strengths
-    const l_str: u8 = if (inz.getInt(i32, "l_str")) |l_str| blk: {
-        if (l_str < 0 or l_str > 255) {
-            outz.setError("Cnr4: l_str must be between 0 and 255");
+    if (inz.numElements("str")) |n| {
+        if (n != 3) {
+            outz.setError("Cnr4: str must have 3 elements");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(l_str);
+    }
+
+    const l_str: u8 = if (inz.getInt2(i32, "str", 0)) |l_str| blk: {
+        if (l_str < -1 or l_str > 255) {
+            outz.setError("Cnr4: l_str must be between -1 and 255");
+            zapi.freeNode(d.node);
+            return;
+        }
+        break :blk if (l_str == -1) 192 else @intCast(l_str);
     } else 192;
 
-    const u_str: u8 = if (inz.getInt(i32, "u_str")) |u_str| blk: {
-        if (u_str < 0 or u_str > 255) {
-            outz.setError("Cnr4: u_str must be between 0 and 255");
+    const u_str: u8 = if (inz.getInt2(i32, "str", 1)) |u_str| blk: {
+        if (u_str < -1 or u_str > 255) {
+            outz.setError("Cnr4: u_str must be between -1 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(u_str);
+        break :blk if (u_str == -1) 255 else @intCast(u_str);
     } else 255;
 
-    const v_str: u8 = if (inz.getInt(i32, "v_str")) |v_str| blk: {
-        if (v_str < 0 or v_str > 255) {
-            outz.setError("Cnr4: v_str must be between 0 and 255");
+    const v_str: u8 = if (inz.getInt2(i32, "str", 2)) |v_str| blk: {
+        if (v_str < -1 or v_str > 255) {
+            outz.setError("Cnr4: v_str must be between -1 and 255");
             zapi.freeNode(d.node);
             return;
         }
-        break :blk @intCast(v_str);
+        break :blk if (v_str == -1) 255 else @intCast(v_str);
     } else 255;
 
     // Using an aligned alloc for potential SIMD/autovec friendliness
@@ -967,12 +984,8 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
     _ = vsapi.registerFunction.?("Cnr4", "clip:vnode;" ++
         "mode:data:opt;" ++
         "radius:int:opt;" ++
-        "l_sense:int:opt;" ++
-        "l_str:int:opt;" ++
-        "u_sense:int:opt;" ++
-        "u_str:int:opt;" ++
-        "v_sense:int:opt;" ++
-        "v_str:int:opt;" ++
+        "sense:int[]:opt;" ++
+        "str:int[]:opt;" ++
         "tmode:int:opt;" ++
         "wmode:int:opt;" ++
         "scenechange:int:opt;" ++

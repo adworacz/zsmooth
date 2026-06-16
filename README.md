@@ -154,7 +154,7 @@ Cnr4 is a temporal chroma denoiser, inspired by the original [Cnr2](http://avisy
 It is particularly effective against stationary rainbows or huge analog chroma activity (like VHS).
 
 ```py
-core.zsmooth.Cnr4(clip clip, [str mode = "oxx", int radius = 2, int l_sense = 35, int l_str = 192, int u_sense = 47, int u_str = 255, int v_sense = 47, int v_str = 255, int tmode = 1, int wmode = 1, bool scenechange = True, clip ref = None])
+core.zsmooth.Cnr4(clip clip, [str mode="oxx", int radius=2, int[] sense=[35, 47, 47], int[] str=[192, 255, 255], int tmode=0, int wmode=0, bool scenechange=True, clip ref=None])
 ```
 
 Cnr4 currently supports 8-16 bit integer YUV clips, with float support planned.
@@ -170,7 +170,7 @@ While Cnr4 is inspired by Cnr2, it provides several key improvements over the or
 6. Temporal distance weighting modes.
 
 #### Modes
-Cnr4 implements two modes (configurable using the `tmode` parameter) - "Cnr2" and "Inverse Difference Weight".
+Cnr4 implements several modes (configurable using the `tmode` parameter) - "Cnr2" and "Inverse Difference Weight".
 
 Note that mode differences only appear for radius > 1. 
 
@@ -195,12 +195,12 @@ leads to a substantial increase in denoising performance and reduced ghosting wh
 | clip | 8-16 bit integer, YUV | | Clip to process |
 | mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective.|
 | radius | int (1-10) | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
-| l_sense, u_sense, v_sense | int (0-255) | (35, 47, 47) | Noise / motion sensitivity threshold. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
-| l_str, u_str, v_str | int (0-255) | (192, 255, 255) | Denoising strength. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `*_sense` values. |
+| sense | int[3] | -1 - 255 ([35, 47, 47]) | Per-plane noise / motion sensitivity threshold. -1 is an convenience alias for default values. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
+| str | int[3] | -1 - 255 ([192, 255, 255]) | Denoising strength. -1 is an convenience alias for default values. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `sense` values. |
 | scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
-| tmode | int (0-2) | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
+| tmode | int (0-4) | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
 | wmode | int (0-3) | 1 | Temporal weighting mode. In decreasing order of denoising strength. Mode 0 is the original behavior of Cnr2, while modes 1-3 reduce the influence of other frames the farther they are from the current frame. Mode 1 is a good balance of detail retention, artifact prevention, and denoising quality, with subsequent modes preserving more and denoising less.|
-| ref | clip | None | Reference clip. Used for weighting calculation. It can be useful to use a prefilter as a reference. Output seems only minorly effected by reference. |
+| ref | clip | None | Reference clip. Used for weighting calculation. It can be useful to use a prefilter as a reference.|
 
 #### Cnr2 porting guide
 For those looking to upgrade from Cnr2, here's a rough approximation of equivalent settings.
@@ -208,24 +208,24 @@ For those looking to upgrade from Cnr2, here's a rough approximation of equivale
 ```py
 clip.cnr2.Cnr2(mode="oxx", scdthr=10.0, ln=35, lm=192, un=47, um=255, vn=47, vm=255)
 from vstools import sc_detect
-sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=1, radius=2, l_sense=35, l_str=192, u_sense=47, u_str=255, v_sense=47, v_str=255)
+sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=2, radius=2, sense=[35,47,47] str=[192,255,255])
 ```
 
 #### Tuning tips
 The defaults of Cnr4 are quite aggressive. The original plugin was designed to work with noisy sources and 
 the defaults show that. 
 
-When tuning parameters, it can be helpful to leave the `*_str` at default and tune `*_sense` parameters based on your
-noise patterns. You can likely lower `*_sense` until just before your noise coming back. Then try lowering `*_str` 
+When tuning parameters, it can be helpful to leave the `str` at default and tune `sense` parameters based on your
+noise patterns. You can likely lower `sense` until just before your noise coming back. Then try lowering `str` 
 values until your noise comes back and then raise up a bit.
 
-Noteably, the `*_sense` and `*_str` parameters are inter-related. While you can lower `*_sense`, you'll eventually 
-start to see artifacts that appear unless you correspondingly lower `*_str`. It may even be helpful to lower (divide)
-the `*_sense` and `*_str` variables by a shared constant, so you reduce motion sensitivity and denoising strength in
+Noteably, the `sense` and `str` parameters are inter-related. While you can lower `sense`, you'll eventually 
+start to see artifacts that appear unless you correspondingly lower `str`. It may even be helpful to lower (divide)
+the `sense` and `str` variables by a shared constant, so you reduce motion sensitivity and denoising strength in
 lockstep.
 
 Also, play around the `tmode`. Sometimes *increasing* `radius` can actually *reduce* artifacts for a given mode,
-particularly `tmode=1`.
+particularly `tmode=0`.
 
 ### DCTFilter
 For each 8x8 block, DCTFilter will do a Discrete Cosine Transform (DCT), scale down the selected frequency values, 

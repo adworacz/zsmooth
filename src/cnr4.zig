@@ -28,8 +28,10 @@ const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
 const TemporalMode = enum {
     inv_diff, //Simple temporal inverse difference weighting
-    cnr2, // Backcalculating temporal inverse difference weighting with radius 1 backcalculation
-    cnr2_dynamic, // Backcalculating temporal inverse difference weighting with dymanic radius backcalculation
+    cnr2_no_src, // More temporally stable than .cnr2, albeit with more artifacts
+    cnr2, // More detail retention than .cnr2_no_src, and less artifacts, with less denoising / more temporal instability.
+    cnr2_dynamic_no_src, // Same as .cnr2_no_src, but using a dynamic radius (slow)
+    cnr2_dynamic, // Same as .cnr2, but using dynamimc radius (slow)
 
     const Self = @This();
 
@@ -38,8 +40,8 @@ const TemporalMode = enum {
     fn srcIncludesCenter(self: Self) bool {
         return switch (self) {
             .inv_diff => false,
-            .cnr2 => true,
-            .cnr2_dynamic => true,
+            .cnr2_no_src, .cnr2 => true,
+            .cnr2_dynamic_no_src, .cnr2_dynamic => true,
         };
     }
 
@@ -47,9 +49,15 @@ const TemporalMode = enum {
     fn needsScratchFrames(self: Self) bool {
         return switch (self) {
             .inv_diff => false,
-            .cnr2 => true,
-            .cnr2_dynamic => true,
+            .cnr2_no_src, .cnr2 => true,
+            .cnr2_dynamic_no_src, .cnr2_dynamic => true,
         };
+    }
+
+    /// Whether or not to update src frames when backcalculating.
+    /// Ref frames are always updated.
+    fn shouldUpdateSrc(self: Self) bool {
+        return (self == .cnr2 or self == .cnr2_dynamic);
     }
 };
 
@@ -326,7 +334,7 @@ fn Cnr4(comptime T: type) type {
                     const radius = @min(opt.radius, l_idx);
 
                     // Left frames
-                    if (opt.tmode == .cnr2) {
+                    if (opt.tmode == .cnr2 or opt.tmode == .cnr2_no_src) {
                         // Radius 1 backcalculating
                         processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
                     } else {
@@ -351,8 +359,8 @@ fn Cnr4(comptime T: type) type {
                     }
                     srcs[l_idx] = .{
                         srcs[l_idx][0],
-                        left_u,
-                        left_v,
+                        if (opt.tmode.shouldUpdateSrc()) left_u else srcs[l_idx][1],
+                        if (opt.tmode.shouldUpdateSrc()) left_v else srcs[l_idx][2],
                     };
                     refs[l_idx] = .{
                         refs[l_idx][0],
@@ -361,7 +369,7 @@ fn Cnr4(comptime T: type) type {
                     };
 
                     // Right frames
-                    if (opt.tmode == .cnr2) {
+                    if (opt.tmode == .cnr2 or opt.tmode == .cnr2_no_src) {
                         // Radius 1 backcalculating
                         processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
                     } else {
@@ -385,8 +393,8 @@ fn Cnr4(comptime T: type) type {
                     }
                     srcs[r_idx] = .{
                         srcs[r_idx][0],
-                        right_u,
-                        right_v,
+                        if (opt.tmode.shouldUpdateSrc()) right_u else srcs[r_idx][1],
+                        if (opt.tmode.shouldUpdateSrc()) right_v else srcs[r_idx][2],
                     };
                     refs[r_idx] = .{
                         refs[r_idx][0],
@@ -695,7 +703,7 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
     } else 2;
 
     d.tmode = if (inz.getInt(i32, "tmode")) |tmode| blk: {
-        if (tmode < 0 or tmode > 2) {
+        if (tmode < 0 or tmode > 4) {
             outz.setError("Cnr4: tmode can only be between 0 and 2");
             zapi.freeNode(d.node);
             return;

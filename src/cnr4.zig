@@ -803,6 +803,45 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         break :blk if (v_str == -1) 255 else @intCast(v_str);
     } else 255;
 
+    // Powers
+    if (inz.numElements("pow")) |n| {
+        if (n != 3) {
+            outz.setError("Cnr4: pow must contain 3 elements");
+            zapi.freeNode(d.node);
+            return;
+        }
+    }
+
+    const l_pow: f32 = if (inz.getFloat2(f32, "pow", 0)) |l_pow| blk: {
+        if (l_pow < 0) {
+            outz.setError("Cnr4: pow must be >= 0");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk (1.0 / l_pow);
+    } else 1.0;
+
+    const u_pow: f32 = if (inz.getFloat2(f32, "pow", 1)) |u_pow| blk: {
+        if (u_pow < 0) {
+            outz.setError("Cnr4: pow must be >= 0");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk (1.0 / u_pow);
+    } else 1.0;
+
+    const v_pow: f32 = if (inz.getFloat2(f32, "pow", 2)) |v_pow| blk: {
+        if (v_pow < 0) {
+            outz.setError("Cnr4: pow must be >= 0");
+            zapi.freeNode(d.node);
+            return;
+        }
+
+        break :blk (1.0 / v_pow);
+    } else 1.0;
+
     // Using an aligned alloc for potential SIMD/autovec friendliness
     // Might not make any difference, but it doesn't hurt
     const table_size = 256;
@@ -836,8 +875,8 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         while (l <= l_str) : (l += 1) {
             const lf: f32 = @floatFromInt(l);
             d.table_y[l] = switch (mode[0]) {
-                'o' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef)))),
-                'x' => @intFromFloat(l_strf / 2 * (1 + @cos(lf * std.math.pi / l_sensef))),
+                'o' => @intFromFloat(l_strf * std.math.pow(f32, (1 + @cos(lf * lf * std.math.pi / (l_sensef * l_sensef))) / 2, l_pow)),
+                'x' => @intFromFloat(l_strf * std.math.pow(f32, (1 + @cos(lf * std.math.pi / l_sensef)) / 2, l_pow)),
                 else => {
                     outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -854,8 +893,8 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         while (u <= u_str) : (u += 1) {
             const uf: f32 = @floatFromInt(u);
             d.table_u[u] = switch (mode[1]) {
-                'o' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef)))),
-                'x' => @intFromFloat(u_strf / 2 * (1 + @cos(uf * std.math.pi / u_sensef))),
+                'o' => @intFromFloat(u_strf * std.math.pow(f32, (1 + @cos(uf * uf * std.math.pi / (u_sensef * u_sensef))) / 2, u_pow)),
+                'x' => @intFromFloat(u_strf * std.math.pow(f32, (1 + @cos(uf * std.math.pi / u_sensef)) / 2, u_pow)),
                 else => {
                     outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -872,8 +911,8 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         while (v <= v_str) : (v += 1) {
             const vf: f32 = @floatFromInt(v);
             d.table_v[v] = switch (mode[2]) {
-                'o' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef)))),
-                'x' => @intFromFloat(v_strf / 2 * (1 + @cos(vf * std.math.pi / v_sensef))),
+                'o' => @intFromFloat(v_strf * std.math.pow(f32, (1 + @cos(vf * vf * std.math.pi / (v_sensef * v_sensef))) / 2, v_pow)),
+                'x' => @intFromFloat(v_strf * std.math.pow(f32, (1 + @cos(vf * std.math.pi / v_sensef)) / 2, v_pow)),
                 else => {
                     outz.setError("Cnr4: Only 'o' and 'x' are recognized characters in mode");
                     zapi.freeNode(d.node);
@@ -986,6 +1025,7 @@ pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
         "radius:int:opt;" ++
         "sense:int[]:opt;" ++
         "str:int[]:opt;" ++
+        "pow:float[]:opt;" ++
         "tmode:int:opt;" ++
         "wmode:int:opt;" ++
         "scenechange:int:opt;" ++

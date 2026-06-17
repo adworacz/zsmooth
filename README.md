@@ -147,7 +147,7 @@ Cnr4 is a temporal chroma denoiser, inspired by the original [Cnr2](http://avisy
 It is particularly effective against stationary rainbows or huge analog chroma activity (like VHS).
 
 ```py
-core.zsmooth.Cnr4(clip clip, [str mode="oxx", int radius=2, int[] sense=[35, 47, 47], int[] str=[192, 255, 255], int tmode=0, int wmode=0, bool scenechange=True, clip ref=None])
+core.zsmooth.Cnr4(clip clip, [str mode="oxx", int radius=2, int[] sense=[35, 47, 47], int[] str=[192, 255, 255], float[] pow=[1.0, 1.0, 1.0], int tmode=0, int wmode=0, bool scenechange=True, clip ref=None])
 ```
 
 Cnr4 currently supports 8-16 bit integer YUV clips, with float support planned.
@@ -190,6 +190,7 @@ leads to a substantial increase in denoising performance and reduced ghosting wh
 | radius | int (1-10) | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
 | sense | int[3] | -1 - 255 ([35, 47, 47]) | Per-plane noise / motion sensitivity threshold. -1 is an convenience alias for default values. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
 | str | int[3] | -1 - 255 ([192, 255, 255]) | Denoising strength. -1 is an convenience alias for default values. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `sense` values. |
+| pow | float[3] | 0.0 - inf ([1.0, 1.0, 1.0]) | Power applied to internal weight curve. Values above 1.0 denoise more, below 1.0 denoise less. Similar principal to `gamma` parameter in std.Levels adjustment, only applied to internal denoising weights. |
 | scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
 | tmode | int (0-4) | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
 | wmode | int (0-3) | 1 | Temporal weighting mode. In decreasing order of denoising strength. Mode 0 is the original behavior of Cnr2, while modes 1-3 reduce the influence of other frames the farther they are from the current frame. Mode 1 is a good balance of detail retention, artifact prevention, and denoising quality, with subsequent modes preserving more and denoising less.|

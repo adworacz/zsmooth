@@ -59,14 +59,7 @@ for use with VapourSynth r74 and greater. This means that the package can be ins
 pip install -U vapoursynth-zsmooth
 ```
 
-Alternatively, `vsrepo` can be used to install older versions:
-
-```
-pip install -U vsrepo 
-vsrepo install zsmooth
-```
-
-Lastly, individual binaries can be downloaded from the [Releases](https://github.com/adworacz/zsmooth/releases) page.
+Otherwise, individual binaries can be downloaded from the [Releases](https://github.com/adworacz/zsmooth/releases) page.
 
 ## Function Documentation
 ### CCD

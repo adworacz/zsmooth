@@ -304,8 +304,8 @@ def fluxSmoothT(clip, threshold, radius):
     med = clip.zsmooth.TemporalMedian(radius)
     avg = clip.zsmooth.TemporalSoften(radius, threshold)
 
-    from vsrgtools import limit_filter, LimitFilterMode
-    return limit_filter(med, clip, avg, mode=LimitFilterMode.DIFF_MIN)
+    diff_min = 'y x - y z - xor y y x - abs y z - abs < x z ? ?'
+    core.std.Expr([med,clip,avg], diff_min)
 ```
 
 ### InterQuartileMean
@@ -389,8 +389,8 @@ def minblur(clip, radius, repair_edges=False):
 
     median = clip.zsmooth.Median(radius)
 
-    from vsrgtools import limit_filter, LimitFilterMode
-    limited = limit_filter(gauss, clip, median, mode=LimitFilterMode.DIFF_MIN)
+    diff_min = 'y x - y z - xor y y x - abs y z - abs < x z ? ?'
+    core.std.Expr([gauss, clip, median], diff_min)
 
     # Restore edges if desired, Dogway recommends to disable this when using minblur as a prefilter.
     if repair_edges:

@@ -62,19 +62,111 @@ const TemporalMode = enum {
 };
 
 const WeightMode = enum {
-    original, // The original weighting behavior of Cnr2
-    weight_abs_diff, // much better detail retention, albeit less temporal smoothing
-    total_weight_div, // even better detail retention, but barely denoises.
-    both, // combo of above, lightest overall effect.
+    /// Linearly decreasing denominator of weights (1/2, 1/3, 1/4...)
+    linear_decrease,
+    // /// Lower weight to past frames, higher weight to future frames.
+    // sin_sqrt,
+    // /// Higher weight to past frames, lower weight to future frames.
+    // sqrt_sin,
+    /// Lower starting weight than higher modes, slower decay
+    sin,
+    /// Higher starting weight than lower modes, faster decay
+    sqrt,
+    /// Equal weights (1.0) for all frames.
+    equal,
 
     const Self = @This();
 
-    fn processAbsDiff(self: Self) bool {
-        return self == .weight_abs_diff or self == .both;
+    fn processWeights(self: Self) bool {
+        return self != .equal;
     }
 
-    fn processWeights(self: Self) bool {
-        return self == .total_weight_div or self == .both;
+    fn calculateWeights(self: Self, radius: comptime_int) [radius * 2]f32 {
+        return switch (self) {
+            .linear_decrease => calculateLinearWeights(radius),
+            .sin => calculateSinWeights(radius),
+            .sqrt => calculateSqrtWeights(radius),
+            .equal => @splat(1.0),
+        };
+    }
+
+    test calculateWeights {
+        //Linear
+        try std.testing.expectEqualDeep(.{ 1.0 / 3.0, 1.0 / 2.0, 1.0 / 2.0, 1.0 / 3.0 }, WeightMode.linear_decrease.calculateWeights(2));
+        try std.testing.expectEqualDeep(.{ 1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0 }, WeightMode.linear_decrease.calculateWeights(3));
+        try std.testing.expectEqualDeep(.{ 1.0 / 5.0, 1.0 / 4.0, 1.0 / 3.0, 1.0 / 2.0, 1.0 / 2.0, 1.0 / 3.0, 1.0 / 4.0, 1.0 / 5.0 }, WeightMode.linear_decrease.calculateWeights(4));
+
+        // Sin - weaker
+        // try std.testing.expectEqualDeep(.{ 0.32719472, 0.479425538604203, 0.479425538604203, 0.32719472 }, WeightMode.sin.calculateWeights(2));
+        // try std.testing.expectEqualDeep(.{ 0.247403959254523, 0.366272529086048, 0.479425538604203, 0.479425538604203, 0.366272529086048, 0.247403959254523 }, WeightMode.sin.calculateWeights(3));
+        // try std.testing.expectEqualDeep(.{ 0.198669330795061, 0.29552020666134, 0.389418342308651, 0.479425538604203, 0.479425538604203, 0.389418342308651, 0.29552020666134, 0.198669330795061 }, WeightMode.sin.calculateWeights(4));
+
+        try std.testing.expectEqualDeep(.{ 0.479425538604203, 0.681638760023334, 0.681638760023334, 0.479425538604203 }, WeightMode.sin.calculateWeights(2));
+        try std.testing.expectEqualDeep(.{ 0.32719472, 0.479425538604203, 0.618369803069737, 0.618369803069737, 0.479425538604203, 0.32719472 }, WeightMode.sin.calculateWeights(3));
+        try std.testing.expectEqualDeep(.{ 0.247403959254523, 0.366272529086048, 0.479425538604203, 0.585097272940462, 0.585097272940462, 0.479425538604203, 0.366272529086048, 0.247403959254523 }, WeightMode.sin.calculateWeights(4));
+
+        //Sqrt - weaker
+        // try std.testing.expectEqualDeep(.{ 0.408248290463863, 0.577350269189626, 0.577350269189626, 0.408248290463863 }, WeightMode.sqrt.calculateWeights(2));
+        // try std.testing.expectEqualDeep(.{ 0.353553390593274, 0.5, 0.612372435695795, 0.612372435695795, 0.5, 0.353553390593274 }, WeightMode.sqrt.calculateWeights(3));
+        // try std.testing.expectEqualDeep(.{ 0.316227766016838, 0.447213595499958, 0.547722557505166, 0.632455532033676, 0.632455532033676, 0.547722557505166, 0.447213595499958, 0.316227766016838 }, WeightMode.sqrt.calculateWeights(4));
+
+        //Sqrt - stronger
+        try std.testing.expectEqualDeep(.{ 0.5, 0.707106781186548, 0.707106781186548, 0.5 }, WeightMode.sqrt.calculateWeights(2));
+        try std.testing.expectEqualDeep(.{ 0.408248290463863, 0.577350269189626, 0.707106781186548, 0.707106781186548, 0.577350269189626, 0.408248290463863 }, WeightMode.sqrt.calculateWeights(3));
+        try std.testing.expectEqualDeep(.{ 0.353553390593274, 0.5, 0.612372435695795, 0.707106781186548, 0.707106781186548, 0.612372435695795, 0.5, 0.353553390593274 }, WeightMode.sqrt.calculateWeights(4));
+
+        // Equal
+        try std.testing.expectEqualDeep(.{ 1.0, 1.0, 1.0, 1.0 }, WeightMode.equal.calculateWeights(2));
+        try std.testing.expectEqualDeep(.{ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 }, WeightMode.equal.calculateWeights(3));
+        try std.testing.expectEqualDeep(.{ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 }, WeightMode.equal.calculateWeights(4));
+    }
+
+    // Calculates weights for the temporal neighbors
+    // Calculation is slightly tricky since the array we operate
+    // on does *not* include the center frame.
+    fn calculateLinearWeights(radius: comptime_int) [radius * 2]f32 {
+        var weights: [radius * 2]f32 = undefined;
+
+        for (0..radius * 2) |i| {
+            // Weight frames further away more heavily.
+            weights[i] = 1.0 / @as(f32, @floatFromInt(if (i < radius) radius - i + 1 else i - radius + 2));
+        }
+
+        return weights;
+    }
+
+    fn calculateSqrtWeights(radius: comptime_int) [radius * 2]f32 {
+        var weights: [radius * 2]f32 = @splat(0.0);
+
+        for (0..radius) |i| {
+            // Weaker
+            // const val = @sqrt(@as(f32, @floatFromInt(radius - i)) / @as(f32, @floatFromInt((radius + 1) * 2)));
+
+            // Stronger
+            const val = @sqrt(@as(f32, @floatFromInt(radius - i)) / @as(f32, @floatFromInt(radius * 2)));
+
+            weights[radius - 1 - i] = val;
+            weights[radius + i] = val;
+        }
+
+        return weights;
+    }
+
+    fn calculateSinWeights(radius: comptime_int) [radius * 2]f32 {
+        var weights: [radius * 2]f32 = @splat(0.0);
+
+        for (0..radius) |i| {
+            // Weaker
+            // const val = @sin(@as(f32, @floatFromInt(radius + 1 - i)) / @as(f32, @floatFromInt(((radius + 1) * 2))));
+
+            // Stronger
+            const val = @sin(@as(f32, @floatFromInt(radius + 1 - i)) / @as(f32, @floatFromInt(radius * 2)));
+
+            weights[radius - 1 - i] = val;
+            weights[radius + i] = val;
+        }
+
+        return weights;
     }
 };
 
@@ -103,26 +195,6 @@ fn Cnr4(comptime T: type) type {
     const BUAT = types.BigUnsignedArithmeticType(T);
 
     return struct {
-        // Calculates weights for the temporal neighbors
-        // Calculation is slightly tricky since the array we operate
-        // on does *not* include the center frame.
-        fn calculateTemporalWeights(radius: comptime_int) [radius * 2]T {
-            var weights: [radius * 2]T = undefined;
-
-            for (0..radius * 2) |i| {
-                // Weight frames further away more heavily.
-                weights[i] = @intCast(if (i < radius) radius - i + 1 else i - radius + 2);
-            }
-
-            return weights;
-        }
-
-        test calculateTemporalWeights {
-            try std.testing.expectEqualDeep(.{ 3, 2, 2, 3 }, calculateTemporalWeights(2));
-            try std.testing.expectEqualDeep(.{ 4, 3, 2, 2, 3, 4 }, calculateTemporalWeights(3));
-            try std.testing.expectEqualDeep(.{ 5, 4, 3, 2, 2, 3, 4, 5 }, calculateTemporalWeights(4));
-        }
-
         const ProcessOpts = struct {
             wmode: WeightMode,
 
@@ -152,21 +224,7 @@ fn Cnr4(comptime T: type) type {
             const table_u = tables[1];
             const table_v = tables[2];
 
-            const abs_diff_weights: [radius * 2]T = if (opt.wmode.processAbsDiff()) calculateTemporalWeights(radius) else @splat(1);
-
-            // Division by reciprocal multiplication.
-            // Shifting depends on integer sizes, not bit depth of input,
-            // because it's focused on calculation accuracy.
-            const mul_shift = @bitSizeOf(BUAT) / 2;
-            const round_mul_shift = 1 << (mul_shift - 1);
-            var weight_multipliers: [radius * 2]BUAT = @splat(1 << mul_shift);
-
-            if (opt.wmode.processWeights()) {
-                const weights = calculateTemporalWeights(radius);
-                for (&weight_multipliers, weights) |*wm, weight| {
-                    wm.* = wm.* / weight;
-                }
-            }
+            const temporal_weights: [radius * 2]f32 = opt.wmode.calculateWeights(radius);
 
             var results_u: [radius * 2]UAT = @splat(0);
             var results_v: [radius * 2]UAT = @splat(0);
@@ -186,7 +244,7 @@ fn Cnr4(comptime T: type) type {
                     const y_index = y * opt.stride_y + x;
                     const uv_index = y * opt.stride_uv + x;
 
-                    for (0..radius * 2, src, ref, abs_diff_weights, weight_multipliers) |i, other, other_ref, aweight, wmul| {
+                    for (0..radius * 2, src, ref, temporal_weights) |i, other, other_ref, tweight| {
                         const other_u = other[1];
                         const other_v = other[2];
 
@@ -214,18 +272,11 @@ fn Cnr4(comptime T: type) type {
                             else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
                         };
 
-                        // Increase the weight of temporally distant neighbors
-                        // Avoids (some) artifacts (also can create a few)
-                        // and increases detail retention, with some denoising reduction.
-                        const weighted_table_idx_y = @min(table_idx_y * aweight, 255);
-                        const weighted_table_idx_u = @min(table_idx_u * aweight, 255);
-                        const weighted_table_idx_v = @min(table_idx_v * aweight, 255);
+                        var weight_u: BUAT = (@as(UAT, table_y[table_idx_y]) * table_u[table_idx_u]) << @intCast(weight_shift);
+                        var weight_v: BUAT = (@as(UAT, table_y[table_idx_y]) * table_v[table_idx_v]) << @intCast(weight_shift);
 
-                        var weight_u: BUAT = (@as(UAT, table_y[weighted_table_idx_y]) * table_u[weighted_table_idx_u]) << @intCast(weight_shift);
-                        var weight_v: BUAT = (@as(UAT, table_y[weighted_table_idx_y]) * table_v[weighted_table_idx_v]) << @intCast(weight_shift);
-
-                        weight_u = (weight_u * wmul + round_mul_shift) >> mul_shift;
-                        weight_v = (weight_v * wmul + round_mul_shift) >> mul_shift;
+                        weight_u = @intFromFloat(@round(@as(f32, @floatFromInt(weight_u)) * tweight));
+                        weight_v = @intFromFloat(@round(@as(f32, @floatFromInt(weight_v)) * tweight));
 
                         const result_u = ((weight_u * other_u[uv_index] + (max - weight_u) * curr_u[uv_index] + round) >> @intCast(shift));
                         const result_v = ((weight_v * other_v[uv_index] + (max - weight_v) * curr_v[uv_index] + round) >> @intCast(shift));
@@ -726,7 +777,7 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         }
 
         break :blk @enumFromInt(wmode);
-    } else .original;
+    } else .equal;
 
     d.scenechange = inz.getBool("scenechange") orelse true;
 

@@ -116,8 +116,7 @@ fn CCD(comptime T: type) type {
             threshold: BUAT,
             format_max: T,
             points: []const Point,
-            //TODO: Turn this into a slice
-            weights: [MAX_TEMPORAL_DIAMETER]f32,
+            weights: []const f32,
         };
 
         fn ccdScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { T, T, T } {
@@ -329,7 +328,7 @@ fn CCD(comptime T: type) type {
             scale: f32,
             points: []const Point,
             diameter: u8,
-            weights: [MAX_TEMPORAL_DIAMETER]f32,
+            weights: []const f32,
             format_max: T,
         }) void {
             const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(opt.diameter)) * opt.scale));
@@ -420,7 +419,7 @@ fn CCD(comptime T: type) type {
             points: []Point,
             diameter: u8,
             temporal_radius: u8,
-            weights: [MAX_TEMPORAL_DIAMETER]f32,
+            weights: []const f32,
             chroma: bool,
             bits_per_sample: u6,
         }) void {
@@ -428,26 +427,6 @@ fn CCD(comptime T: type) type {
             const stride = opt.stride8 / @sizeOf(T);
             const src: []const []const T = @ptrCast(@alignCast(src8));
             const ref: []const []const T = @ptrCast(@alignCast(ref8));
-            // const src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
-            //     const temporal_diameter = opt.temporal_radius * 2 + 1;
-            //     var s: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
-            //     for (0..temporal_diameter) |i| {
-            //         s[i * 3 + 0] = @ptrCast(@alignCast(src8[i * 3 + 0]));
-            //         s[i * 3 + 1] = @ptrCast(@alignCast(src8[i * 3 + 1]));
-            //         s[i * 3 + 2] = @ptrCast(@alignCast(src8[i * 3 + 2]));
-            //     }
-            //     break :blk s;
-            // };
-            // const ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
-            //     const temporal_diameter = opt.temporal_radius * 2 + 1;
-            //     var r: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
-            //     for (0..temporal_diameter) |i| {
-            //         r[i * 3 + 0] = @ptrCast(@alignCast(ref8[i * 3 + 0]));
-            //         r[i * 3 + 1] = @ptrCast(@alignCast(ref8[i * 3 + 1]));
-            //         r[i * 3 + 2] = @ptrCast(@alignCast(ref8[i * 3 + 2]));
-            //     }
-            //     break :blk r;
-            // };
 
             const dstp_y: []T = @ptrCast(@alignCast(dstp_y8));
             const dstp_u: []T = @ptrCast(@alignCast(dstp_u8));
@@ -557,7 +536,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             .points = d.points,
             .diameter = d.diameter,
             .temporal_radius = d.temporal_radius,
-            .weights = d.weights,
+            .weights = d.weights[0..temporal_diameter],
             .chroma = chroma,
             .bits_per_sample = bits_per_sample,
             .width = width,

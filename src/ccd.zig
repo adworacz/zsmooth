@@ -120,7 +120,7 @@ fn CCD(comptime T: type) type {
             weights: [MAX_TEMPORAL_DIAMETER]f32,
         };
 
-        fn ccdScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, opt: CCDOptions) struct { T, T, T } {
+        fn ccdScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { T, T, T } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) f32 else T;
@@ -219,7 +219,7 @@ fn CCD(comptime T: type) type {
         }
 
         // Only handles non-mirrored content, since mirroring is much more difficult to implement for vectors.
-        fn ccdVector(comptime temporal_radius: u8, row: usize, column: usize, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T,opt: CCDOptions) struct { VT, VT, VT } {
+        fn ccdVector(comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { VT, VT, VT } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
@@ -321,7 +321,7 @@ fn CCD(comptime T: type) type {
         }
 
         // Use separate dst slices for each plane so we can use 'noalias'
-        fn processPlanesVector(comptime temporal_radius: u8, src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T, noalias dst_y: []T, noalias dst_u: []T, noalias dst_v: []T, opt: struct {
+        fn processPlanesVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_y: []T, noalias dst_u: []T, noalias dst_v: []T, opt: struct {
             width: usize,
             height: usize,
             stride: usize,
@@ -411,7 +411,7 @@ fn CCD(comptime T: type) type {
             }
         }
 
-        fn processPlanes(src8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, ref8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8, noalias dstp_y8: []u8, noalias dstp_u8: []u8, noalias dstp_v8: []u8, opt: struct {
+        fn processPlanes(noalias src8: []const []const u8, noalias ref8: []const []const u8, noalias dstp_y8: []u8, noalias dstp_u8: []u8, noalias dstp_v8: []u8, opt: struct {
             width: usize,
             height: usize,
             stride8: usize,
@@ -426,26 +426,28 @@ fn CCD(comptime T: type) type {
         }) void {
             const threshold: BUAT = lossyCast(BUAT, opt.threshold);
             const stride = opt.stride8 / @sizeOf(T);
-            const src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
-                const temporal_diameter = opt.temporal_radius * 2 + 1;
-                var s: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
-                for (0..temporal_diameter) |i| {
-                    s[i * 3 + 0] = @ptrCast(@alignCast(src8[i * 3 + 0]));
-                    s[i * 3 + 1] = @ptrCast(@alignCast(src8[i * 3 + 1]));
-                    s[i * 3 + 2] = @ptrCast(@alignCast(src8[i * 3 + 2]));
-                }
-                break :blk s;
-            };
-            const ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
-                const temporal_diameter = opt.temporal_radius * 2 + 1;
-                var r: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
-                for (0..temporal_diameter) |i| {
-                    r[i * 3 + 0] = @ptrCast(@alignCast(ref8[i * 3 + 0]));
-                    r[i * 3 + 1] = @ptrCast(@alignCast(ref8[i * 3 + 1]));
-                    r[i * 3 + 2] = @ptrCast(@alignCast(ref8[i * 3 + 2]));
-                }
-                break :blk r;
-            };
+            const src: []const []const T = @ptrCast(@alignCast(src8));
+            const ref: []const []const T = @ptrCast(@alignCast(ref8));
+            // const src: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
+            //     const temporal_diameter = opt.temporal_radius * 2 + 1;
+            //     var s: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
+            //     for (0..temporal_diameter) |i| {
+            //         s[i * 3 + 0] = @ptrCast(@alignCast(src8[i * 3 + 0]));
+            //         s[i * 3 + 1] = @ptrCast(@alignCast(src8[i * 3 + 1]));
+            //         s[i * 3 + 2] = @ptrCast(@alignCast(src8[i * 3 + 2]));
+            //     }
+            //     break :blk s;
+            // };
+            // const ref: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = blk: {
+            //     const temporal_diameter = opt.temporal_radius * 2 + 1;
+            //     var r: [MAX_TEMPORAL_DIAMETER_PLANES][]const T = undefined;
+            //     for (0..temporal_diameter) |i| {
+            //         r[i * 3 + 0] = @ptrCast(@alignCast(ref8[i * 3 + 0]));
+            //         r[i * 3 + 1] = @ptrCast(@alignCast(ref8[i * 3 + 1]));
+            //         r[i * 3 + 2] = @ptrCast(@alignCast(ref8[i * 3 + 2]));
+            //     }
+            //     break :blk r;
+            // };
 
             const dstp_y: []T = @ptrCast(@alignCast(dstp_y8));
             const dstp_u: []T = @ptrCast(@alignCast(dstp_u8));
@@ -549,7 +551,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, 0);
         const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 
-        processPlanes(srcp8, ref8, dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+        processPlanes(srcp8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
             .threshold = d.threshold,
             .scale = d.scale,
             .points = d.points,

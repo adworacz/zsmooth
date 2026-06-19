@@ -1015,9 +1015,14 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
             .source = d.node,
             .requestPattern = rp.General,
         },
+        vs.FilterDependency{
+            .source = d.node_ref,
+            .requestPattern = rp.General,
+        },
     };
+    const num_deps: u8 = if(d.node_ref) |_| 2 else 1;
 
-    zapi.createVideoFilter(out, "Cnr4", d.vi, cnr4GetFrame, cnr4Free, fm.Parallel, &deps, data);
+    zapi.createVideoFilter(out, "Cnr4", d.vi, cnr4GetFrame, cnr4Free, fm.Parallel, deps[0..num_deps], data);
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {

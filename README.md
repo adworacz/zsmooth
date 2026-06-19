@@ -77,7 +77,7 @@ After denoising, the clip should be converted back to YUV / YCoCg, and the luma 
 be copied from the input. This plugin only denoises, it does no YUV->RGB->YUV conversion nor luma copying.
 
 ```py
-core.zsmooth.CCD(clip clip, [float threshold = 4, int temporal_radius = 0, scale = auto, points=[True, True, False]])
+core.zsmooth.CCD(clip clip, [float threshold = 4, int temporal_radius = 0, scale = auto, points=[True, True, False], clip ref = None])
 ```
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
@@ -86,6 +86,7 @@ core.zsmooth.CCD(clip clip, [float threshold = 4, int temporal_radius = 0, scale
 | temporal_radius | int | 0-10 (0) | Temporal radius of processing. Higher values result in more denoising. |
 | points | bool[3] | ([True, True, False]) | Specifies whether to use the low, medium, or high reference points (or any combination), respectively, in the processing matrix. See the note on points below for more information. The default uses the low and medium, but excludes the high points. Feel free to adjust based on your source. |
 | scale | float | 0-inf (auto) | Multiplier for the size of the matrix. `scale=1` corresponds with a 25x25 matrix (just like the original CCD implementation by Sergey). `scale=2` is a 50x50 matrix, and so on. The default is automatic, which calculates a multiplier based off of the source height, as the original CCD was implemented for 240p content. It's recommended to use the auto calculation and/or adjust `points` to suit your source |
+| ref | clip | None | Reference clip used for internal calculations. Must match source format, width, and height. Final pixel values are taken from source clip, but weights are derived from reference clip, if provided. |
 
 #### Points
 This implementation of CCD supports a configurable set of reference points in the NxN matrix (25x25 for `scale=1`).

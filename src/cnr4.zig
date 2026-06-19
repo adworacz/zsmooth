@@ -928,6 +928,7 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
         if (!vsh.isSameVideoInfo(d.vi, refvi.vi)) {
             outz.setError("Cnr4: ref must be the same video format, width, and height as the source clip");
             zapi.freeNode(d.node);
+            zapi.freeNode(refvi.node);
             return;
         }
         d.node_ref = refvi.node;

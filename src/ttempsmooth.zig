@@ -648,9 +648,8 @@ test calculateTemporalWeights {
 // temporal_difference_weights[0][...] holds the weights for the frames on either side of the source frame (-1 and +1) (prev and next)
 // temporal_difference_weights[1][...] holds the weights for frames 2 steps away (-2 and +2) (2nd prev and 2nd next).
 // etc.
-fn calculateTemporalDifferenceWeights(threshold: u9, mdiff: u8, maxr: u8, strength: u8, _temporal_difference_weights: *[][MAX_NUM_DIFFERENCES]f32, center_weight: *f32) void {
+fn calculateTemporalDifferenceWeights(threshold: u9, mdiff: u8, maxr: u8, strength: u8, temporal_difference_weights: [][MAX_NUM_DIFFERENCES]f32, center_weight: *f32) void {
     // Inverse pixel difference waiting.
-    var temporal_difference_weights: [][MAX_NUM_DIFFERENCES]f32 = _temporal_difference_weights.*;
     var temporal_weights: [MAX_RADIUS + 1]f32 = @splat(0); // Radius + 1 (center frame)
     var difference_weights: [MAX_NUM_DIFFERENCES]f32 = @splat(0);
 
@@ -716,7 +715,7 @@ test calculateTemporalDifferenceWeights {
 
     // With threshold, mdiff, and radius of 1, center weight is 0.5,
     // the previous and next frames have a weight of 0.25 (for a total of 1.0 weight)
-    calculateTemporalDifferenceWeights(1, 1, 1, 1, &temporal_difference_weights, &center_weight);
+    calculateTemporalDifferenceWeights(1, 1, 1, 1, temporal_difference_weights, &center_weight);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][0]);
     try std.testing.expectEqual(0, temporal_difference_weights[0][1]); // Ensure weights at threshold (1) are zero
     try std.testing.expectEqual(0, temporal_difference_weights[1][0]); // Ensure weights at next frame are 0 (not set)
@@ -724,7 +723,7 @@ test calculateTemporalDifferenceWeights {
 
     // With threshold and mdiff equal (3), the difference weights are all equal,
     // and there's only a single temporal weight.
-    calculateTemporalDifferenceWeights(3, 3, 1, 1, &temporal_difference_weights, &center_weight);
+    calculateTemporalDifferenceWeights(3, 3, 1, 1, temporal_difference_weights, &center_weight);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][0]);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][1]);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][2]);
@@ -734,7 +733,7 @@ test calculateTemporalDifferenceWeights {
 
     // With threshold 5 and mdiff 2, maximum weight is assigned to the first 3 (0,1,2) differences, with a reducing scale
     // between mdiff and threshold.
-    calculateTemporalDifferenceWeights(5, 2, 1, 1, &temporal_difference_weights, &center_weight);
+    calculateTemporalDifferenceWeights(5, 2, 1, 1, temporal_difference_weights, &center_weight);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][0]);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][1]);
     try std.testing.expectEqual(0.25, temporal_difference_weights[0][2]); //mdiff = 2
@@ -747,7 +746,7 @@ test calculateTemporalDifferenceWeights {
 
     // With strength greater than maxr, all frames are given an equal weight.
     // With maxr = 3, that's 7 total frames (3 + 1 (center) + 3), so weight is 1.0 / 7.0
-    calculateTemporalDifferenceWeights(1, 1, 3, 4, &temporal_difference_weights, &center_weight);
+    calculateTemporalDifferenceWeights(1, 1, 3, 4, temporal_difference_weights, &center_weight);
     try std.testing.expectEqual(1.0 / 7.0, temporal_difference_weights[0][0]); // next frame
     try std.testing.expectEqual(0, temporal_difference_weights[0][1]); //threshold = 1, zero weight
     try std.testing.expectEqual(1.0 / 7.0, temporal_difference_weights[1][0]); // next next frame
@@ -759,7 +758,7 @@ test calculateTemporalDifferenceWeights {
     // Strength is less than maxr, so weights scale inversely the farther they are from center.
     // Temporal weights are 1, 1/2, 1/3, 1/4, which with non-center weights
     // doubled in sum is 1, 1, 2/3, 1/2, which sums to 3.16666666666666666666
-    calculateTemporalDifferenceWeights(1, 1, 3, 1, &temporal_difference_weights, &center_weight);
+    calculateTemporalDifferenceWeights(1, 1, 3, 1, temporal_difference_weights, &center_weight);
     try std.testing.expectEqual(1.0 / 2.0 / 3.16666666666666666666, temporal_difference_weights[0][0]); // next frame
     try std.testing.expectEqual(1.0 / 3.0 / 3.16666666666666666666, temporal_difference_weights[1][0]); // next next frame
     try std.testing.expectEqual(1.0 / 4.0 / 3.16666666666666666666, temporal_difference_weights[2][0]); // next next next frame
@@ -858,7 +857,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
                 d.temporal_difference_weights[plane][i] = @splat(0);
             }
 
-            calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, &d.temporal_difference_weights[plane], &d.center_weight);
+            calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, d.temporal_difference_weights[plane], &d.center_weight);
         } else {
             d.weight_mode[plane] = .temporal;
 

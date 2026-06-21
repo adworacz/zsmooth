@@ -446,8 +446,8 @@ fn TTempSmooth(comptime T: type) type {
             const threshold = lossyCast(T, _threshold);
 
             switch (weight_mode) {
-                // inline else => |wm| processPlaneScalar(srcp, ref, dstp, width, height, stride, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, wm, temporal_weights, temporal_difference_weights),
-                inline else => |wm| processPlaneVector(srcp, ref, dstp, width, height, stride, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, wm, temporal_weights, temporal_difference_weights),
+                inline else => |wm| processPlaneScalar(srcp, ref, dstp, width, height, stride, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, wm, temporal_weights, temporal_difference_weights),
+                // inline else => |wm| processPlaneVector(srcp, ref, dstp, width, height, stride, from_frame_idx, to_frame_idx, maxr, threshold, fp, shift, center_weight, wm, temporal_weights, temporal_difference_weights),
             }
         }
     };
@@ -662,8 +662,8 @@ test calculateTemporalWeights {
 fn calculateTemporalDifferenceWeights(threshold: u9, mdiff: u8, maxr: u8, strength: u8, _temporal_difference_weights: *[][MAX_NUM_DIFFERENCES]f32, center_weight: *f32) void {
     // Inverse pixel difference waiting.
     var temporal_difference_weights: [][MAX_NUM_DIFFERENCES]f32 = _temporal_difference_weights.*;
-    var temporal_weights = [_]f32{0} ** (MAX_RADIUS + 1); // Radius + 1 (center frame)
-    var difference_weights = [_]f32{0} ** MAX_NUM_DIFFERENCES;
+    var temporal_weights: [MAX_RADIUS + 1]f32 = @splat(0); // Radius + 1 (center frame)
+    var difference_weights: [MAX_NUM_DIFFERENCES]f32 = @splat(0);
 
     for (0..maxr + 1) |i| {
         // inverse weight frames further away from the center.
@@ -717,7 +717,7 @@ test calculateTemporalDifferenceWeights {
     // Tests would segfault if they write past the given allocations.
     var temporal_difference_weights: [][MAX_NUM_DIFFERENCES]f32 = try testingAllocator.alloc([MAX_NUM_DIFFERENCES]f32, 3);
     for (0..temporal_difference_weights.len) |i| {
-        temporal_difference_weights[i] = [_]f32{0} ** MAX_NUM_DIFFERENCES;
+        temporal_difference_weights[i] = @splat(0);
     }
     defer {
         testingAllocator.free(temporal_difference_weights);
@@ -866,7 +866,7 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
             // Aka a slice for each frame, containing the lookup table of weights;
             d.temporal_difference_weights[plane] = allocator.alloc([MAX_NUM_DIFFERENCES]f32, d.maxr + 1) catch unreachable;
             for (0..d.temporal_difference_weights[plane].len) |i| {
-                d.temporal_difference_weights[plane][i] = [_]f32{0} ** MAX_NUM_DIFFERENCES;
+                d.temporal_difference_weights[plane][i] = @splat(0);
             }
 
             calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, &d.temporal_difference_weights[plane], &d.center_weight);

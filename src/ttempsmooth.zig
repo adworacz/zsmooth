@@ -65,7 +65,7 @@ fn TTempSmooth(comptime T: type) type {
     return struct {
         //TODO: I think this algorithm can be rewritten / shrunk.
         //If we pass the center frame separately, then we can likely
-        //iterate over all other frames in one pass, instead of walking 
+        //iterate over all other frames in one pass, instead of walking
         //backwards then forwards. It might require some changes to the lookup table layouts but I think it could work.
         //Hopefully would remove ~50% of the (pretty much) duplicated code.
         fn processPlaneScalar(srcp: []const []const T, ref: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, from_frame_idx: usize, to_frame_idx: usize, maxr: u8, threshold: T, fp: bool, shift: u8, center_weight: f32, comptime weight_mode: WeightMode, temporal_weights: []const f32, temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32) void {
@@ -91,7 +91,7 @@ fn TTempSmooth(comptime T: type) type {
 
                         if (diff < threshold) {
                             var weight = switch (comptime weight_mode) {
-                                .temporal => temporal_weights[frame_idx],
+                                .temporal => temporal_weights[maxr - frame_idx],
                                 .inverse_difference => temporal_difference_weights[maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
                                 //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
                                 //                                                 so we subtract in order to correct the lookup.
@@ -127,7 +127,7 @@ fn TTempSmooth(comptime T: type) type {
 
                                 if (diff < threshold and temporal_diff < threshold) {
                                     weight = switch (comptime weight_mode) {
-                                        .temporal => temporal_weights[frame_idx],
+                                        .temporal => temporal_weights[maxr - frame_idx],
                                         .inverse_difference => temporal_difference_weights[maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
                                     };
                                     weight_sum += weight;
@@ -160,7 +160,7 @@ fn TTempSmooth(comptime T: type) type {
 
                         if (diff < threshold) {
                             var weight = switch (comptime weight_mode) {
-                                .temporal => temporal_weights[frame_idx],
+                                .temporal => temporal_weights[frame_idx - maxr],
                                 .inverse_difference => temporal_difference_weights[frame_idx - maxr - 1][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
                                 //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
                                 //                                                 so we subtract in order to correct the lookup.
@@ -190,7 +190,7 @@ fn TTempSmooth(comptime T: type) type {
 
                                 if (diff < threshold and temporal_diff < threshold) {
                                     weight = switch (comptime weight_mode) {
-                                        .temporal => temporal_weights[frame_idx],
+                                        .temporal => temporal_weights[frame_idx - maxr],
                                         .inverse_difference => temporal_difference_weights[frame_idx - maxr - 1][if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * 255.0))],
                                     };
                                     weight_sum += weight;
@@ -249,7 +249,7 @@ fn TTempSmooth(comptime T: type) type {
                 var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                 // var slice: []const f32 = &temporal_difference_weights[maxr - 1 - frame_idx];
                 var weight: SumVecType = switch (comptime weight_mode) {
-                    .temporal => @splat(temporal_weights[frame_idx]),
+                    .temporal => @splat(temporal_weights[maxr - frame_idx]),
                     .inverse_difference => vec.gatherArray(temporal_difference_weights[maxr - 1 - frame_idx], weight_idx),
                     // .inverse_difference => vec.gather(slice, weight_idx),
                     //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
@@ -296,7 +296,7 @@ fn TTempSmooth(comptime T: type) type {
                     weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                     // slice = &temporal_difference_weights[maxr - 1 - frame_idx];
                     weight = switch (comptime weight_mode) {
-                        .temporal => @splat(temporal_weights[frame_idx]),
+                        .temporal => @splat(temporal_weights[maxr - frame_idx]),
                         .inverse_difference => vec.gatherArray(temporal_difference_weights[maxr - 1 - frame_idx], weight_idx),
                         // .inverse_difference => vec.gather(slice, weight_idx),
                         //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
@@ -339,7 +339,7 @@ fn TTempSmooth(comptime T: type) type {
                 var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                 // var slice: []const f32 = &temporal_difference_weights[frame_idx - maxr - 1];
                 var weight: SumVecType = switch (comptime weight_mode) {
-                    .temporal => @splat(temporal_weights[frame_idx]),
+                    .temporal => @splat(temporal_weights[frame_idx - maxr]),
                     .inverse_difference => vec.gatherArray(temporal_difference_weights[frame_idx - maxr - 1], weight_idx),
                     // .inverse_difference => vec.gather(slice, weight_idx),
                     //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
@@ -380,7 +380,7 @@ fn TTempSmooth(comptime T: type) type {
                     weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
                     // slice = &temporal_difference_weights[frame_idx - maxr - 1];
                     weight = switch (comptime weight_mode) {
-                        .temporal => @splat(temporal_weights[frame_idx]),
+                        .temporal => @splat(temporal_weights[frame_idx - maxr]),
                         .inverse_difference => vec.gatherArray(temporal_difference_weights[frame_idx - maxr - 1], weight_idx),
                         // .inverse_difference => vec.gather(slice, weight_idx),
                         //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
@@ -591,64 +591,53 @@ export fn ttempSmoothFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*
     allocator.destroy(d);
 }
 
-fn calculateTemporalWeights(maxr: u8, strength: u8, temporal_weights: *[]f32, center_weight: *f32) void {
-    const diameter = maxr * 2 + 1;
-    var weights: []f32 = temporal_weights.*;
-
-    var sum: f32 = 0;
-
-    // Symmetric distribution of temporal weights from the center outwards.
-    for (0..maxr + 1) |radius| {
-        weights[maxr - radius] = if (radius < strength) 1.0 else 1.0 / @as(f32, @floatFromInt(radius - strength + 2));
-        weights[maxr + radius] = weights[maxr - radius];
+fn calculateTemporalWeights(maxr: u8, strength: u8, weights: []f32, center_weight: *f32) void {
+    for (0..maxr + 1) |i| {
+        weights[i] = if (i < strength) 1.0 else 1.0 / @as(f32, @floatFromInt(i - strength + 2));
     }
 
-    for (0..diameter) |i| {
-        sum += weights[i];
+    var sum: f32 = weights[0]; // center weight
+    for (weights[1..]) |weight| {
+        sum += (weight * 2);
     }
 
-    for (0..diameter) |i| {
-        weights[i] /= sum;
+    for (weights) |*weight| {
+        weight.* /= sum;
     }
 
-    center_weight.* = weights[maxr];
+    center_weight.* = weights[0];
 }
 
 test calculateTemporalWeights {
-    var temporal_weights: []f32 = try testingAllocator.alloc(f32, 15);
+    const temporal_weights: []f32 = try testingAllocator.alloc(f32, 8);
     defer testingAllocator.free(temporal_weights);
 
     var center_weight: f32 = 0;
 
     // Strength is greater than maxr, so all frames are equally weighted
-    calculateTemporalWeights(7, 8, &temporal_weights, &center_weight);
-    try std.testing.expectEqualDeep(&[15]f32{
+    calculateTemporalWeights(7, 8, temporal_weights, &center_weight);
+    try std.testing.expectEqualDeep(&[_]f32{
         1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, //
-        1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, //
-        1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0,
+        1.0 / 15.0, 1.0 / 15.0, 1.0 / 15.0, //
     }, temporal_weights);
     try std.testing.expectEqual(1.0 / 15.0, center_weight);
 
     @memset(temporal_weights, 0); // clear results
 
     // Radius 1, diameter = 3, so weight center frame highest, and prev/next frames half of center weight.
-    calculateTemporalWeights(1, 1, &temporal_weights, &center_weight);
-    try std.testing.expectEqualDeep(&[15]f32{
-        0.25, 0.5, 0.25, 0.0, 0.0, //
-        0.0, 0.0, 0.0, 0.0, 0.0, //
-        0.0, 0.0, 0.0, 0.0, 0.0, //
-    }, temporal_weights);
+    calculateTemporalWeights(1, 1, temporal_weights, &center_weight);
+    try std.testing.expectEqualDeep(&[_]f32{
+        0.5, 0.25,
+    }, temporal_weights[0..2]);
     try std.testing.expectEqual(0.5, center_weight);
 
     @memset(temporal_weights, 0); // clear results
 
     // Sum of weights is 2.66666666 (1/3 + 1/2 + 1 + 1/2 + 1/3), so center is 1.0 / 2.666666, next frames are 0.5 / 2.66666, etc etc.
-    calculateTemporalWeights(2, 1, &temporal_weights, &center_weight);
-    try std.testing.expectEqualDeep(&[15]f32{
-        0.125, 0.1875, 0.375, 0.1875, 0.125, //
-        0.0, 0.0, 0.0, 0.0, 0.0, //
-        0.0, 0.0, 0.0, 0.0, 0.0, //
-    }, temporal_weights);
+    calculateTemporalWeights(2, 1, temporal_weights, &center_weight);
+    try std.testing.expectEqualDeep(&[_]f32{
+        0.375, 0.1875, 0.125 
+    }, temporal_weights[0..3]);
     try std.testing.expectEqual(0.375, center_weight);
 }
 
@@ -872,13 +861,9 @@ export fn ttempSmoothCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
             calculateTemporalDifferenceWeights(d.threshold[plane], mdiff[plane], d.maxr, strength, &d.temporal_difference_weights[plane], &d.center_weight);
         } else {
             d.weight_mode[plane] = .temporal;
-            const diameter = d.maxr * 2 + 1;
 
-            // TODO: Temporal_weights contains the full diameter of frames, but that's unnecessary
-            // duplication of data, since the weights are the same for frames on either side of the center.
-            // Essentially, do the same thing as temporal_difference_weights.
-            d.temporal_weights[plane] = allocator.alloc(f32, diameter) catch unreachable;
-            calculateTemporalWeights(d.maxr, strength, &d.temporal_weights[plane], &d.center_weight);
+            d.temporal_weights[plane] = allocator.alloc(f32, d.maxr + 1) catch unreachable;
+            calculateTemporalWeights(d.maxr, strength, d.temporal_weights[plane], &d.center_weight);
         }
     }
 

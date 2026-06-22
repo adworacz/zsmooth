@@ -207,11 +207,11 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             // Workaround
             // (prev < curr and next < curr)
             // (prev > curr and next > curr)
-            const prevnextless = vec.andB(prev < curr, next < curr);
-            const prevnextmore = vec.andB(prev > curr, next > curr);
+            const prevnextless = (prev < curr) & (next < curr);
+            const prevnextmore = (prev > curr) & (next > curr);
 
             // or
-            const mask_either = vec.orB(prevnextless, prevnextmore);
+            const mask_either = prevnextless | prevnextmore;
 
             const prevabsdiff = math.absDiff(prev, curr);
             const nextabsdiff = math.absDiff(next, curr);
@@ -485,11 +485,11 @@ fn FluxSmooth(comptime T: type, comptime mode: FluxSmoothMode) type {
             //if ((prev < curr and next < curr) or (prev > curr and next > curr))
             // (prev < curr and next < curr)
             // (prev > curr and next > curr)
-            const prevnextless = vec.andB(prev < curr, next < curr);
-            const prevnextmore = vec.andB(prev > curr, next > curr);
+            const prevnextless = (prev < curr) & (next < curr);
+            const prevnextmore = (prev > curr) & (next > curr);
 
             // or
-            const mask_either = vec.orB(prevnextless, prevnextmore);
+            const mask_either = prevnextless | prevnextmore;
 
             const prevabsdiff = math.absDiff(prev, curr);
             const nextabsdiff = math.absDiff(next, curr);

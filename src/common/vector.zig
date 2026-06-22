@@ -50,42 +50,6 @@ pub fn clampFast(v: anytype, vmin: anytype, vmax: anytype) @TypeOf(v, vmin, vmax
     return minFast(vmax, maxFast(vmin, v));
 }
 
-/// Computes an 'and' of arguments v0 and v1, returning
-/// a vector of bools of the same length.
-///
-/// This is a workaround until Zig properly supports boolean
-/// logic on vectors.
-///
-/// The 'B' in this name simply stands for 'boolean', and is
-/// included only to avoid collisions with the zig keyword 'and'.
-///
-/// Reference: https://github.com/ziglang/zig/issues/14306#issuecomment-1626892042
-pub fn andB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).vector.len, bool) {
-    assert(@typeInfo(@TypeOf(v0)).vector.len == @typeInfo(@TypeOf(v1)).vector.len);
-    assert(@typeInfo(@TypeOf(v0)).vector.child == bool);
-    assert(@typeInfo(@TypeOf(v1)).vector.child == bool);
-
-    return @select(bool, v0, v1, v0);
-}
-
-/// Computes an 'or' of arguments v0 and v1, returning
-/// a vector of bools of the same length.
-///
-/// This is a workaround until Zig properly supports boolean
-/// logic on vectors.
-///
-/// The 'B' in this name simply stands for 'boolean', and is
-/// included only to avoid collisions with the zig keyword 'and'.
-///
-/// Reference: https://github.com/ziglang/zig/issues/14306#issuecomment-1626892042
-pub fn orB(v0: anytype, v1: anytype) @Vector(@typeInfo(@TypeOf(v0)).vector.len, bool) {
-    assert(@typeInfo(@TypeOf(v0)).vector.len == @typeInfo(@TypeOf(v1)).vector.len);
-    assert(@typeInfo(@TypeOf(v0)).vector.child == bool);
-    assert(@typeInfo(@TypeOf(v1)).vector.child == bool);
-
-    return @select(bool, v0, v0, v1);
-}
-
 /// Gets a pertinent vector size for the given type based on the compilation target.
 // TODO: Rename to getVectorLength, and rename all vec_size variables to vector_len
 pub inline fn getVecSize(comptime T: type) comptime_int {

@@ -60,7 +60,7 @@ const TTempSmoothData = struct {
 
 fn TTempSmooth(comptime T: type) type {
     const vector_len = vec.getVecSize(T);
-    const VecType = @Vector(vector_len, T);
+    const VT = @Vector(vector_len, T);
 
     return struct {
         //TODO: I think this algorithm can be rewritten / shrunk.
@@ -144,144 +144,6 @@ fn TTempSmooth(comptime T: type) type {
                                 sum / weight_sum;
                         }
                     }
-                    //
-                    // // Check previous frames, starting with the frame closest to the center
-                    // // and then walking backwards.
-                    // var frame_idx: usize = opt.maxr - 1;
-                    //
-                    // if (frame_idx >= opt.from_frame_idx) {
-                    //     var temporal_pixel1 = ref[frame_idx][pixel_idx];
-                    //     var diff = if (types.isInt(T))
-                    //         math.absDiff(current_pixel, temporal_pixel1)
-                    //     else
-                    //         @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
-                    //
-                    //     if (diff < opt.threshold) {
-                    //         var weight = switch (comptime weight_mode) {
-                    //             .temporal => opt.temporal_weights[opt.maxr - frame_idx],
-                    //             .inverse_difference => opt.temporal_difference_weights[opt.maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(opt.shift) else @intFromFloat(@trunc(diff * 255.0))],
-                    //             //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-                    //             //                                                 so we subtract in order to correct the lookup.
-                    //             //                                                 Note that temporal_difference_weights[0] contains the weights for
-                    //             //                                                 the frames on either side of the center, so maxr - 1 and maxr + 1.
-                    //         };
-                    //         weight_sum += weight;
-                    //         sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-                    //
-                    //         //wrapping subtraction to make working with usize
-                    //         //and "beyond zero" easier, vs using isize and a
-                    //         //bunch of casting.
-                    //         frame_idx -%= 1;
-                    //
-                    //         //check against maxInt of usize to see if we've wrapped around.
-                    //         //If we have, then it means that we've gone beyond zero and thus already processed the
-                    //         //last frame.
-                    //         while (frame_idx != std.math.maxInt(usize) and frame_idx >= opt.from_frame_idx) {
-                    //             const temporal_pixel2 = temporal_pixel1;
-                    //             temporal_pixel1 = ref[frame_idx][pixel_idx];
-                    //
-                    //             // diff = abs(current_pixel - temporal_pixel1)
-                    //             diff = if (types.isInt(T))
-                    //                 math.absDiff(current_pixel, temporal_pixel1)
-                    //             else
-                    //                 @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
-                    //
-                    //             // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
-                    //             const temporal_diff = if (types.isInt(T))
-                    //                 math.absDiff(temporal_pixel1, temporal_pixel2)
-                    //             else
-                    //                 @min(math.absDiff(temporal_pixel1, temporal_pixel2), 1.0);
-                    //
-                    //             if (diff < opt.threshold and temporal_diff < opt.threshold) {
-                    //                 weight = switch (comptime weight_mode) {
-                    //                     .temporal => opt.temporal_weights[opt.maxr - frame_idx],
-                    //                     .inverse_difference => opt.temporal_difference_weights[opt.maxr - 1 - frame_idx][if (types.isInt(T)) diff >> @intCast(opt.shift) else @intFromFloat(@trunc(diff * 255.0))],
-                    //                 };
-                    //                 weight_sum += weight;
-                    //                 sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-                    //
-                    //                 //wrapping subtraction to make working with usize
-                    //                 //and "beyond zero" easier, vs using isize and a
-                    //                 //bunch of casting.
-                    //                 frame_idx -%= 1;
-                    //             } else {
-                    //                 break;
-                    //             }
-                    //         }
-                    //     }
-                    // }
-                    //
-                    // // Check next frames, starting with the frame closest to the center
-                    // // and then walking forwards.
-                    // frame_idx = opt.maxr + 1;
-                    //
-                    // if (frame_idx <= opt.to_frame_idx) {
-                    //     // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
-                    //     // and frame_idx <= to_frame_idx instead of frame_idx >= from_frame_idx
-                    //     var temporal_pixel1 = ref[frame_idx][pixel_idx];
-                    //
-                    //     var diff = if (types.isInt(T))
-                    //         math.absDiff(current_pixel, temporal_pixel1)
-                    //     else
-                    //         @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
-                    //
-                    //     if (diff < opt.threshold) {
-                    //         var weight = switch (comptime weight_mode) {
-                    //             .temporal => opt.temporal_weights[frame_idx - opt.maxr],
-                    //             .inverse_difference => opt.temporal_difference_weights[frame_idx - opt.maxr - 1][if (types.isInt(T)) diff >> @intCast(opt.shift) else @intFromFloat(@trunc(diff * 255.0))],
-                    //             //                                                 ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-                    //             //                                                 so we subtract in order to correct the lookup.
-                    //             //                                                 Note that temporal_difference_weights[0] contains the weights for
-                    //             //                                                 the frames on either side of the center, so maxr - 1 and maxr + 1.
-                    //         };
-                    //         weight_sum += weight;
-                    //         sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-                    //
-                    //         frame_idx += 1;
-                    //
-                    //         while (frame_idx <= opt.to_frame_idx) {
-                    //             const temporal_pixel2 = temporal_pixel1;
-                    //             temporal_pixel1 = ref[frame_idx][pixel_idx];
-                    //
-                    //             // diff = abs(current_pixel - temporal_pixel1)
-                    //             diff = if (types.isInt(T))
-                    //                 math.absDiff(current_pixel, temporal_pixel1)
-                    //             else
-                    //                 @min(math.absDiff(current_pixel, temporal_pixel1), 1.0);
-                    //
-                    //             // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
-                    //             const temporal_diff = if (types.isInt(T))
-                    //                 math.absDiff(temporal_pixel1, temporal_pixel2)
-                    //             else
-                    //                 @min(math.absDiff(temporal_pixel1, temporal_pixel2), 1.0);
-                    //
-                    //             if (diff < opt.threshold and temporal_diff < opt.threshold) {
-                    //                 weight = switch (comptime weight_mode) {
-                    //                     .temporal => opt.temporal_weights[frame_idx - opt.maxr],
-                    //                     .inverse_difference => opt.temporal_difference_weights[frame_idx - opt.maxr - 1][if (types.isInt(T)) diff >> @intCast(opt.shift) else @intFromFloat(@trunc(diff * 255.0))],
-                    //                 };
-                    //                 weight_sum += weight;
-                    //                 sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-                    //
-                    //                 frame_idx += 1;
-                    //             } else {
-                    //                 break;
-                    //             }
-                    //         }
-                    //     }
-                    // }
-                    //
-                    // if (opt.fp) {
-                    //     dstp[pixel_idx] = if (types.isInt(T))
-                    //         @intFromFloat(@round(lossyCast(f32, curr[pixel_idx]) * (1.0 - weight_sum) + sum))
-                    //     else
-                    //         curr[pixel_idx] * (1.0 - weight_sum) + sum;
-                    // } else {
-                    //     dstp[pixel_idx] = if (types.isInt(T))
-                    //         @intFromFloat(@round(sum / weight_sum))
-                    //     else
-                    //         sum / weight_sum;
-                    // }
                 }
             }
         }
@@ -299,28 +161,27 @@ fn TTempSmooth(comptime T: type) type {
         fn ttempSmoothVector(comptime weight_mode: WeightMode, noalias curr: []const T, noalias curr_ref: []const T, neighbors: [2][]const []const T, neighbors_ref: [2][]const []const T, noalias dstp: []T, offset: usize, opt: VectorOptions) void {
             @setFloatMode(float_mode);
 
-            //TODO: Rename this type.
-            const SumVecType = @Vector(vector_len, f32);
+            const SVT = @Vector(vector_len, f32); // sum vector type
 
-            const center_weight: SumVecType = @splat(opt.center_weight);
-            const threshold: VecType = @splat(opt.threshold);
+            const center_weight: SVT = @splat(opt.center_weight);
+            const threshold: VT = @splat(opt.threshold);
             const shift: @Vector(vector_len, u8) = @splat(opt.shift);
-            const one: SumVecType = @splat(1.0);
+            const one: SVT = @splat(1.0);
 
-            const current_pixel = vec.load(VecType, curr_ref, offset);
-            var weight_sum: SumVecType = center_weight; // sum of weights
-            var sum: SumVecType = lossyCast(SumVecType, vec.load(VecType, curr, offset)) * center_weight; // sum of weighted pixels.
+            const current_pixel = vec.load(VT, curr_ref, offset);
+            var weight_sum: SVT = center_weight; // sum of weights
+            var sum: SVT = lossyCast(SVT, vec.load(VT, curr, offset)) * center_weight; // sum of weighted pixels.
 
             //TODO: rename *frames to *planes?
             inline for (neighbors, neighbors_ref) |src_frames, ref_frames| {
-                var temporal_pixel1 = vec.load(VecType, ref_frames[0], offset);
+                var temporal_pixel1 = vec.load(VT, ref_frames[0], offset);
 
                 // Optimization: Unroll first iteration of the loop, which
                 // saves us another load and some math + comparisons This and
                 // the 'inline for' on the outer loop, takes performance up
                 // from ~300fps -> 381fps, and 1200fps -> 1300fps for the
                 // inv_diff and temporal modes, respectively
-                var diff = switch (types.numberType(VecType)) {
+                var diff = switch (types.numberType(VT)) {
                     .int => math.absDiff(current_pixel, temporal_pixel1),
                     .float => @min(math.absDiff(current_pixel, temporal_pixel1), one),
                 };
@@ -328,29 +189,29 @@ fn TTempSmooth(comptime T: type) type {
                 var weight_idx: @Vector(vector_len, usize) = switch (T) {
                     u8 => diff,
                     u16 => diff >> @intCast(shift),
-                    else => @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0)))),
+                    else => @intFromFloat(@trunc(diff * @as(SVT, @splat(255.0)))),
                 };
 
-                var weight: SumVecType = switch (comptime weight_mode) {
+                var weight: SVT = switch (comptime weight_mode) {
                     .temporal => @splat(opt.temporal_weights[1]),
                     .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[0], weight_idx),
                 };
 
-                var srcv = lossyCast(SumVecType, vec.load(VecType, src_frames[0], offset));
+                var srcv = lossyCast(SVT, vec.load(VT, src_frames[0], offset));
                 var lt_thresholds = (diff < threshold);
                 weight_sum = @select(f32, lt_thresholds, weight_sum + weight, weight_sum);
                 sum = @select(f32, lt_thresholds, sum + (srcv * weight), sum);
 
                 for (src_frames[1..], ref_frames[1..], 1..) |src, ref, i| {
                     const temporal_pixel2 = temporal_pixel1;
-                    temporal_pixel1 = vec.load(VecType, ref, offset);
+                    temporal_pixel1 = vec.load(VT, ref, offset);
 
-                    diff = switch (types.numberType(VecType)) {
+                    diff = switch (types.numberType(VT)) {
                         .int => math.absDiff(current_pixel, temporal_pixel1),
                         .float => @min(math.absDiff(current_pixel, temporal_pixel1), one),
                     };
 
-                    const temporal_diff = switch (types.numberType(VecType)) {
+                    const temporal_diff = switch (types.numberType(VT)) {
                         .int => math.absDiff(temporal_pixel1, temporal_pixel2),
                         .float => @min(math.absDiff(temporal_pixel1, temporal_pixel2), one),
                     };
@@ -358,7 +219,7 @@ fn TTempSmooth(comptime T: type) type {
                     weight_idx = switch (T) {
                         u8 => diff,
                         u16 => diff >> @intCast(shift),
-                        else => @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0)))),
+                        else => @intFromFloat(@trunc(diff * @as(SVT, @splat(255.0)))),
                     };
 
                     weight = switch (comptime weight_mode) {
@@ -366,7 +227,7 @@ fn TTempSmooth(comptime T: type) type {
                         .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[i], weight_idx),
                     };
 
-                    srcv = lossyCast(SumVecType, vec.load(VecType, src, offset));
+                    srcv = lossyCast(SVT, vec.load(VT, src, offset));
                     lt_thresholds = (diff < threshold) & (temporal_diff < threshold) & lt_thresholds;
                     weight_sum = @select(f32, lt_thresholds, weight_sum + weight, weight_sum);
                     sum = @select(f32, lt_thresholds, sum + (srcv * weight), sum);
@@ -374,207 +235,21 @@ fn TTempSmooth(comptime T: type) type {
             }
 
             if (opt.fp) {
-                const currv = lossyCast(SumVecType, vec.load(VecType, curr, offset));
-                const result: VecType = switch (types.numberType(VecType)) {
+                const currv = lossyCast(SVT, vec.load(VT, curr, offset));
+                const result: VT = switch (types.numberType(VT)) {
                     .int => @intFromFloat(@round(currv * (one - weight_sum) + sum)),
                     .float => currv * (one - weight_sum) + sum,
                 };
 
-                vec.store(VecType, dstp, offset, result);
+                vec.store(VT, dstp, offset, result);
             } else {
-                const result: VecType = switch (types.numberType(VecType)) {
+                const result: VT = switch (types.numberType(VT)) {
                     .int => @intFromFloat(@round(sum / weight_sum)),
                     .float => sum / weight_sum,
                 };
 
-                vec.store(VecType, dstp, offset, result);
+                vec.store(VT, dstp, offset, result);
             }
-
-            // // Check previous frames, starting with the frame closest to the center
-            // // and then walking backwards.
-            // var frame_idx: usize = opt.maxr - 1;
-            //
-            // if (frame_idx >= opt.from_frame_idx) {
-            //     var temporal_pixel1 = vec.load(VecType, ref[frame_idx], offset);
-            //
-            //     // diff = abs(current_pixel - temporal_pixel1)
-            //     var diff = if (types.isInt(T))
-            //         math.absDiff(current_pixel, temporal_pixel1)
-            //     else
-            //         @min(math.absDiff(current_pixel, temporal_pixel1), one);
-            //
-            //     var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
-            //     // var slice: []const f32 = &temporal_difference_weights[maxr - 1 - frame_idx];
-            //     var weight: SumVecType = switch (comptime weight_mode) {
-            //         .temporal => @splat(opt.temporal_weights[opt.maxr - frame_idx]),
-            //         .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[opt.maxr - 1 - frame_idx], weight_idx),
-            //         // .inverse_difference => vec.gather(slice, weight_idx),
-            //         //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-            //         //                                                            so we subtract in order to correct the lookup.
-            //         //                                                            Note that temporal_difference_weights[0] contains the weights for
-            //         //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
-            //     };
-            //
-            //     // if diff < threshold...
-            //     // weight_sum += weight;
-            //     // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-            //     var src = vec.load(VecType, src[frame_idx], offset);
-            //     weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
-            //     sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
-            //
-            //     // Keep track of when the prior processed frame was less than threshold
-            //     // so that we can avoid updating weights if it ever isn't.
-            //     var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
-            //
-            //     //wrapping subtraction to make working with usize
-            //     //and "beyond zero" easier, vs using isize and a
-            //     //bunch of casting.
-            //     frame_idx -%= 1;
-            //
-            //     //check against maxInt of usize to see if we've wrapped around.
-            //     //If we have, then it means that we've gone beyond zero and thus already processed the
-            //     //last frame.
-            //     while (frame_idx != std.math.maxInt(usize) and frame_idx >= opt.from_frame_idx) {
-            //         const temporal_pixel2 = temporal_pixel1;
-            //         temporal_pixel1 = vec.load(VecType, ref[frame_idx], offset);
-            //
-            //         // diff = abs(current_pixel - temporal_pixel1)
-            //         diff = if (types.isInt(T))
-            //             math.absDiff(current_pixel, temporal_pixel1)
-            //         else
-            //             @min(math.absDiff(current_pixel, temporal_pixel1), one);
-            //
-            //         // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
-            //         const temporal_diff = if (types.isInt(T))
-            //             math.absDiff(temporal_pixel1, temporal_pixel2)
-            //         else
-            //             @min(math.absDiff(temporal_pixel1, temporal_pixel2), one);
-            //
-            //         weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
-            //         // slice = &temporal_difference_weights[maxr - 1 - frame_idx];
-            //         weight = switch (comptime weight_mode) {
-            //             .temporal => @splat(opt.temporal_weights[opt.maxr - frame_idx]),
-            //             .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[opt.maxr - 1 - frame_idx], weight_idx),
-            //             // .inverse_difference => vec.gather(slice, weight_idx),
-            //             //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-            //             //                                                            so we subtract in order to correct the lookup.
-            //             //                                                            Note that temporal_difference_weights[0] contains the weights for
-            //             //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
-            //         };
-            //
-            //         // if (prior_lt_threshold and (diff < threshold and temporal_diff < threshold))
-            //         // weight_sum += weight;
-            //         // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-            //         src = vec.load(VecType, src[frame_idx], offset);
-            //         const lt_thresholds = vec.andB(diff < threshold, temporal_diff < threshold);
-            //         weight_sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), weight_sum + weight, weight_sum);
-            //         sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
-            //         prior_lt_threshold = vec.andB(lt_thresholds, prior_lt_threshold);
-            //
-            //         //wrapping subtraction to make working with usize
-            //         //and "beyond zero" easier, vs using isize and a
-            //         //bunch of casting.
-            //         frame_idx -%= 1;
-            //     }
-            // }
-            //
-            // // Check next frames, starting with the frame closest to the center
-            // // and then walking forwards.
-            // frame_idx = opt.maxr + 1;
-            //
-            // if (frame_idx <= opt.to_frame_idx) {
-            //     // Same code as above, only frame_idx += 1 instead of frame_idx -= 1
-            //     // and frame_idx < to_frame_idx instead of frame_idx > from_frame_idx
-            //     var temporal_pixel1 = vec.load(VecType, ref[frame_idx], offset);
-            //
-            //     // diff = abs(current_pixel - temporal_pixel1)
-            //     var diff = if (types.isInt(T))
-            //         math.absDiff(current_pixel, temporal_pixel1)
-            //     else
-            //         @min(math.absDiff(current_pixel, temporal_pixel1), one);
-            //
-            //     var weight_idx: @Vector(vector_len, usize) = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
-            //     // var slice: []const f32 = &temporal_difference_weights[frame_idx - maxr - 1];
-            //     var weight: SumVecType = switch (comptime weight_mode) {
-            //         .temporal => @splat(opt.temporal_weights[frame_idx - opt.maxr]),
-            //         .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[frame_idx - opt.maxr - 1], weight_idx),
-            //         // .inverse_difference => vec.gather(slice, weight_idx),
-            //         //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-            //         //                                                            so we subtract in order to correct the lookup.
-            //         //                                                            Note that temporal_difference_weights[0] contains the weights for
-            //         //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
-            //     };
-            //
-            //     // if diff < threshold...
-            //     // weight_sum += weight;
-            //     // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-            //     var src = vec.load(VecType, src[frame_idx], offset);
-            //     weight_sum = @select(f32, diff < threshold, weight_sum + weight, weight_sum);
-            //     sum = @select(f32, diff < threshold, sum + (lossyCast(SumVecType, src) * weight), sum);
-            //
-            //     // Keep track of when the prior processed frame was less than threshold
-            //     // so that we can avoid updating weights if it ever isn't.
-            //     var prior_lt_threshold: @Vector(vector_len, bool) = diff < threshold;
-            //
-            //     frame_idx += 1;
-            //
-            //     while (frame_idx <= opt.to_frame_idx) {
-            //         const temporal_pixel2 = temporal_pixel1;
-            //         temporal_pixel1 = vec.load(VecType, ref[frame_idx], offset);
-            //
-            //         // diff = abs(current_pixel - temporal_pixel1)
-            //         diff = if (types.isInt(T))
-            //             math.absDiff(current_pixel, temporal_pixel1)
-            //         else
-            //             @min(math.absDiff(current_pixel, temporal_pixel1), one);
-            //
-            //         // temporal_diff = abs(temporal_pixel1 - temporal_pixel2)
-            //         const temporal_diff = if (types.isInt(T))
-            //             math.absDiff(temporal_pixel1, temporal_pixel2)
-            //         else
-            //             @min(math.absDiff(temporal_pixel1, temporal_pixel2), one);
-            //
-            //         weight_idx = if (types.isInt(T)) diff >> @intCast(shift) else @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0))));
-            //         // slice = &temporal_difference_weights[frame_idx - maxr - 1];
-            //         weight = switch (comptime weight_mode) {
-            //             .temporal => @splat(opt.temporal_weights[frame_idx - opt.maxr]),
-            //             .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[frame_idx - opt.maxr - 1], weight_idx),
-            //             // .inverse_difference => vec.gather(slice, weight_idx),
-            //             //                                                            ^ temporal_difference_weights stores only radius (not diameter) number of frames,
-            //             //                                                            so we subtract in order to correct the lookup.
-            //             //                                                            Note that temporal_difference_weights[0] contains the weights for
-            //             //                                                            the frames on either side of the center, so maxr - 1 and maxr + 1.
-            //         };
-            //
-            //         // if (prior_lt_threshold and (diff < threshold and temporal_diff < threshold))
-            //         // weight_sum += weight;
-            //         // sum += lossyCast(f32, srcp[frame_idx][pixel_idx]) * weight;
-            //         src = vec.load(VecType, src[frame_idx], offset);
-            //         const lt_thresholds = vec.andB(diff < threshold, temporal_diff < threshold);
-            //         weight_sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), weight_sum + weight, weight_sum);
-            //         sum = @select(f32, vec.andB(lt_thresholds, prior_lt_threshold), sum + (lossyCast(SumVecType, src) * weight), sum);
-            //         prior_lt_threshold = vec.andB(lt_thresholds, prior_lt_threshold);
-            //
-            //         frame_idx += 1;
-            //     }
-            // }
-            //
-            // if (opt.fp) {
-            //     const src = vec.load(VecType, src[opt.maxr], offset);
-            //     const result: VecType = if (types.isInt(T))
-            //         @intFromFloat(@round(lossyCast(SumVecType, src) * (one - weight_sum) + sum))
-            //     else
-            //         src * (one - weight_sum) + sum;
-            //
-            //     vec.store(VecType, dstp, offset, result);
-            // } else {
-            //     const result: VecType = if (types.isInt(T))
-            //         @intFromFloat(@round(sum / weight_sum))
-            //     else
-            //         sum / weight_sum;
-            //
-            //     vec.store(VecType, dstp, offset, result);
-            // }
         }
 
         fn processPlaneVector(comptime weight_mode: WeightMode, curr: []const T, curr_ref: []const T, neighbors: [2][]const []const T, neighbors_ref: [2][]const []const T, noalias dstp: []T, opt: struct {

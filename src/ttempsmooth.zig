@@ -115,12 +115,15 @@ fn TTempSmooth(comptime T: type) type {
                                 .float => @min(math.absDiff(temporal_pixel1, temporal_pixel2), 1.0),
                             };
 
+                            // Note; This 'break' wrecks autovectorization,
+                            // which could be improved by simply wrapping the
+                            // weight_sum and sum updates with the if. However
+                            // the intent is very clear, and we're using a
+                            // custom written Vector version below anyways.
                             if (diff >= opt.threshold or temporal_diff >= opt.threshold) {
                                 break;
                             }
 
-                            //TODO: Try incorporating weights into for loop capture.
-                            //Not sure how comptime optimization might work
                             const weight = switch (comptime weight_mode) {
                                 .temporal => opt.temporal_weights[1 + i], //temporal_weights includes center, so skip over it with 1 +.
                                 .inverse_difference => opt.temporal_difference_weights[i][if (types.isInt(T)) diff >> @intCast(opt.shift) else @intFromFloat(@trunc(diff * 255.0))],
@@ -309,21 +312,40 @@ fn TTempSmooth(comptime T: type) type {
             var sum: SumVecType = lossyCast(SumVecType, vec.load(VecType, curr, offset)) * center_weight; // sum of weighted pixels.
 
             //TODO: rename *frames to *planes?
-            for (neighbors, neighbors_ref) |src_frames, ref_frames| {
+            inline for (neighbors, neighbors_ref) |src_frames, ref_frames| {
                 var temporal_pixel1 = vec.load(VecType, ref_frames[0], offset);
 
-                // Keep track if pixels exceeded threshold in nearer frames so
-                // that we can short circuit the calculations properly. This is
-                // necessary with the vector version because we're calculating
-                // multiple pixels at a time, and different pixels will pass
-                // thresholds at different frames.
-                var lt_thresholds: @Vector(vector_len, bool) = @splat(true);
+                // Optimization: Unroll first iteration of the loop, which
+                // saves us another load and some math + comparisons This and
+                // the 'inline for' on the outer loop, takes performance up
+                // from ~300fps -> 381fps, and 1200fps -> 1300fps for the
+                // inv_diff and temporal modes, respectively
+                var diff = switch (types.numberType(VecType)) {
+                    .int => math.absDiff(current_pixel, temporal_pixel1),
+                    .float => @min(math.absDiff(current_pixel, temporal_pixel1), one),
+                };
 
-                for (src_frames, ref_frames, 0..) |src, ref, i| {
+                var weight_idx: @Vector(vector_len, usize) = switch (T) {
+                    u8 => diff,
+                    u16 => diff >> @intCast(shift),
+                    else => @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0)))),
+                };
+
+                var weight: SumVecType = switch (comptime weight_mode) {
+                    .temporal => @splat(opt.temporal_weights[1]),
+                    .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[0], weight_idx),
+                };
+
+                var srcv = lossyCast(SumVecType, vec.load(VecType, src_frames[0], offset));
+                var lt_thresholds = (diff < threshold);
+                weight_sum = @select(f32, lt_thresholds, weight_sum + weight, weight_sum);
+                sum = @select(f32, lt_thresholds, sum + (srcv * weight), sum);
+
+                for (src_frames[1..], ref_frames[1..], 1..) |src, ref, i| {
                     const temporal_pixel2 = temporal_pixel1;
                     temporal_pixel1 = vec.load(VecType, ref, offset);
 
-                    const diff = switch (types.numberType(VecType)) {
+                    diff = switch (types.numberType(VecType)) {
                         .int => math.absDiff(current_pixel, temporal_pixel1),
                         .float => @min(math.absDiff(current_pixel, temporal_pixel1), one),
                     };
@@ -333,18 +355,18 @@ fn TTempSmooth(comptime T: type) type {
                         .float => @min(math.absDiff(temporal_pixel1, temporal_pixel2), one),
                     };
 
-                    const weight_idx: @Vector(vector_len, usize) = switch (T) {
+                    weight_idx = switch (T) {
                         u8 => diff,
                         u16 => diff >> @intCast(shift),
                         else => @intFromFloat(@trunc(diff * @as(SumVecType, @splat(255.0)))),
                     };
 
-                    const weight: SumVecType = switch (comptime weight_mode) {
+                    weight = switch (comptime weight_mode) {
                         .temporal => @splat(opt.temporal_weights[1 + i]),
                         .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[i], weight_idx),
                     };
 
-                    const srcv = lossyCast(SumVecType, vec.load(VecType, src, offset));
+                    srcv = lossyCast(SumVecType, vec.load(VecType, src, offset));
                     lt_thresholds = (diff < threshold) & (temporal_diff < threshold) & lt_thresholds;
                     weight_sum = @select(f32, lt_thresholds, weight_sum + weight, weight_sum);
                     sum = @select(f32, lt_thresholds, sum + (srcv * weight), sum);

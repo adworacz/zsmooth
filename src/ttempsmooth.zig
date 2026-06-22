@@ -153,7 +153,16 @@ fn TTempSmooth(comptime T: type) type {
             temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32,
         };
 
-        fn ttempSmoothVector(comptime weight_mode: WeightMode, noalias curr: []const T, noalias curr_ref: []const T, neighbors: [2][]const []const T, neighbors_ref: [2][]const []const T, noalias dstp: []T, offset: usize, opt: VectorOptions) void {
+        fn ttempSmoothVector(
+            comptime weight_mode: WeightMode,
+            noalias curr: []const T,
+            noalias curr_ref: []const T,
+            neighbors: [2][]const []const T,
+            neighbors_ref: [2][]const []const T,
+            noalias dstp: []T,
+            offset: usize,
+            opt: VectorOptions,
+        ) void {
             @setFloatMode(float_mode);
 
             const SVT = @Vector(vector_len, f32); // sum vector type
@@ -164,8 +173,9 @@ fn TTempSmooth(comptime T: type) type {
             const one: SVT = @splat(1.0);
 
             const current_pixel = vec.load(VT, curr_ref, offset);
+            const currv = lossyCast(SVT, vec.load(VT, curr, offset));
             var weight_sum: SVT = center_weight; // sum of weights
-            var sum: SVT = lossyCast(SVT, vec.load(VT, curr, offset)) * center_weight; // sum of weighted pixels.
+            var sum: SVT = currv * center_weight; // sum of weighted pixels.
 
             inline for (neighbors, neighbors_ref) |src_planes, ref_planes| {
                 var temporal_pixel1 = vec.load(VT, ref_planes[0], offset);
@@ -229,7 +239,6 @@ fn TTempSmooth(comptime T: type) type {
             }
 
             if (opt.fp) {
-                const currv = lossyCast(SVT, vec.load(VT, curr, offset));
                 const result: VT = switch (types.numberType(VT)) {
                     .int => @intFromFloat(@round(currv * (one - weight_sum) + sum)),
                     .float => currv * (one - weight_sum) + sum,

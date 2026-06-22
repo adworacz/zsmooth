@@ -19,6 +19,7 @@ at the cost of reduced denoising strength by default. I think it's a worthy chan
 * Cnr4: Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,
 and modes less likely to change at the end of the function.
 * CCD: Add ref clip support
+* TTempsmooth: Internal refactors and code cleanup. Might be a bit faster, but a whole lot less code.
 
 ## 0.16.0
 * Add DCTFilter - thanks to Zig, fftw is statically linked on all platforms, so there's no dynamic library dependency

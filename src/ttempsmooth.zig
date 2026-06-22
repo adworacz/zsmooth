@@ -63,11 +63,6 @@ fn TTempSmooth(comptime T: type) type {
     const VT = @Vector(vector_len, T);
 
     return struct {
-        //TODO: I think this algorithm can be rewritten / shrunk.
-        //If we pass the center frame separately, then we can likely
-        //iterate over all other frames in one pass, instead of walking
-        //backwards then forwards. It might require some changes to the lookup table layouts but I think it could work.
-        //Hopefully would remove ~50% of the (pretty much) duplicated code.
         fn processPlaneScalar(
             comptime weight_mode: WeightMode,
             curr: []const T,
@@ -98,10 +93,10 @@ fn TTempSmooth(comptime T: type) type {
                     var weight_sum = opt.center_weight; // sum of weights
                     var sum = lossyCast(f32, curr[pixel_idx]) * opt.center_weight; // sum of weighted pixels.
 
-                    for (neighbors, neighbors_ref) |src_frames, ref_frames| {
-                        var temporal_pixel1 = ref_frames[0][pixel_idx];
+                    for (neighbors, neighbors_ref) |src_planes, ref_planes| {
+                        var temporal_pixel1 = ref_planes[0][pixel_idx];
 
-                        for (src_frames, ref_frames, 0..) |src, ref, i| {
+                        for (src_planes, ref_planes, 0..) |src, ref, i| {
                             const temporal_pixel2 = temporal_pixel1;
                             temporal_pixel1 = ref[pixel_idx];
 
@@ -172,13 +167,12 @@ fn TTempSmooth(comptime T: type) type {
             var weight_sum: SVT = center_weight; // sum of weights
             var sum: SVT = lossyCast(SVT, vec.load(VT, curr, offset)) * center_weight; // sum of weighted pixels.
 
-            //TODO: rename *frames to *planes?
-            inline for (neighbors, neighbors_ref) |src_frames, ref_frames| {
-                var temporal_pixel1 = vec.load(VT, ref_frames[0], offset);
+            inline for (neighbors, neighbors_ref) |src_planes, ref_planes| {
+                var temporal_pixel1 = vec.load(VT, ref_planes[0], offset);
 
                 // Optimization: Unroll first iteration of the loop, which
-                // saves us another load and some math + comparisons This and
-                // the 'inline for' on the outer loop, takes performance up
+                // saves us another load and some math + comparisons. This and
+                // the 'inline for' on the outer loop takes performance up
                 // from ~300fps -> 381fps, and 1200fps -> 1300fps for the
                 // inv_diff and temporal modes, respectively
                 var diff = switch (types.numberType(VT)) {
@@ -197,12 +191,12 @@ fn TTempSmooth(comptime T: type) type {
                     .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[0], weight_idx),
                 };
 
-                var srcv = lossyCast(SVT, vec.load(VT, src_frames[0], offset));
+                var srcv = lossyCast(SVT, vec.load(VT, src_planes[0], offset));
                 var lt_thresholds = (diff < threshold);
                 weight_sum = @select(f32, lt_thresholds, weight_sum + weight, weight_sum);
                 sum = @select(f32, lt_thresholds, sum + (srcv * weight), sum);
 
-                for (src_frames[1..], ref_frames[1..], 1..) |src, ref, i| {
+                for (src_planes[1..], ref_planes[1..], 1..) |src, ref, i| {
                     const temporal_pixel2 = temporal_pixel1;
                     temporal_pixel1 = vec.load(VT, ref, offset);
 

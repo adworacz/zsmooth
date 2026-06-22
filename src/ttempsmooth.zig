@@ -94,6 +94,10 @@ fn TTempSmooth(comptime T: type) type {
                     var sum = lossyCast(f32, curr[pixel_idx]) * opt.center_weight; // sum of weighted pixels.
 
                     for (neighbors, neighbors_ref) |src_planes, ref_planes| {
+                        if (ref_planes.len == 0) {
+                            // Handle scene changes where we have no prev/next frames;
+                            break;
+                        }
                         var temporal_pixel1 = ref_planes[0][pixel_idx];
 
                         for (src_planes, ref_planes, 0..) |src, ref, i| {
@@ -178,6 +182,10 @@ fn TTempSmooth(comptime T: type) type {
             var sum: SVT = currv * center_weight; // sum of weighted pixels.
 
             inline for (neighbors, neighbors_ref) |src_planes, ref_planes| {
+                if (ref_planes.len == 0) {
+                    // Handle scene changes where we have no prev/next frames;
+                    break;
+                }
                 var temporal_pixel1 = vec.load(VT, ref_planes[0], offset);
 
                 // Optimization: Unroll first iteration of the loop, which

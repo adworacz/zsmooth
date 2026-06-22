@@ -104,10 +104,10 @@ const BENCHMARKS: Benchmarks[] = [
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8'  , args: ['tmode=1', 'radius=1'] , frames: DEFAULT_NUM_FRAMES / 8               , } ,
-      { plugin: 'zsmooth' , format:'u8'  , args: ['tmode=0', 'radius=2'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['tmode=0', 'radius=2'] , frames: DEFAULT_NUM_FRAMES / 16              , } ,
 
-      { plugin: 'zsmooth' , format:'u16' , args: ['tmode=1', 'radius=1'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
-      { plugin: 'zsmooth' , format:'u16' , args: ['tmode=0', 'radius=2'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['tmode=1', 'radius=1'] , frames: DEFAULT_NUM_FRAMES / 8              , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['tmode=0', 'radius=2'] , frames: DEFAULT_NUM_FRAMES / 16              , } ,
 
       // { plugin: 'zsmooth' , format:'f32' , args: ['tmode=1', 'radius=1'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
       // { plugin: 'zsmooth' , format:'f32' , args: ['tmode=2', 'radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 2      , } ,

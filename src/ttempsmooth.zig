@@ -63,7 +63,8 @@ fn TTempSmooth(comptime T: type) type {
     const VT = @Vector(vector_len, T);
 
     return struct {
-        fn processPlaneScalar(
+        /// Serial algorithm - all previous frames are evaluated before all next frames
+        fn processPlaneScalarSerial(
             comptime weight_mode: WeightMode,
             curr: []const T,
             curr_ref: []const T,
@@ -147,6 +148,110 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
+        /// Parallel algorithm - previous and next frames are evaluated simultaneously instead of
+        /// all previous frames being evaluated first and then all next frames.
+        fn processPlaneScalarParallel(
+            comptime weight_mode: WeightMode,
+            curr: []const T,
+            curr_ref: []const T,
+            neighbors: [2][]const []const T,
+            neighbors_ref: [2][]const []const T,
+            noalias dstp: []T,
+            opt: struct {
+                width: usize,
+                height: usize,
+                stride: usize,
+
+                center_weight: f32,
+                fp: bool,
+                maxr: u8,
+                shift: u8,
+                temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32,
+                temporal_weights: []const f32,
+                threshold: T,
+            },
+        ) void {
+            @setFloatMode(float_mode);
+
+            //Parallel algorithm requires prefectly equal number of frames in both directions
+            std.debug.assert(neighbors[0].len == neighbors_ref[0].len and
+                neighbors[0].len == neighbors[1].len and
+                neighbors_ref[0].len == neighbors_ref[1].len);
+
+            for (0..opt.height) |y| {
+                for (0..opt.width) |x| {
+                    const pixel_idx = y * opt.stride + x;
+                    const current_pixel = curr_ref[pixel_idx];
+                    var weight_sum = opt.center_weight; // sum of weights
+                    var sum = lossyCast(f32, curr[pixel_idx]) * opt.center_weight; // sum of weighted pixels.
+
+                    const src_prev_planes = neighbors[0];
+                    const src_next_planes = neighbors[1];
+                    const ref_prev_planes = neighbors_ref[0];
+                    const ref_next_planes = neighbors_ref[1];
+
+                    var temporal_pixel1_prev = ref_prev_planes[0][pixel_idx];
+                    var temporal_pixel1_next = ref_next_planes[0][pixel_idx];
+
+                    for (src_prev_planes, src_next_planes, ref_prev_planes, ref_next_planes, 0..) |src_prev, src_next, ref_prev, ref_next, i| {
+                        const temporal_pixel2_prev = temporal_pixel1_prev;
+                        const temporal_pixel2_next = temporal_pixel1_next;
+
+                        temporal_pixel1_prev = ref_prev[pixel_idx];
+                        temporal_pixel1_next = ref_next[pixel_idx];
+
+                        const diff_prev = switch (types.numberType(T)) {
+                            .int => math.absDiff(current_pixel, temporal_pixel1_prev),
+                            .float => @min(math.absDiff(current_pixel, temporal_pixel1_prev), 1.0),
+                        };
+                        const diff_next = switch (types.numberType(T)) {
+                            .int => math.absDiff(current_pixel, temporal_pixel1_next),
+                            .float => @min(math.absDiff(current_pixel, temporal_pixel1_next), 1.0),
+                        };
+
+                        const temporal_diff_prev = switch (types.numberType(T)) {
+                            .int => math.absDiff(temporal_pixel1_prev, temporal_pixel2_prev),
+                            .float => @min(math.absDiff(temporal_pixel1_prev, temporal_pixel2_prev), 1.0),
+                        };
+                        const temporal_diff_next = switch (types.numberType(T)) {
+                            .int => math.absDiff(temporal_pixel1_next, temporal_pixel2_next),
+                            .float => @min(math.absDiff(temporal_pixel1_next, temporal_pixel2_next), 1.0),
+                        };
+
+                        if (diff_prev < opt.threshold and temporal_diff_prev < opt.threshold) {
+                            const weight = switch (comptime weight_mode) {
+                                .temporal => opt.temporal_weights[1 + i], //temporal_weights includes center, so skip over it with 1 +.
+                                .inverse_difference => opt.temporal_difference_weights[i][if (types.isInt(T)) diff_prev >> @intCast(opt.shift) else @intFromFloat(@trunc(diff_prev * 255.0))],
+                            };
+                            weight_sum += weight;
+                            sum += lossyCast(f32, src_prev[pixel_idx]) * weight;
+                        }
+
+                        if (diff_next < opt.threshold and temporal_diff_next < opt.threshold) {
+                            const weight = switch (comptime weight_mode) {
+                                .temporal => opt.temporal_weights[1 + i], //temporal_weights includes center, so skip over it with 1 +.
+                                .inverse_difference => opt.temporal_difference_weights[i][if (types.isInt(T)) diff_next >> @intCast(opt.shift) else @intFromFloat(@trunc(diff_next * 255.0))],
+                            };
+                            weight_sum += weight;
+                            sum += lossyCast(f32, src_next[pixel_idx]) * weight;
+                        }
+                    }
+
+                    if (opt.fp) {
+                        dstp[pixel_idx] = if (types.isInt(T))
+                            @intFromFloat(@round(lossyCast(f32, curr[pixel_idx]) * (1.0 - weight_sum) + sum))
+                        else
+                            curr[pixel_idx] * (1.0 - weight_sum) + sum;
+                    } else {
+                        dstp[pixel_idx] = if (types.isInt(T))
+                            @intFromFloat(@round(sum / weight_sum))
+                        else
+                            sum / weight_sum;
+                    }
+                }
+            }
+        }
+
         const VectorOptions = struct {
             maxr: u8,
             threshold: T,
@@ -157,7 +262,8 @@ fn TTempSmooth(comptime T: type) type {
             temporal_difference_weights: []const [MAX_NUM_DIFFERENCES]f32,
         };
 
-        fn ttempSmoothVector(
+        /// Serial algorithm - all previous frames are evaluated before all next frames
+        fn ttempSmoothVectorSerial(
             comptime weight_mode: WeightMode,
             noalias curr: []const T,
             noalias curr_ref: []const T,
@@ -263,6 +369,161 @@ fn TTempSmooth(comptime T: type) type {
             }
         }
 
+        fn ttempSmoothVectorParallel(
+            comptime weight_mode: WeightMode,
+            noalias curr: []const T,
+            noalias curr_ref: []const T,
+            neighbors: [2][]const []const T,
+            neighbors_ref: [2][]const []const T,
+            noalias dstp: []T,
+            offset: usize,
+            opt: VectorOptions,
+        ) void {
+            @setFloatMode(float_mode);
+
+            //Parallel algorithm requires prefectly equal number of frames in both directions
+            std.debug.assert(neighbors[0].len == neighbors_ref[0].len and
+                neighbors[0].len == neighbors[1].len and
+                neighbors_ref[0].len == neighbors_ref[1].len);
+
+            const SVT = @Vector(vector_len, f32); // sum vector type
+
+            const center_weight: SVT = @splat(opt.center_weight);
+            const threshold: VT = @splat(opt.threshold);
+            const shift: @Vector(vector_len, u8) = @splat(opt.shift);
+            const one: SVT = @splat(1.0);
+
+            const current_pixel = vec.load(VT, curr_ref, offset);
+            const currv = lossyCast(SVT, vec.load(VT, curr, offset));
+            var weight_sum: SVT = center_weight; // sum of weights
+            var sum: SVT = currv * center_weight; // sum of weighted pixels.
+
+            const src_prev_planes = neighbors[0];
+            const src_next_planes = neighbors[1];
+            const ref_prev_planes = neighbors_ref[0];
+            const ref_next_planes = neighbors_ref[1];
+
+            var temporal_pixel1_prev = vec.load(VT, ref_prev_planes[0], offset);
+            var temporal_pixel1_next = vec.load(VT, ref_next_planes[0], offset);
+
+            // Optimization: Unroll first iteration of the loop, which
+            // saves us another load and some math + comparisons. 
+            var diff_prev = switch (types.numberType(VT)) {
+                .int => math.absDiff(current_pixel, temporal_pixel1_prev),
+                .float => @min(math.absDiff(current_pixel, temporal_pixel1_prev), one),
+            };
+            var diff_next = switch (types.numberType(VT)) {
+                .int => math.absDiff(current_pixel, temporal_pixel1_next),
+                .float => @min(math.absDiff(current_pixel, temporal_pixel1_next), one),
+            };
+
+            var weight_idx_prev: @Vector(vector_len, usize) = switch (T) {
+                u8 => diff_prev,
+                u16 => diff_prev >> @intCast(shift),
+                else => @intFromFloat(@trunc(diff_prev * @as(SVT, @splat(255.0)))),
+            };
+            var weight_idx_next: @Vector(vector_len, usize) = switch (T) {
+                u8 => diff_next,
+                u16 => diff_next >> @intCast(shift),
+                else => @intFromFloat(@trunc(diff_next * @as(SVT, @splat(255.0)))),
+            };
+
+            var weight_prev: SVT = switch (comptime weight_mode) {
+                .temporal => @splat(opt.temporal_weights[1]),
+                .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[0], weight_idx_prev),
+            };
+            var weight_next: SVT = switch (comptime weight_mode) {
+                .temporal => @splat(opt.temporal_weights[1]),
+                .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[0], weight_idx_next),
+            };
+
+            var src_prevv = lossyCast(SVT, vec.load(VT, src_prev_planes[0], offset));
+            var src_nextv = lossyCast(SVT, vec.load(VT, src_next_planes[0], offset));
+
+            var lt_thresholds_prev = (diff_prev < threshold);
+            var lt_thresholds_next = (diff_next < threshold);
+
+            weight_sum = @select(f32, lt_thresholds_prev, weight_sum + weight_prev, weight_sum);
+            weight_sum = @select(f32, lt_thresholds_next, weight_sum + weight_next, weight_sum);
+
+            sum = @select(f32, lt_thresholds_prev, sum + (src_prevv * weight_prev), sum);
+            sum = @select(f32, lt_thresholds_next, sum + (src_nextv * weight_next), sum);
+
+            for (src_prev_planes[1..], src_next_planes[1..], ref_prev_planes[1..], ref_next_planes[1..], 1..) |src_prev, src_next, ref_prev, ref_next, i| {
+                const temporal_pixel2_prev = temporal_pixel1_prev;
+                const temporal_pixel2_next = temporal_pixel1_next;
+
+                temporal_pixel1_prev = vec.load(VT, ref_prev, offset);
+                temporal_pixel1_next = vec.load(VT, ref_next, offset);
+
+                diff_prev = switch (types.numberType(VT)) {
+                    .int => math.absDiff(current_pixel, temporal_pixel1_prev),
+                    .float => @min(math.absDiff(current_pixel, temporal_pixel1_prev), one),
+                };
+                diff_next = switch (types.numberType(VT)) {
+                    .int => math.absDiff(current_pixel, temporal_pixel1_next),
+                    .float => @min(math.absDiff(current_pixel, temporal_pixel1_next), one),
+                };
+
+                const temporal_diff_prev = switch (types.numberType(VT)) {
+                    .int => math.absDiff(temporal_pixel1_prev, temporal_pixel2_prev),
+                    .float => @min(math.absDiff(temporal_pixel1_prev, temporal_pixel2_prev), one),
+                };
+                const temporal_diff_next = switch (types.numberType(VT)) {
+                    .int => math.absDiff(temporal_pixel1_next, temporal_pixel2_next),
+                    .float => @min(math.absDiff(temporal_pixel1_next, temporal_pixel2_next), one),
+                };
+
+                weight_idx_prev = switch (T) {
+                    u8 => diff_prev,
+                    u16 => diff_prev >> @intCast(shift),
+                    else => @intFromFloat(@trunc(diff_prev * @as(SVT, @splat(255.0)))),
+                };
+                weight_idx_next = switch (T) {
+                    u8 => diff_next,
+                    u16 => diff_next >> @intCast(shift),
+                    else => @intFromFloat(@trunc(diff_next * @as(SVT, @splat(255.0)))),
+                };
+
+                weight_prev = switch (comptime weight_mode) {
+                    .temporal => @splat(opt.temporal_weights[1 + i]),
+                    .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[i], weight_idx_prev),
+                };
+                weight_next = switch (comptime weight_mode) {
+                    .temporal => @splat(opt.temporal_weights[1 + i]),
+                    .inverse_difference => vec.gatherArray(opt.temporal_difference_weights[i], weight_idx_next),
+                };
+
+                src_prevv = lossyCast(SVT, vec.load(VT, src_prev, offset));
+                src_nextv = lossyCast(SVT, vec.load(VT, src_next, offset));
+
+                lt_thresholds_prev = (diff_prev < threshold) & (temporal_diff_prev < threshold) & lt_thresholds_prev;
+                lt_thresholds_next = (diff_next < threshold) & (temporal_diff_next < threshold) & lt_thresholds_next;
+
+                weight_sum = @select(f32, lt_thresholds_prev, weight_sum + weight_prev, weight_sum);
+                weight_sum = @select(f32, lt_thresholds_next, weight_sum + weight_next, weight_sum);
+
+                sum = @select(f32, lt_thresholds_prev, sum + (src_prevv * weight_prev), sum);
+                sum = @select(f32, lt_thresholds_next, sum + (src_nextv * weight_next), sum);
+            }
+
+            if (opt.fp) {
+                const result: VT = switch (types.numberType(VT)) {
+                    .int => @intFromFloat(@round(currv * (one - weight_sum) + sum)),
+                    .float => currv * (one - weight_sum) + sum,
+                };
+
+                vec.store(VT, dstp, offset, result);
+            } else {
+                const result: VT = switch (types.numberType(VT)) {
+                    .int => @intFromFloat(@round(sum / weight_sum)),
+                    .float => sum / weight_sum,
+                };
+
+                vec.store(VT, dstp, offset, result);
+            }
+        }
+
         fn processPlaneVector(comptime weight_mode: WeightMode, curr: []const T, curr_ref: []const T, neighbors: [2][]const []const T, neighbors_ref: [2][]const []const T, noalias dstp: []T, opt: struct {
             width: usize,
             height: usize,
@@ -291,13 +552,15 @@ fn TTempSmooth(comptime T: type) type {
                 var x: usize = 0;
                 while (x < width_simd) : (x += vector_len) {
                     const offset = y * opt.stride + x;
-                    ttempSmoothVector(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, offset, options);
+                    // ttempSmoothVectorSerial(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, offset, options);
+                    ttempSmoothVectorParallel(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, offset, options);
                 }
 
                 // If the video width is not perfectly aligned with the vector width, do one
                 // last operation at the end of the plane to cover what's leftover from the loop above.
                 if (width_simd < opt.width) {
-                    ttempSmoothVector(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, (y * opt.stride) + opt.width - vector_len, options);
+                    // ttempSmoothVectorSerial(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, (y * opt.stride) + opt.width - vector_len, options);
+                    ttempSmoothVectorParallel(weight_mode, curr, curr_ref, neighbors, neighbors_ref, dstp, (y * opt.stride) + opt.width - vector_len, options);
                 }
             }
         }
@@ -334,7 +597,8 @@ fn TTempSmooth(comptime T: type) type {
             const threshold = lossyCast(T, opt.threshold);
 
             switch (opt.weight_mode) {
-                // inline else => |wm| processPlaneScalar(wm, curr, curr_ref, neighbors, neighbors_ref, dstp, .{
+                // inline else => |wm| processPlaneScalarSerial(wm, curr, curr_ref, neighbors, neighbors_ref, dstp, .{
+                // inline else => |wm| processPlaneScalarParallel(wm, curr, curr_ref, neighbors, neighbors_ref, dstp, .{
                 //     .width = opt.width,
                 //     .height = opt.height,
                 //     .stride = stride,

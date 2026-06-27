@@ -1,7 +1,8 @@
 # Changelog
 
 ## 0.18.0
-* TBD
+* CCD: ~20% speedup for temporal radius >= 1. The algorithm now operates on prev/next frames simultaneously using
+instruction + memory access parallelism.
 
 ## 0.17.0
 * Cnr4: BREAKING CHANGE. Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,

@@ -143,34 +143,54 @@ fn CCD(comptime T: type) type {
                 const absolute_y: usize = if (mirror) math.mirrorIndex(y, opt.height) else @intCast(y);
                 const absolute_x: usize = if (mirror) math.mirrorIndex(x, opt.width) else @intCast(x);
 
-                const current_neighbor_r = src[temporal_radius * 3 + 0][absolute_y * opt.stride + absolute_x];
-                const current_neighbor_g = src[temporal_radius * 3 + 1][absolute_y * opt.stride + absolute_x];
-                const current_neighbor_b = src[temporal_radius * 3 + 2][absolute_y * opt.stride + absolute_x];
+                // Current frame
+                const point_r = src[temporal_radius * 3 + 0][absolute_y * opt.stride + absolute_x];
+                const point_g = src[temporal_radius * 3 + 1][absolute_y * opt.stride + absolute_x];
+                const point_b = src[temporal_radius * 3 + 2][absolute_y * opt.stride + absolute_x];
 
-                var ssd: BUAT = 0;
+                const point_ref_r = ref[temporal_radius * 3 + 0][absolute_y * opt.stride + absolute_x];
+                const point_ref_g = ref[temporal_radius * 3 + 1][absolute_y * opt.stride + absolute_x];
+                const point_ref_b = ref[temporal_radius * 3 + 2][absolute_y * opt.stride + absolute_x];
 
-                for (0..temporal_diameter) |i| {
-                    const temporal_neighbor_ref_r = ref[i * 3 + 0][absolute_y * opt.stride + absolute_x];
-                    const temporal_neighbor_ref_g = ref[i * 3 + 1][absolute_y * opt.stride + absolute_x];
-                    const temporal_neighbor_ref_b = ref[i * 3 + 2][absolute_y * opt.stride + absolute_x];
+                const diff_r: BSAT = lossyCast(BSAT, point_ref_r) - center_ref_r;
+                const diff_g: BSAT = lossyCast(BSAT, point_ref_g) - center_ref_g;
+                const diff_b: BSAT = lossyCast(BSAT, point_ref_b) - center_ref_b;
 
-                    const diff_r: BSAT = lossyCast(BSAT, temporal_neighbor_ref_r) - center_ref_r;
-                    const diff_g: BSAT = lossyCast(BSAT, temporal_neighbor_ref_g) - center_ref_g;
-                    const diff_b: BSAT = lossyCast(BSAT, temporal_neighbor_ref_b) - center_ref_b;
+                // sum of squared differences
+                var ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
 
-                    // sum of squared differences
-                    const frame_ssd: BUAT = lossyCast(BUAT, diff_r * diff_r) + lossyCast(BUAT, diff_g * diff_g) + lossyCast(BUAT, diff_b * diff_b);
+                // Temporal neighbors
+                for (0..temporal_radius) |i| {
+                    const prev_idx = temporal_radius - 1 - i;
+                    const next_idx = temporal_radius + 1 + i;
 
-                    if (temporal_radius == 0) {
-                        // optimization: Bypass weight calculation for temporal_radius 0 (spatial only),
-                        // since we know that the weight is always 1. This avoids a lookup, multiplication, and casting.
-                        ssd += frame_ssd;
-                    } else {
-                        ssd += if (types.isFloat(T))
-                            frame_ssd * lossyCast(F, opt.weights[i])
-                        else
-                            @intFromFloat(@round(lossyCast(f32, frame_ssd) * opt.weights[i]));
-                    }
+                    const point_prev_ref_r = ref[prev_idx * 3 + 0][absolute_y * opt.stride + absolute_x];
+                    const point_prev_ref_g = ref[prev_idx * 3 + 1][absolute_y * opt.stride + absolute_x];
+                    const point_prev_ref_b = ref[prev_idx * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                    const point_next_ref_r = ref[next_idx * 3 + 0][absolute_y * opt.stride + absolute_x];
+                    const point_next_ref_g = ref[next_idx * 3 + 1][absolute_y * opt.stride + absolute_x];
+                    const point_next_ref_b = ref[next_idx * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                    const diff_prev_r: BSAT = lossyCast(BSAT, point_prev_ref_r) - center_ref_r;
+                    const diff_prev_g: BSAT = lossyCast(BSAT, point_prev_ref_g) - center_ref_g;
+                    const diff_prev_b: BSAT = lossyCast(BSAT, point_prev_ref_b) - center_ref_b;
+
+                    const diff_next_r: BSAT = lossyCast(BSAT, point_next_ref_r) - center_ref_r;
+                    const diff_next_g: BSAT = lossyCast(BSAT, point_next_ref_g) - center_ref_g;
+                    const diff_next_b: BSAT = lossyCast(BSAT, point_next_ref_b) - center_ref_b;
+
+                    const frame_ssd_prev: BUAT = lossyCast(BUAT, diff_prev_r * diff_prev_r) + lossyCast(BUAT, diff_prev_g * diff_prev_g) + lossyCast(BUAT, diff_prev_b * diff_prev_b);
+                    const frame_ssd_next: BUAT = lossyCast(BUAT, diff_next_r * diff_next_r) + lossyCast(BUAT, diff_next_g * diff_next_g) + lossyCast(BUAT, diff_next_b * diff_next_b);
+
+                    // Prev/next frames have different weights (sqrt vs sin)
+                    const weight_prev = lossyCast(F, opt.weights[prev_idx]);
+                    const weight_next = lossyCast(F, opt.weights[next_idx]);
+
+                    ssd += if (types.isFloat(T))
+                        (frame_ssd_prev * weight_prev) + (frame_ssd_next * weight_next)
+                    else
+                        @intFromFloat(@round(lossyCast(f32, frame_ssd_prev) * weight_prev + lossyCast(f32, frame_ssd_next) * weight_next));
                 }
 
                 // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
@@ -186,9 +206,9 @@ fn CCD(comptime T: type) type {
                 }
 
                 if (ssd < opt.threshold) {
-                    total_r += current_neighbor_r;
-                    total_g += current_neighbor_g;
-                    total_b += current_neighbor_b;
+                    total_r += point_r;
+                    total_g += point_g;
+                    total_b += point_b;
                     count += 1;
                 }
             }
@@ -246,36 +266,57 @@ fn CCD(comptime T: type) type {
                 const y: usize = @intCast(@as(isize, @intCast(row)) + point[1]);
                 const x: usize = @intCast(@as(isize, @intCast(column)) + point[0]);
 
-                const current_neighbor_r = vec.load(VT, src[temporal_radius * 3 + 0], y * opt.stride + x);
-                const current_neighbor_g = vec.load(VT, src[temporal_radius * 3 + 1], y * opt.stride + x);
-                const current_neighbor_b = vec.load(VT, src[temporal_radius * 3 + 2], y * opt.stride + x);
+                const point_r = vec.load(VT, src[temporal_radius * 3 + 0], y * opt.stride + x);
+                const point_g = vec.load(VT, src[temporal_radius * 3 + 1], y * opt.stride + x);
+                const point_b = vec.load(VT, src[temporal_radius * 3 + 2], y * opt.stride + x);
 
-                var ssd: VBUAT = @splat(0);
+                // Current frame
+                const point_ref_r = vec.load(VT, ref[temporal_radius * 3 + 0], y * opt.stride + x);
+                const point_ref_g = vec.load(VT, ref[temporal_radius * 3 + 1], y * opt.stride + x);
+                const point_ref_b = vec.load(VT, ref[temporal_radius * 3 + 2], y * opt.stride + x);
 
-                for (0..temporal_diameter) |i| {
-                    const temporal_neighbor_ref_r = vec.load(VT, ref[i * 3 + 0], y * opt.stride + x);
-                    const temporal_neighbor_ref_g = vec.load(VT, ref[i * 3 + 1], y * opt.stride + x);
-                    const temporal_neighbor_ref_b = vec.load(VT, ref[i * 3 + 2], y * opt.stride + x);
+                const diff_r: VBSAT = lossyCast(VBSAT, point_ref_r) - center_ref_r;
+                const diff_g: VBSAT = lossyCast(VBSAT, point_ref_g) - center_ref_g;
+                const diff_b: VBSAT = lossyCast(VBSAT, point_ref_b) - center_ref_b;
 
-                    const diff_r: VBSAT = lossyCast(VBSAT, temporal_neighbor_ref_r) - center_ref_r;
-                    const diff_g: VBSAT = lossyCast(VBSAT, temporal_neighbor_ref_g) - center_ref_g;
-                    const diff_b: VBSAT = lossyCast(VBSAT, temporal_neighbor_ref_b) - center_ref_b;
+                // sum of squared differences
+                var ssd: VBUAT = lossyCast(VBUAT, diff_r * diff_r) + lossyCast(VBUAT, diff_g * diff_g) + lossyCast(VBUAT, diff_b * diff_b);
 
-                    // sum of squared differences
-                    const frame_ssd: VBUAT = lossyCast(VBUAT, diff_r * diff_r) + lossyCast(VBUAT, diff_g * diff_g) + lossyCast(VBUAT, diff_b * diff_b);
+                // Temporal neighbors
+                // By calculating both prev and next frames in one iteration,
+                // we see ~20% performance increase. Likely due to better
+                // memory access parallelization, among other things.
+                for (0..temporal_radius) |i| {
+                    // Center frame is in the middle, so other frames start +/- 1 on either side.
+                    const prev_idx = temporal_radius - 1 - i;
+                    const next_idx = temporal_radius + 1 + i;
 
-                    if (temporal_radius == 0) {
-                        // optimization: Bypass weight calculation for temporal_radius 0 (spatial only),
-                        // since we know that the weight is always 1. This avoids a lookup, multiplication, and casting.
-                        ssd += frame_ssd;
-                    } else {
-                        // Add the weighted SSD to the total SSD.
-                        const weight: F = @splat(@floatCast(opt.weights[i]));
-                        ssd += if (types.isFloat(T))
-                            frame_ssd * weight
-                        else
-                            @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd)) * weight));
-                    }
+                    const point_ref_prev_r = vec.load(VT, ref[prev_idx * 3 + 0], y * opt.stride + x);
+                    const point_ref_prev_g = vec.load(VT, ref[prev_idx * 3 + 1], y * opt.stride + x);
+                    const point_ref_prev_b = vec.load(VT, ref[prev_idx * 3 + 2], y * opt.stride + x);
+
+                    const point_ref_next_r = vec.load(VT, ref[next_idx * 3 + 0], y * opt.stride + x);
+                    const point_ref_next_g = vec.load(VT, ref[next_idx * 3 + 1], y * opt.stride + x);
+                    const point_ref_next_b = vec.load(VT, ref[next_idx * 3 + 2], y * opt.stride + x);
+
+                    const diff_prev_r = lossyCast(VBSAT, point_ref_prev_r) - center_ref_r;
+                    const diff_prev_g = lossyCast(VBSAT, point_ref_prev_g) - center_ref_g;
+                    const diff_prev_b = lossyCast(VBSAT, point_ref_prev_b) - center_ref_b;
+
+                    const diff_next_r = lossyCast(VBSAT, point_ref_next_r) - center_ref_r;
+                    const diff_next_g = lossyCast(VBSAT, point_ref_next_g) - center_ref_g;
+                    const diff_next_b = lossyCast(VBSAT, point_ref_next_b) - center_ref_b;
+
+                    const frame_ssd_prev: VBUAT = lossyCast(VBUAT, diff_prev_r * diff_prev_r) + lossyCast(VBUAT, diff_prev_g * diff_prev_g) + lossyCast(VBUAT, diff_prev_b * diff_prev_b);
+                    const frame_ssd_next: VBUAT = lossyCast(VBUAT, diff_next_r * diff_next_r) + lossyCast(VBUAT, diff_next_g * diff_next_g) + lossyCast(VBUAT, diff_next_b * diff_next_b);
+
+                    // Add the weighted SSD to the total SSD.
+                    const weight_prev: F = @splat(@floatCast(opt.weights[prev_idx]));
+                    const weight_next: F = @splat(@floatCast(opt.weights[next_idx]));
+                    ssd += if (types.isFloat(T))
+                        (frame_ssd_prev * weight_prev) + (frame_ssd_next * weight_next)
+                    else
+                        @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd_prev)) * weight_prev + @as(F, @floatFromInt(frame_ssd_next)) * weight_next));
                 }
 
                 //optimization: using a branch to avoid expensive integer division when temporal_radius = 0
@@ -289,9 +330,9 @@ fn CCD(comptime T: type) type {
                 }
 
                 const ssd_lt_threshold = ssd < threshold;
-                total_r = @select(UAT, ssd_lt_threshold, total_r + current_neighbor_r, total_r);
-                total_g = @select(UAT, ssd_lt_threshold, total_g + current_neighbor_g, total_g);
-                total_b = @select(UAT, ssd_lt_threshold, total_b + current_neighbor_b, total_b);
+                total_r = @select(UAT, ssd_lt_threshold, total_r + point_r, total_r);
+                total_g = @select(UAT, ssd_lt_threshold, total_g + point_g, total_g);
+                total_b = @select(UAT, ssd_lt_threshold, total_b + point_b, total_b);
                 count = @select(u8, ssd_lt_threshold, count + one, count);
             }
 
@@ -320,7 +361,7 @@ fn CCD(comptime T: type) type {
         }
 
         // Use separate dst slices for each plane so we can use 'noalias'
-        fn processPlanesVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_y: []T, noalias dst_u: []T, noalias dst_v: []T, opt: struct {
+        fn processPlanesVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_r: []T, noalias dst_g: []T, noalias dst_b: []T, opt: struct {
             width: usize,
             height: usize,
             stride: usize,
@@ -350,9 +391,9 @@ fn CCD(comptime T: type) type {
                 for (0..opt.width) |column| {
                     const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_y[(row * opt.stride) + column] = result[0];
-                    dst_u[(row * opt.stride) + column] = result[1];
-                    dst_v[(row * opt.stride) + column] = result[2];
+                    dst_r[(row * opt.stride) + column] = result[0];
+                    dst_g[(row * opt.stride) + column] = result[1];
+                    dst_b[(row * opt.stride) + column] = result[2];
                 }
             }
 
@@ -362,9 +403,9 @@ fn CCD(comptime T: type) type {
                 for (0..scaled_radius) |column| {
                     const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_y[(row * opt.stride) + column] = result[0];
-                    dst_u[(row * opt.stride) + column] = result[1];
-                    dst_v[(row * opt.stride) + column] = result[2];
+                    dst_r[(row * opt.stride) + column] = result[0];
+                    dst_g[(row * opt.stride) + column] = result[1];
+                    dst_b[(row * opt.stride) + column] = result[2];
                 }
 
                 // Middle columns - not mirrored
@@ -372,9 +413,9 @@ fn CCD(comptime T: type) type {
                 while (column < width_simd) : (column += vector_len) {
                     const result = ccdVector(temporal_radius, row, column, src, ref, options);
 
-                    vec.store(VT, dst_y, row * opt.stride + column, result[0]);
-                    vec.store(VT, dst_u, row * opt.stride + column, result[1]);
-                    vec.store(VT, dst_v, row * opt.stride + column, result[2]);
+                    vec.store(VT, dst_r, row * opt.stride + column, result[0]);
+                    vec.store(VT, dst_g, row * opt.stride + column, result[1]);
+                    vec.store(VT, dst_b, row * opt.stride + column, result[2]);
                 }
 
                 // Last columns - non-mirrored
@@ -383,18 +424,18 @@ fn CCD(comptime T: type) type {
                     const adjusted_column = opt.width - vector_len - scaled_radius;
                     const result = ccdVector(temporal_radius, row, adjusted_column, src, ref, options);
 
-                    vec.store(VT, dst_y, row * opt.stride + adjusted_column, result[0]);
-                    vec.store(VT, dst_u, row * opt.stride + adjusted_column, result[1]);
-                    vec.store(VT, dst_v, row * opt.stride + adjusted_column, result[2]);
+                    vec.store(VT, dst_r, row * opt.stride + adjusted_column, result[0]);
+                    vec.store(VT, dst_g, row * opt.stride + adjusted_column, result[1]);
+                    vec.store(VT, dst_b, row * opt.stride + adjusted_column, result[2]);
                 }
 
                 // Last columns - mirrored
                 for (opt.width - scaled_radius..opt.width) |c| {
                     const result = ccdScalar(true, temporal_radius, row, c, src, ref, options);
 
-                    dst_y[(row * opt.stride) + c] = result[0];
-                    dst_u[(row * opt.stride) + c] = result[1];
-                    dst_v[(row * opt.stride) + c] = result[2];
+                    dst_r[(row * opt.stride) + c] = result[0];
+                    dst_g[(row * opt.stride) + c] = result[1];
+                    dst_b[(row * opt.stride) + c] = result[2];
                 }
             }
 
@@ -403,14 +444,14 @@ fn CCD(comptime T: type) type {
                 for (0..opt.width) |column| {
                     const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_y[(row * opt.stride) + column] = result[0];
-                    dst_u[(row * opt.stride) + column] = result[1];
-                    dst_v[(row * opt.stride) + column] = result[2];
+                    dst_r[(row * opt.stride) + column] = result[0];
+                    dst_g[(row * opt.stride) + column] = result[1];
+                    dst_b[(row * opt.stride) + column] = result[2];
                 }
             }
         }
 
-        fn processPlanes(noalias src8: []const []const u8, noalias ref8: []const []const u8, noalias dstp_y8: []u8, noalias dstp_u8: []u8, noalias dstp_v8: []u8, opt: struct {
+        fn processPlanes(noalias src8: []const []const u8, noalias ref8: []const []const u8, noalias dstp_r8: []u8, noalias dstp_g8: []u8, noalias dstp_b8: []u8, opt: struct {
             width: usize,
             height: usize,
             stride8: usize,
@@ -428,14 +469,14 @@ fn CCD(comptime T: type) type {
             const src: []const []const T = @ptrCast(@alignCast(src8));
             const ref: []const []const T = @ptrCast(@alignCast(ref8));
 
-            const dstp_y: []T = @ptrCast(@alignCast(dstp_y8));
-            const dstp_u: []T = @ptrCast(@alignCast(dstp_u8));
-            const dstp_v: []T = @ptrCast(@alignCast(dstp_v8));
+            const dstp_r: []T = @ptrCast(@alignCast(dstp_r8));
+            const dstp_g: []T = @ptrCast(@alignCast(dstp_g8));
+            const dstp_b: []T = @ptrCast(@alignCast(dstp_b8));
 
             const format_max = vscmn.getFormatMaximum2(T, opt.bits_per_sample, opt.chroma);
 
             switch (opt.temporal_radius) {
-                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(r, src, ref, dstp_y, dstp_u, dstp_v, .{
+                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(r, src, ref, dstp_r, dstp_g, dstp_b, .{
                     .threshold = threshold,
                     .scale = opt.scale,
                     .points = opt.points,
@@ -599,7 +640,6 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     }
     // Ensure current/center frame is maximally weighted at 1.0;
     d.weights[d.temporal_radius] = 1.0;
-    // std.debug.print("weights: {any}\n", .{d.weights});
 
     d.scale = inz.getFloat(f32, "scale") orelse @as(f32, @floatFromInt(d.vi.height)) / 240.0;
 

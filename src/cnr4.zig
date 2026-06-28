@@ -26,7 +26,10 @@ const MAX_RADIUS = 10;
 const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
 const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
+
 const TemporalMode = enum {
+    // In order of denoising strength (strongest to weakest)
+    // and correspondingly filter speed (fastest to slowest)
     inv_diff, //Simple temporal inverse difference weighting
     cnr2_no_src, // More temporally stable than .cnr2, albeit with more artifacts
     cnr2, // More detail retention than .cnr2_no_src, and less artifacts, with less denoising / more temporal instability.
@@ -59,21 +62,24 @@ const TemporalMode = enum {
     fn shouldUpdateSrc(self: Self) bool {
         return (self == .cnr2 or self == .cnr2_dynamic);
     }
+
+    fn useDynamicBackcalculation(self: Self) bool {
+        return (self == .cnr2_dynamic or self == .cnr2_dynamic_no_src);
+    }
+
 };
 
 const WeightMode = enum {
-    /// Linearly decreasing denominator of weights (1/2, 1/3, 1/4...)
-    linear_decrease,
-    // /// Lower weight to past frames, higher weight to future frames.
-    // sin_sqrt,
-    // /// Higher weight to past frames, lower weight to future frames.
-    // sqrt_sin,
-    /// Lower starting weight than higher modes, slower decay
-    sin,
-    /// Higher starting weight than lower modes, faster decay
-    sqrt,
+    // In order decreasing order of denoising strength
+    
     /// Equal weights (1.0) for all frames.
     equal,
+    /// Higher starting weight than lower modes, faster decay
+    sqrt,
+    /// Lower starting weight than higher modes, slower decay
+    sin,
+    /// Linearly decreasing denominator of weights (1/2, 1/3, 1/4...)
+    linear_decrease,
 
     const Self = @This();
 
@@ -377,34 +383,35 @@ fn Cnr4(comptime T: type) type {
 
                 var tmp_srcs: [MAX_RADIUS * 2][3][]const T = undefined;
                 var tmp_refs: [MAX_RADIUS * 2][3][]const T = undefined;
-                var tmp_count: usize = 0;
 
+                // Process all frames, starting from the outside and working inward
                 for (1..opt.radius) |i| {
-                    const l_idx = i;
-                    const r_idx = srcs.len - 1 - i;
-                    const radius = @min(opt.radius, l_idx);
+                    const l_idx = i; //start
+                    const r_idx = srcs.len - 1 - i; //end
+                    const dynamic_radius = @min(opt.radius, l_idx);
 
                     // Left frames
-                    if (opt.tmode == .cnr2 or opt.tmode == .cnr2_no_src) {
+                    if (!opt.tmode.useDynamicBackcalculation()) {
                         // Radius 1 backcalculating
                         processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
                     } else {
                         // Dyanmic radius backcalculating
-                        tmp_count = 0;
-                        for (0..radius) |j| {
+
+                        // Use temporary storage to hold all pertinent frames.
+                        // This is essentially slicing, but since we pass the center separately,
+                        // we need to populate all (and only) the surrounding frames.
+                        for (0..dynamic_radius) |j| {
                             // past frames
-                            tmp_srcs[tmp_count] = srcs[l_idx - radius + j];
-                            tmp_refs[tmp_count] = refs[l_idx - radius + j];
+                            tmp_srcs[j] = srcs[l_idx - dynamic_radius + j];
+                            tmp_refs[j] = refs[l_idx - dynamic_radius + j];
 
                             //future frames
-                            tmp_srcs[radius * 2 - 1 - tmp_count] = srcs[l_idx + radius - j];
-                            tmp_refs[radius * 2 - 1 - tmp_count] = refs[l_idx + radius - j];
-
-                            tmp_count += 1;
+                            tmp_srcs[dynamic_radius * 2 - 1 - j] = srcs[l_idx + dynamic_radius - j];
+                            tmp_refs[dynamic_radius * 2 - 1 - j] = refs[l_idx + dynamic_radius - j];
                         }
 
-                        switch (radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. radius * 2], tmp_refs[0 .. radius * 2], left_u, left_v, tables, opts),
+                        switch (dynamic_radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. dynamic_radius * 2], tmp_refs[0 .. dynamic_radius * 2], left_u, left_v, tables, opts),
                             else => unreachable,
                         }
                     }
@@ -420,25 +427,23 @@ fn Cnr4(comptime T: type) type {
                     };
 
                     // Right frames
-                    if (opt.tmode == .cnr2 or opt.tmode == .cnr2_no_src) {
+                    if (!opt.tmode.useDynamicBackcalculation()) {
                         // Radius 1 backcalculating
                         processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
                     } else {
                         // Dyanmic radius backcalculating
-                        tmp_count = 0;
-                        for (0..radius) |j| {
+                        for (0..dynamic_radius) |j| {
                             // past frames
-                            tmp_srcs[tmp_count] = srcs[r_idx - radius + j];
-                            tmp_refs[tmp_count] = refs[r_idx - radius + j];
+                            tmp_srcs[j] = srcs[r_idx - dynamic_radius + j];
+                            tmp_refs[j] = refs[r_idx - dynamic_radius + j];
 
                             //future frames
-                            tmp_srcs[radius * 2 - 1 - tmp_count] = srcs[r_idx + radius - j];
-                            tmp_refs[radius * 2 - 1 - tmp_count] = refs[r_idx + radius - j];
-
-                            tmp_count += 1;
+                            tmp_srcs[dynamic_radius * 2 - 1 - j] = srcs[r_idx + dynamic_radius - j];
+                            tmp_refs[dynamic_radius * 2 - 1 - j] = refs[r_idx + dynamic_radius - j];
                         }
-                        switch (radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. radius * 2], tmp_refs[0 .. radius * 2], right_u, right_v, tables, opts),
+
+                        switch (dynamic_radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. dynamic_radius * 2], tmp_refs[0 .. dynamic_radius * 2], right_u, right_v, tables, opts),
                             else => unreachable,
                         }
                     }
@@ -455,17 +460,14 @@ fn Cnr4(comptime T: type) type {
                 }
 
                 //combine the results for the current frame.
-                tmp_count = 0;
                 for (0..opt.radius) |j| {
                     // past frames
-                    tmp_srcs[tmp_count] = srcs[j];
-                    tmp_refs[tmp_count] = refs[j];
+                    tmp_srcs[j] = srcs[j];
+                    tmp_refs[j] = refs[j];
 
                     //future frames
-                    tmp_srcs[opt.radius * 2 - 1 - tmp_count] = srcs[srcs.len - 1 - j];
-                    tmp_refs[opt.radius * 2 - 1 - tmp_count] = refs[refs.len - 1 - j];
-
-                    tmp_count += 1;
+                    tmp_srcs[opt.radius * 2 - 1 - j] = srcs[srcs.len - 1 - j];
+                    tmp_refs[opt.radius * 2 - 1 - j] = refs[refs.len - 1 - j];
                 }
 
                 switch (opt.radius) {
@@ -555,7 +557,7 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 return null;
             }
 
-            // Start in the left (prev) and walk backwards
+            // Start on the left (prev) and walk backwards
             {
                 var i = if (d.tmode.srcIncludesCenter()) frame_count / 2 else frame_count / 2 - 1;
                 while (i > 0) : (i -= 1) {
@@ -566,7 +568,7 @@ fn cnr4GetFrame(n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 }
             }
 
-            //Start in the right (next) and walk forwards
+            //Start on the right (next) and walk forwards
             {
                 var i = frame_count / 2;
                 while (i < frame_count - 1) : (i += 1) {

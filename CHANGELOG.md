@@ -1,8 +1,12 @@
 # Changelog
 
 ## 0.17.0
+* Cnr4: BREAKING CHANGE. Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,
+and modes less likely to change at the end of the function.
+* Cnr4: BREAKING CHANGE. Renamed `*_sense` and `*_str` parameters to new plane array-based `sense` and `str` params. 
+* Cnr4: BREAKING CHANGE. Changed the order of `tmode` modes so that they're sorted from strongest to weakest (and fastest to slowest).
 * Cnr4: Adjust absolute difference influence so that each channel is handled separately. This prevents large differences
-in one channel negatively impacting the denoising results in a different channel.
+in one plane negatively impacting the denoising results in a different plane.
 * Cnr4: Add ref clip support.
 * Cnr4: Adjusted Cnr2 mode so that it incorporates all available frames when calculating the current frame. This results
 in a more temporally stable output, and honestly is what I should have done originally.
@@ -13,11 +17,6 @@ lesser denoising.
 and next frame) when calculating frames prior to feeding back into calculating the current frame. The new mode uses larger 
 radii when it can (so as calculations move closer to the current frame). This results in better denoising and more
 detail retention, but it's much more computationally expensive, especially at higher radii.
-* Cnr4: Adjust defaults for better out of the box denoising and detail retention. Uses Cnr2 mode now with radius 2,
-which is the minimal effective radius for the mode. Also uses `wmode=1` for much better detail retention and artifact prevention 
-at the cost of reduced denoising strength by default. I think it's a worthy change in terms of defaults.
-* Cnr4: Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,
-and modes less likely to change at the end of the function.
 * CCD: Add ref clip support
 * TTempsmooth: Internal refactors and code cleanup. Might be a bit faster, but a whole lot less code.
 

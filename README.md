@@ -160,41 +160,82 @@ While Cnr4 is inspired by Cnr2, it provides several key improvements over the or
 2. Better denoising quality due to the use of past and future frames. Cnr2 only used past frames.
 3. Significantly reduced ghosting.
 4. Adjustable temporal radius.
-5. Configurable temporal modes.
-6. Temporal distance weighting modes.
+5. Configurable temporal handling and weighting modes.
 
-#### Modes
-Cnr4 implements several modes (configurable using the `tmode` parameter) - "Cnr2" and "Inverse Difference Weight".
+#### Temporal Handling Modes (`tmode`)
+Cnr4 implements several modes (configurable using the `tmode` parameter).
 
 Note that mode differences only appear for radius > 1. 
 
-##### Cnr2 mode
-Cnr2 mode is inspired by (surprise) Cnr2's original processing behavior. In the original Cnr2 would filter a frame,
-and then feed that filtered frame into the calculations for the subsequent frame. While effective, this caused the
-terrible multithreading performance because said behavior requires serial processing of frames. The mode implemented
-in this filter takes a different approach - frames on either side of the current frame are themselves filtered before 
-feeding said results back into the filtering of the current frame. In other words, the current frame is filtered based
-on the filtered results of the adjacent frames.
+The modes are (roughly) in order of decreasing denoising strength as well as speed. So mode 0 denoises stronger and
+faster than mode 1, and so on. The benefit of the other modes is increased detail retention, along with different
+handling of chroma artifacts. There isn't necessarily one "best" mode, but the default (mode 0) is usually fine.
 
-Cnr2 mode actually runs inverse difference weight mode under the hood in order to produce the filtered results for the
-adjacent frames, and for combining said results into the current frame.
+| tmode | Description |
+| --- | --- |
+| 0 | Inverse difference weighting mode |
+| 1 | Cnr2 mode with radius 1 backcalculation - with only internal reference updated based on backcalculation. Stronger denoising, but more artifacts than mode 2 |
+| 2 | Cnr2 mode with radius 1 backcalculation - both reference and source frames updated based on backcalculation. Weaker denoising but more detail retention than mode 1 |
+| 3 | Cnr2 mode with dynamic radius backcalculation. Much slower than mode 0-2. Like mode 1, only updates references with backcalculation. Generally high detail retention, but weaker denoising. Still stronger than mode 4 |
+| 4 | Cnr2 mode with dynamic radius backcalculation. Much slower than mode 0-2. Like mode 2, updates both reference and source frames with back calculation. Generally the greatest amount of detail retention, but lowest amount of denoising. |
 
-##### Inverse Difference Weight mode
+"Radius 1" vs "dynamic radius" backcalculation refers to how many frames are used when filtering neighbor frames as part
+of backcalculation before processing the current frame.
+
+"Radius 1" simply uses one frame before and after the frame being filtered, even if technically there are more frames on
+either side. The final calculation of the current frame uses the full `radius` of frames.
+
+"Dyanmic radius" uses as many frames as possible for the given frame being filtered. For example for the frames farthest
+away from the current frame, it uses a single previous and next frame, then for the next closest frame, it uses 2
+previous and next frames, and so on, up until it reaches the current frame, where it uses the full `radius`.
+
+##### Mode 0 - Inverse Difference Weight mode
 Inverse difference weight mode operates by calculating the differences between the current frame and an adjacent frame.
 The greater the difference, the lower the weight of the adjacent frame in the final pixel calculation. This alone
 leads to a substantial increase in denoising performance and reduced ghosting when compared to the original Cnr2.
 
+##### Modes 1-4 - Cnr2 modes
+Cnr2 modes are inspired by (surprise) Cnr2's original processing behavior. In the original, Cnr2 would filter a frame
+and then *request* that filtered frame when processing the next frame. While effective, this caused the
+terrible multithreading performance because said request behavior requires serial processing of frames.
+
+This filter takes a different approach - frames on either side of the current frame are themselves filtered before being fed back
+into the filtering of the current frame. In other words, the current frame is filtered based on the filtered results of the adjacent frames.
+This happens in-line, without requesting the output of previously filtered frames. So while we duplicate calculations,
+we remove the serial nature of the frame requests, allowing much better multithreading.
+
+Some Cnr2 modes only feedback filtered frames as reference for the next frame, instead of feeding back as both reference
+and result. This leads to stronger denoising, but less detail retention. So it's a tradeoff.
+
+#### Temporal Distance Weight Modes (`wmode`)
+In addition to `tmode`, there's also the `wmode` parameter.
+
+`wmode` is (roughly) in order of decreasing denoising strength. So `wmode` 0 denoises stronger (but has more artifacts)
+than mode 1, and so on.
+
+`wmode` simply effects the choice of temporal weights. Temporal weights can be used to reduce the impact of temporal
+neighbors based on how far they are from the current frame.
+
+Near frames are always weighted higher than far frames.
+
+| wmode | Description |
+| --- | --- | 
+| 0 | Equal weight (1.0) to all frames |
+| 1 | Sqrt-based weight curve. Higher initial weight, but faster decay (curve drop off) than `wmode` 2 |
+| 2 | Sin-based weight curve. Lower initial weight, but slower decay (curve drop off) than `wmode` 1. |
+| 3 | Linear weight curve. So [1/2, 1/3, 1/4, 1/5], etc. Same weight curve as used in TTempSmooth. Lowest weights of all `wmode`s |
+
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
 | clip | 8-16 bit integer, YUV | | Clip to process |
-| mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective.|
-| radius | int (1-10) | 2 | Temporal radius. Larger values tend to denoise more, and can even prevent artifacts for tmode = 1 |
+| mode | string | "oxx" | Mode for each plane.  The letter `o` means wide mode, which is less sensitive to changes in the pixels, and more effective. The letter `x` means narrow mode, which is less effective but can preserve more detail.|
+| radius | int  | 1 - 10 (2) | Temporal radius. Larger values tend to denoise more, and can even prevent some artifacts.|
 | sense | int[3] | -1 - 255 ([35, 47, 47]) | Per-plane noise / motion sensitivity threshold. -1 is an convenience alias for default values. Higher values identify more noise, but also motion and thus can cause ghosting. Reduce these values if you see ghosting / artifacts. |
 | str | int[3] | -1 - 255 ([192, 255, 255]) | Denoising strength. -1 is an convenience alias for default values. Higher values denoise more, but can also cause artifacts, particularly when used with higher (or too low) `sense` values. |
-| pow | float[3] | 0.0 - inf ([1.0, 1.0, 1.0]) | Power applied to internal weight curve. Values above 1.0 denoise more, below 1.0 denoise less. Similar principal to `gamma` parameter in std.Levels adjustment, only applied to internal denoising weights. |
+| pow | float[3] | 0.0 - inf ([1.0, 1.0, 1.0]) | Power applied to internal weight curve. Values above 1.0 denoise more, below 1.0 denoise less. Lowering `pow` is a great way to prevent artifacts while still keeping most of your denoising. Similar principal to `gamma` parameter in std.Levels adjustment, only applied to internal denoising weights. |
 | scenechange | bool | True | Enables scene-aware filtering. Requires the use of external scene change detection, and expects `_SceneChangePrev` and `_SceneChangeNext` to be set. Set to `False` to disable scenechange handling - this will cause artifacts across scene changes, so be warned. |
-| tmode | int (0-4) | 1 | tmode = 0 is inverse difference mode, tmode = 1 is Cnr2 mode, and tmode = 2 is for Cnr2 mode with dynamic backcalculation radius. The modes are in order of speed -> quality, so mode 0 is fastest and mode 2 is slowest. Note that differences only occur between modes for higher radii - radius 1 is the same for all modes, radius 2 is the same for mode 1 and 2, and then differences appear for radius > 2 for all modes|
-| wmode | int (0-3) | 1 | Temporal weighting mode. In decreasing order of denoising strength. Mode 0 is the original behavior of Cnr2, while modes 1-3 reduce the influence of other frames the farther they are from the current frame. Mode 1 is a good balance of detail retention, artifact prevention, and denoising quality, with subsequent modes preserving more and denoising less.|
+| tmode | int | 0 - 4 (0) | Temporal processing mode. See above explanation on `tmode`s. In decreasing order of denoising strength and speed. |
+| wmode | int | 0 - 3 (0) | Temporal weighting mode. See above explanation on `wmode`s. In decreasing order of denoising strength. No effect on speed.|
 | ref | clip | None | Reference clip. Used for weighting calculation. It can be useful to use a prefilter as a reference.|
 
 #### Cnr2 porting guide
@@ -210,8 +251,16 @@ sc_detect(clip, threshold=0.1).zsmooth.Cnr4(mode="oxx", tmode=2, radius=2, sense
 The defaults of Cnr4 are quite aggressive. The original plugin was designed to work with noisy sources and 
 the defaults show that. 
 
+Cnr4 benefits from a denoised luma plane, as a cleaner luma allows for better internal calculations when denoising chroma.
+It can be helpful to use something like TTempSmooth as a prefilter and feed it in via the `ref` param.
+
+When adjusting filter strength, maybe start by using higher `tmode` or `wmode`s if the effect is too strong. Higher
+values denoise less and generally preserve more detail. They can be useful for quick adjustments without having to
+fiddle with `sense` and `str`. Once you've got something you like, you can fine tune it with `sense`, `str` and
+`pow`.
+
 When tuning parameters, it can be helpful to leave the `str` at default and tune `sense` parameters based on your
-noise patterns. You can likely lower `sense` until just before your noise coming back. Then try lowering `str` 
+noise patterns. You can likely lower `sense` until just before your noise comes back. Then try lowering `str` 
 values until your noise comes back and then raise up a bit.
 
 Noteably, the `sense` and `str` parameters are inter-related. While you can lower `sense`, you'll eventually 
@@ -219,8 +268,7 @@ start to see artifacts that appear unless you correspondingly lower `str`. It ma
 the `sense` and `str` variables by a shared constant, so you reduce motion sensitivity and denoising strength in
 lockstep.
 
-Also, play around the `tmode`. Sometimes *increasing* `radius` can actually *reduce* artifacts for a given mode,
-particularly `tmode=0`.
+Try lowering `pow` (below 1.0, so like `0.2 - 0.9`) in order to reduce artifacts but still keep denoising relatively strong.
 
 ### DCTFilter
 For each 8x8 block, DCTFilter will do a Discrete Cosine Transform (DCT), scale down the selected frequency values, 

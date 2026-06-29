@@ -355,7 +355,7 @@ def fluxSmoothT(clip, threshold, radius):
     avg = clip.zsmooth.TemporalSoften(radius, threshold)
 
     diff_min = 'y x - y z - xor y y x - abs y z - abs < x z ? ?'
-    core.std.Expr([med,clip,avg], diff_min)
+    return core.std.Expr([med,clip,avg], diff_min)
 ```
 
 ### InterQuartileMean
@@ -386,19 +386,17 @@ The following example shows various ways to threshold IQM, as well as combine mu
 and threshold on a form of variance, which generally leads to better edge retention.
 
 ```python
-iqm3 = clip.zsmooth.InterQuartileMean(1)
-iqm5 = clip.zsmooth.InterQuartileMean(2)
+def IQMV(clip, thresh=8, vthresh=5):
+    # thresh - maximum pixel change
+    # vthresh - variance threshold, mostly effects edge retention
 
-# Adding a limit filter recreates the effect of Dogway's original 'ex_median("IQM3", 8)'
-ths = 8 # 8 is Dogway's original default. Note that you should update this based on your clip's bit depth
-iqm3 = core.vszip.LimitFilter(iqm3, clip, dark_thr=ths, bright_thr=ths)
-iqm5 = core.vszip.LimitFilter(iqm5, clip, dark_thr=ths, bright_thr=ths)
+    iqm3 = clip.zsmooth.InterQuartileMean(1)
+    iqm5 = clip.zsmooth.InterQuartileMean(2)
 
-# variance threshold - default is usually fine, effects edge retention more than anything
-# Lower values generally retain more edges than higher values
-# Needs to be updated base on bit depth
-vthr = 5
-iqmv = core.std.Expr([iqm3, clip, iqm5], f'y z - abs {thr} > x z ?')
+    iqm3 = core.vszip.LimitFilter(iqm3, clip, dark_thr=thresh, bright_thr=thresh)
+    iqm5 = core.vszip.LimitFilter(iqm5, clip, dark_thr=thresh, bright_thr=thresh)
+
+    return core.std.Expr([iqm3, clip, iqm5], f'y z - abs {vthresh} > x z ?')
 ```
 
 
@@ -440,7 +438,7 @@ def minblur(clip, radius, repair_edges=False):
     median = clip.zsmooth.Median(radius)
 
     diff_min = 'y x - y z - xor y y x - abs y z - abs < x z ? ?'
-    core.std.Expr([gauss, clip, median], diff_min)
+    limited = core.std.Expr([gauss, clip, median], diff_min)
 
     # Restore edges if desired, Dogway recommends to disable this when using minblur as a prefilter.
     if repair_edges:

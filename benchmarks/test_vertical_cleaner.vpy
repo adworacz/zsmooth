@@ -39,11 +39,12 @@ clip.set_output(0)
 
 
 # if (format not in ['f16', 'f32']):
-if (clip.format.sample_type == vs.INTEGER):
-    rg = clip.rgvs.VerticalCleaner(mode)
-else:
-    # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
-    rg = clip.rgsf.VerticalCleaner(mode)
+if output in ['rg', 'all']: 
+    if (clip.format.sample_type == vs.INTEGER):
+        rg = clip.rgvs.VerticalCleaner(mode)
+    else:
+        # # Note - RGSF uses double precision for some modes, which might be part of the reason for certain differences.
+        rg = clip.rgsf.VerticalCleaner(mode)
 
 zsmooth = clip.zsmooth.VerticalCleaner(mode)
 

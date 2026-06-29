@@ -174,18 +174,18 @@ handling of chroma artifacts. There isn't necessarily one "best" mode, but the d
 | tmode | Description |
 | --- | --- |
 | 0 | Inverse difference weighting mode |
-| 1 | Cnr2 mode with radius 1 backcalculation - with only internal reference updated based on backcalculation. Stronger denoising, but more artifacts than mode 2 |
-| 2 | Cnr2 mode with radius 1 backcalculation - both reference and source frames updated based on backcalculation. Weaker denoising but more detail retention than mode 1 |
-| 3 | Cnr2 mode with dynamic radius backcalculation. Much slower than mode 0-2. Like mode 1, only updates references with backcalculation. Generally high detail retention, but weaker denoising. Still stronger than mode 4 |
-| 4 | Cnr2 mode with dynamic radius backcalculation. Much slower than mode 0-2. Like mode 2, updates both reference and source frames with back calculation. Generally the greatest amount of detail retention, but lowest amount of denoising. |
+| 1 | Cnr2 mode with radius 1 precalculation - with only internal reference updated based on precalculation. Stronger denoising, but more artifacts than mode 2 |
+| 2 | Cnr2 mode with radius 1 precalculation - both reference and source frames updated based on precalculation. Weaker denoising but more detail retention than mode 1 |
+| 3 | Cnr2 mode with expanding radius precalculation. Much slower than mode 0-2. Like mode 1, only updates references with precalculation. Generally high detail retention, but weaker denoising. Still stronger than mode 4 |
+| 4 | Cnr2 mode with expanding radius precalculation. Much slower than mode 0-2. Like mode 2, updates both reference and source frames with back calculation. Generally the greatest amount of detail retention, but lowest amount of denoising. |
 
-"Radius 1" vs "dynamic radius" backcalculation refers to how many frames are used when filtering neighbor frames as part
-of backcalculation before processing the current frame.
+"Radius 1" vs "expanding radius" precalculation refers to how many frames are used when filtering neighbor frames as part
+of precalculation before processing the current frame.
 
 "Radius 1" simply uses one frame before and after the frame being filtered, even if technically there are more frames on
 either side. The final calculation of the current frame uses the full `radius` of frames.
 
-"Dyanmic radius" uses as many frames as possible for the given frame being filtered. For example for the frames farthest
+"Expanding radius" uses as many frames as possible for the given frame being filtered. For example for the frames farthest
 away from the current frame, it uses a single previous and next frame, then for the next closest frame, it uses 2
 previous and next frames, and so on, up until it reaches the current frame, where it uses the full `radius`.
 

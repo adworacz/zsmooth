@@ -33,8 +33,8 @@ const TemporalMode = enum {
     inv_diff, //Simple temporal inverse difference weighting
     cnr2_no_src, // More temporally stable than .cnr2, albeit with more artifacts
     cnr2, // More detail retention than .cnr2_no_src, and less artifacts, with less denoising / more temporal instability.
-    cnr2_dynamic_no_src, // Same as .cnr2_no_src, but using a dynamic radius (slow)
-    cnr2_dynamic, // Same as .cnr2, but using dynamimc radius (slow)
+    cnr2_expanding_no_src, // Same as .cnr2_no_src, but using a expanding radius (slow)
+    cnr2_expanding, // Same as .cnr2, but using dynamimc radius (slow)
 
     const Self = @This();
 
@@ -44,7 +44,7 @@ const TemporalMode = enum {
         return switch (self) {
             .inv_diff => false,
             .cnr2_no_src, .cnr2 => true,
-            .cnr2_dynamic_no_src, .cnr2_dynamic => true,
+            .cnr2_expanding_no_src, .cnr2_expanding => true,
         };
     }
 
@@ -53,18 +53,18 @@ const TemporalMode = enum {
         return switch (self) {
             .inv_diff => false,
             .cnr2_no_src, .cnr2 => true,
-            .cnr2_dynamic_no_src, .cnr2_dynamic => true,
+            .cnr2_expanding_no_src, .cnr2_expanding => true,
         };
     }
 
-    /// Whether or not to update src frames when backcalculating.
+    /// Whether or not to update src frames when precalculating.
     /// Ref frames are always updated.
     fn shouldUpdateSrc(self: Self) bool {
-        return (self == .cnr2 or self == .cnr2_dynamic);
+        return (self == .cnr2 or self == .cnr2_expanding);
     }
 
-    fn useDynamicBackcalculation(self: Self) bool {
-        return (self == .cnr2_dynamic or self == .cnr2_dynamic_no_src);
+    fn useExpandingPrecalculation(self: Self) bool {
+        return (self == .cnr2_expanding or self == .cnr2_expanding_no_src);
     }
 
 };
@@ -388,30 +388,30 @@ fn Cnr4(comptime T: type) type {
                 for (1..opt.radius) |i| {
                     const l_idx = i; //start
                     const r_idx = srcs.len - 1 - i; //end
-                    const dynamic_radius = @min(opt.radius, l_idx);
+                    const expanding_radius = @min(opt.radius, l_idx);
 
                     // Left frames
-                    if (!opt.tmode.useDynamicBackcalculation()) {
-                        // Radius 1 backcalculating
+                    if (!opt.tmode.useExpandingPrecalculation()) {
+                        // Radius 1 precalculating
                         processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
                     } else {
-                        // Dyanmic radius backcalculating
+                        // Expanding radius precalculating
 
                         // Use temporary storage to hold all pertinent frames.
                         // This is essentially slicing, but since we pass the center separately,
                         // we need to populate all (and only) the surrounding frames.
-                        for (0..dynamic_radius) |j| {
+                        for (0..expanding_radius) |j| {
                             // past frames
-                            tmp_srcs[j] = srcs[l_idx - dynamic_radius + j];
-                            tmp_refs[j] = refs[l_idx - dynamic_radius + j];
+                            tmp_srcs[j] = srcs[l_idx - expanding_radius + j];
+                            tmp_refs[j] = refs[l_idx - expanding_radius + j];
 
                             //future frames
-                            tmp_srcs[dynamic_radius * 2 - 1 - j] = srcs[l_idx + dynamic_radius - j];
-                            tmp_refs[dynamic_radius * 2 - 1 - j] = refs[l_idx + dynamic_radius - j];
+                            tmp_srcs[expanding_radius * 2 - 1 - j] = srcs[l_idx + expanding_radius - j];
+                            tmp_refs[expanding_radius * 2 - 1 - j] = refs[l_idx + expanding_radius - j];
                         }
 
-                        switch (dynamic_radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. dynamic_radius * 2], tmp_refs[0 .. dynamic_radius * 2], left_u, left_v, tables, opts),
+                        switch (expanding_radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], left_u, left_v, tables, opts),
                             else => unreachable,
                         }
                     }
@@ -427,23 +427,23 @@ fn Cnr4(comptime T: type) type {
                     };
 
                     // Right frames
-                    if (!opt.tmode.useDynamicBackcalculation()) {
-                        // Radius 1 backcalculating
+                    if (!opt.tmode.useExpandingPrecalculation()) {
+                        // Radius 1 precalculating
                         processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
                     } else {
-                        // Dyanmic radius backcalculating
-                        for (0..dynamic_radius) |j| {
+                        // Expanding radius precalculating
+                        for (0..expanding_radius) |j| {
                             // past frames
-                            tmp_srcs[j] = srcs[r_idx - dynamic_radius + j];
-                            tmp_refs[j] = refs[r_idx - dynamic_radius + j];
+                            tmp_srcs[j] = srcs[r_idx - expanding_radius + j];
+                            tmp_refs[j] = refs[r_idx - expanding_radius + j];
 
                             //future frames
-                            tmp_srcs[dynamic_radius * 2 - 1 - j] = srcs[r_idx + dynamic_radius - j];
-                            tmp_refs[dynamic_radius * 2 - 1 - j] = refs[r_idx + dynamic_radius - j];
+                            tmp_srcs[expanding_radius * 2 - 1 - j] = srcs[r_idx + expanding_radius - j];
+                            tmp_refs[expanding_radius * 2 - 1 - j] = refs[r_idx + expanding_radius - j];
                         }
 
-                        switch (dynamic_radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. dynamic_radius * 2], tmp_refs[0 .. dynamic_radius * 2], right_u, right_v, tables, opts),
+                        switch (expanding_radius) {
+                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], right_u, right_v, tables, opts),
                             else => unreachable,
                         }
                     }

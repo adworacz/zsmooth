@@ -13,7 +13,7 @@ in a more temporally stable output, and honestly is what I should have done orig
 * Cnr4: Add `wmode` parameter support, which allows for incorporating temporal distance into weight calculations. The further 
 away a frame is, the less impact it has on the final result. This allows for greater detail retention at the cost of
 lesser denoising.
-* Cnr4: Added new Cnr2 mode with uses a dynamic backcalculation radius. The existing Cnr2 mode uses radius 1 (so prev
+* Cnr4: Added new Cnr2 mode with uses an expanding precalculation radius. The existing Cnr2 mode uses radius 1 (so prev
 and next frame) when calculating frames prior to feeding back into calculating the current frame. The new mode uses larger 
 radii when it can (so as calculations move closer to the current frame). This results in better denoising and more
 detail retention, but it's much more computationally expensive, especially at higher radii.

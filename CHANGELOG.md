@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.18.0
+* TBD
+
 ## 0.17.0
 * Cnr4: BREAKING CHANGE. Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,
 and modes less likely to change at the end of the function.

@@ -33,6 +33,8 @@ sha256sum *zsmooth* > zsmooth_checksums.sha256
 popd
 
 # Build all of the wheels in parallel
+rm -rf dist
+
 ZSTARGET=aarch64-linux-gnu python -m build &
 ZSTARGET=aarch64-linux-musl python -m build &
 ZSTARGET=x86_64-linux-gnu python -m build &
@@ -45,5 +47,4 @@ ZSTARGET=x86_64-windows python -m build &
 wait
 
 # Dedicated sdist build to ensure we get a clean/unclobbered sdist (since the above builds race)
-rm -rf dist
 python -m build --sdist

@@ -63,7 +63,7 @@ const TemporalMode = enum {
         return (self == .cnr2 or self == .cnr2_expanding);
     }
 
-    fn useExpandingPrecalculation(self: Self) bool {
+    fn useExpandingRadius(self: Self) bool {
         return (self == .cnr2_expanding or self == .cnr2_expanding_no_src);
     }
 
@@ -391,7 +391,7 @@ fn Cnr4(comptime T: type) type {
                     const expanding_radius = @min(opt.radius, l_idx);
 
                     // Left frames
-                    if (!opt.tmode.useExpandingPrecalculation()) {
+                    if (!opt.tmode.useExpandingRadius()) {
                         // Radius 1 precalculating
                         processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
                     } else {
@@ -427,7 +427,7 @@ fn Cnr4(comptime T: type) type {
                     };
 
                     // Right frames
-                    if (!opt.tmode.useExpandingPrecalculation()) {
+                    if (!opt.tmode.useExpandingRadius()) {
                         // Radius 1 precalculating
                         processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
                     } else {

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.19.0
+* TBD
+
 ## 0.18.0
 * CCD: ~20% speedup for temporal radius >= 1. The algorithm now operates on prev/next frames simultaneously using
 instruction + memory access parallelism.

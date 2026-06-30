@@ -68,7 +68,6 @@ const BENCHMARKS: Benchmarks[] = [
 
       { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=3'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 4      , } ,
-      { plugin: 'ccd'     , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 10 / 4     , } ,
     ],
   },
   {
@@ -211,27 +210,19 @@ const BENCHMARKS: Benchmarks[] = [
   {
     filter: 'Median',
     benchmarkPath: 'test_median.vpy',
-    // CTMF is *slow* in u16 radius 1 and 3
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES               , } ,
       { plugin: 'std'     , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES               , } ,
-      { plugin: 'ctmf'    , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 100          , } ,
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
-      { plugin: 'ctmf'    , format:'u8'  , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8           , } ,
-      { plugin: 'ctmf'    , format:'u8'  , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 4       , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2           , } ,
       { plugin: 'std'     , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2           , } ,
-      { plugin: 'ctmf'    , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2 / 1500     , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 2       , } ,
-      { plugin: 'ctmf'    , format:'u16' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 2       , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 2       , } ,
-      { plugin: 'ctmf'    , format:'u16' , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 2 / 1500 , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
       { plugin: 'std'     , format:'f32' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 4           , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 4       , } ,
-      { plugin: 'ctmf'    , format:'f32' , args: ['radius=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 4       , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=3'] , frames: DEFAULT_NUM_FRAMES / 8 / 4       , } ,
     ],
   },
@@ -319,7 +310,6 @@ const BENCHMARKS: Benchmarks[] = [
   {
     filter: 'SmartMedian',
     benchmarkPath: 'test_smart_median.vpy',
-    // CTMF is *slow* in u16 radius 1 and 3
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES               , } ,
@@ -344,24 +334,18 @@ const BENCHMARKS: Benchmarks[] = [
     specs: [
       { plugin: 'zsmooth'     , format:'u8'  , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES          , } ,
       { plugin: 'tmedian'     , format:'u8'  , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES          , } ,
-      { plugin: 'neo_tmedian' , format:'u8'  , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4      , } ,
       { plugin: 'zsmooth'     , format:'u8'  , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES          , } ,
       { plugin: 'tmedian'     , format:'u8'  , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 30     , } ,
-      { plugin: 'neo_tmedian' , format:'u8'  , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 30     , } ,
 
       { plugin: 'zsmooth'     , format:'u16' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 2      , } ,
       { plugin: 'tmedian'     , format:'u16' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 2      , } ,
-      { plugin: 'neo_tmedian' , format:'u16' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 2 / 4  , } ,
       { plugin: 'zsmooth'     , format:'u16' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 2      , } ,
       { plugin: 'tmedian'     , format:'u16' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 2 / 30 , } ,
-      { plugin: 'neo_tmedian' , format:'u16' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 2 / 30 , } ,
 
       { plugin: 'zsmooth'     , format:'f32' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4      , } ,
       { plugin: 'tmedian'     , format:'f32' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'neo_tmedian' , format:'f32' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4 / 4  , } ,
       { plugin: 'zsmooth'     , format:'f32' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
       { plugin: 'tmedian'     , format:'f32' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 4 / 30 , } ,
-      { plugin: 'neo_tmedian' , format:'f32' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 4 / 30 , } ,
     ],
   },
   {
@@ -389,23 +373,16 @@ const BENCHMARKS: Benchmarks[] = [
   {
     filter: 'TemporalSoften',
     benchmarkPath: 'test_temporal_soften.vpy',
-    // Notes:
-    // focus2 is slower than zsmooth, so reducing frame count to not wait unnecessarily for benchmark data.
-    //
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES         , } ,
-      { plugin: 'focus2'  , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES         , } ,
       { plugin: 'std'     , format:'u8'  , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES         , } ,
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES         , } ,
-      { plugin: 'focus2'  , format:'u8'  , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
       { plugin: 'std'     , format:'u8'  , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
 
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
-      { plugin: 'focus2'  , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
       { plugin: 'std'     , format:'u16' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES / 2     , } ,
-      { plugin: 'focus2'  , format:'u16' , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES / 2 / 2 , } ,
       { plugin: 'std'     , format:'u16' , args: ['radius=7'] , frames: DEFAULT_NUM_FRAMES / 2 / 2 , } ,
 
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=1'] , frames: DEFAULT_NUM_FRAMES / 4     , } ,

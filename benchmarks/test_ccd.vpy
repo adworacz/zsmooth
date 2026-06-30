@@ -49,20 +49,13 @@ from vstools import depth
 
 clip.set_output(0)
 
-# Requires akarin...
-if output in ['ccd', 'all']:
-    ccd = clip.ccd.CCD(threshold)
-
 zsmooth = clip.zsmooth.CCD(threshold, scale=1, points=[True, True, False], temporal_radius=temporal_radius) # Use scale=1 to make apples-to-apples comparison of output and performance with ccd.CCD
 
 match output:
     case 'zsmooth':
         zsmooth.set_output()
-    case 'ccd':
-        ccd.set_output()
     case 'all':
         clip.set_output(0)
-        ccd.set_output(1)
         zsmooth.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"

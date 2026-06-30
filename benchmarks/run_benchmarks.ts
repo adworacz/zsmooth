@@ -139,30 +139,18 @@ const BENCHMARKS: Benchmarks[] = [
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
       { plugin: 'zsmooth' , format:'u8' , args: ['mode=5'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
-      { plugin: 'dgm'     , format:'u8' , args: ['mode=5'] , frames: DEFAULT_NUM_FRAMES / 2 , } ,
 
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=2'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=3'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=4'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['mode=5'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
-      { plugin: 'dgm'     , format:'u16' , args: ['mode=5'] , frames: DEFAULT_NUM_FRAMES / 2 / 2, } ,
 
       { plugin: 'zsmooth' , format:'f32' , args: ['mode=0'] , frames: DEFAULT_NUM_FRAMES / 2 / 4, } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['mode=1'] , frames: DEFAULT_NUM_FRAMES / 2 / 4, } ,
@@ -178,14 +166,10 @@ const BENCHMARKS: Benchmarks[] = [
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth' , format:'u8'  , args: ['function=FluxSmoothT']  , frames: DEFAULT_NUM_FRAMES , } ,
-      { plugin: 'flux'    , format:'u8'  , args: ['function=FluxSmoothT']  , frames: DEFAULT_NUM_FRAMES , } ,
       { plugin: 'zsmooth' , format:'u8'  , args: ['function=FluxSmoothST'] , frames: DEFAULT_NUM_FRAMES , } ,
-      { plugin: 'flux'    , format:'u8'  , args: ['function=FluxSmoothST'] , frames: DEFAULT_NUM_FRAMES , } ,
 
       { plugin: 'zsmooth' , format:'u16' , args: ['function=FluxSmoothT']  , frames: DEFAULT_NUM_FRAMES / 2, } ,
-      { plugin: 'flux'    , format:'u16' , args: ['function=FluxSmoothT']  , frames: DEFAULT_NUM_FRAMES / 2, } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['function=FluxSmoothST'] , frames: DEFAULT_NUM_FRAMES / 2, } ,
-      { plugin: 'flux'    , format:'u16' , args: ['function=FluxSmoothST'] , frames: DEFAULT_NUM_FRAMES / 2, } ,
 
       { plugin: 'zsmooth' , format:'f32' , args: ['function=FluxSmoothT']  , frames: DEFAULT_NUM_FRAMES / 4, } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['function=FluxSmoothST'] , frames: DEFAULT_NUM_FRAMES / 4, } ,
@@ -333,19 +317,13 @@ const BENCHMARKS: Benchmarks[] = [
     // biome-ignore format:
     specs: [
       { plugin: 'zsmooth'     , format:'u8'  , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES          , } ,
-      { plugin: 'tmedian'     , format:'u8'  , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES          , } ,
       { plugin: 'zsmooth'     , format:'u8'  , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES          , } ,
-      { plugin: 'tmedian'     , format:'u8'  , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 30     , } ,
 
       { plugin: 'zsmooth'     , format:'u16' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 2      , } ,
-      { plugin: 'tmedian'     , format:'u16' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 2      , } ,
       { plugin: 'zsmooth'     , format:'u16' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 2      , } ,
-      { plugin: 'tmedian'     , format:'u16' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 2 / 30 , } ,
 
       { plugin: 'zsmooth'     , format:'f32' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'tmedian'     , format:'f32' , args: ['radius=1']  , frames: DEFAULT_NUM_FRAMES / 4      , } ,
       { plugin: 'zsmooth'     , format:'f32' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'tmedian'     , format:'f32' , args: ['radius=10'] , frames: DEFAULT_NUM_FRAMES / 4 / 30 , } ,
     ],
   },
   {
@@ -396,20 +374,12 @@ const BENCHMARKS: Benchmarks[] = [
     benchmarkPath: 'test_ttempsmooth.vpy',
     // biome-ignore format:
     specs: [
-      // ttempsmooth is noticeably slower than other filters, so / 4 to keep it within the same time scale.
-      // the original plugin is about 3x slower, so / 3 to keep the same time scale.
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'u8'  , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
       { plugin: 'zsmooth' , format:'u8'  , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'u8'  , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'u16' , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
       { plugin: 'zsmooth' , format:'u16' , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'u16' , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'f32' , args: ['radius=1', 'threshold=4', 'mdiff=2'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
       { plugin: 'zsmooth' , format:'f32' , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4      , } ,
-      { plugin: 'ttmpsm'  , format:'f32' , args: ['radius=1', 'threshold=4', 'mdiff=4'] , frames: DEFAULT_NUM_FRAMES / 4 / 3  , } ,
     ],
   },
   {

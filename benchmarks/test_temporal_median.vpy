@@ -43,8 +43,6 @@ clip.set_output(0)
 if format != 'f16':
     if output in ['tmedian', 'all']:
         tmedian = clip.tmedian.TemporalMedian(radius=radius)
-    if output in ['neo_tmedian', 'all']:
-        neo = clip.neo_tmedian.TemporalMedian(radius=radius)
 
 zsmooth = clip.zsmooth.TemporalMedian(radius=radius, scenechange=scenechange)
 
@@ -53,12 +51,9 @@ match output:
         zsmooth.set_output()
     case 'tmedian':
         tmedian.set_output()
-    case 'neo_tmedian':
-        neo.set_output()
     case 'all':
         tmedian.set_output(1)
         zsmooth.set_output(2)
-        neo.set_output(3)
     case _:
         raise f"Unrecognized output type: {output}"
     

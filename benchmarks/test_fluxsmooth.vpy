@@ -39,11 +39,12 @@ match format:
 
 clip.set_output(0)
 
-if clip.format.sample_type == vs.INTEGER:
-    if function == 'FluxSmoothT':
-        flux = clip.flux.SmoothT(temporal_threshold=threshold)
-    else: 
-        flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
+if output in ['flux', 'all']:
+    if clip.format.sample_type == vs.INTEGER:
+        if function == 'FluxSmoothT':
+            flux = clip.flux.SmoothT(temporal_threshold=threshold)
+        else: 
+            flux = clip.flux.SmoothST(temporal_threshold=threshold, spatial_threshold=threshold)
 
 if function == 'FluxSmoothT':
     zsmooth = clip.zsmooth.FluxSmoothT(scalep=True, temporal_threshold=threshold);

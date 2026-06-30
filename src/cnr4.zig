@@ -26,7 +26,6 @@ const MAX_RADIUS = 10;
 const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
 const MAX_DIAMETER_PLANES = MAX_DIAMETER * 3;
 
-
 const TemporalMode = enum {
     // In order of denoising strength (strongest to weakest)
     // and correspondingly filter speed (fastest to slowest)
@@ -66,12 +65,11 @@ const TemporalMode = enum {
     fn useExpandingRadius(self: Self) bool {
         return (self == .cnr2_expanding or self == .cnr2_expanding_no_src);
     }
-
 };
 
 const WeightMode = enum {
     // In order decreasing order of denoising strength
-    
+
     /// Equal weights (1.0) for all frames.
     equal,
     /// Higher starting weight than lower modes, faster decay
@@ -197,8 +195,12 @@ const Cnr4Data = struct {
 };
 
 fn Cnr4(comptime T: type) type {
+    const vector_len = vec.getVecSize(T);
+    const VT = @Vector(vector_len, T);
     const UAT = types.UnsignedArithmeticType(T);
+    const VUAT = @Vector(vector_len, UAT);
     const BUAT = types.BigUnsignedArithmeticType(T);
+    const VBUAT = @Vector(vector_len, BUAT);
 
     return struct {
         const ProcessOpts = struct {
@@ -230,7 +232,7 @@ fn Cnr4(comptime T: type) type {
             const table_u = tables[1];
             const table_v = tables[2];
 
-            const temporal_weights: [radius * 2]f32 = opt.wmode.calculateWeights(radius);
+            const temporal_weights = opt.wmode.calculateWeights(radius);
 
             var results_u: [radius * 2]UAT = @splat(0);
             var results_v: [radius * 2]UAT = @splat(0);
@@ -309,6 +311,124 @@ fn Cnr4(comptime T: type) type {
             }
         }
 
+        fn cnr4Vector(radius: comptime_int, y_index: usize, uv_index: usize, depth: u8, tables: [3][]const u8, curr: [3][]const T, curr_ref: [3][]const T, src: []const [3][]const T, ref: []const [3][]const T, temporal_weights: []const f32) struct { VT, VT } {
+            const table_y = tables[0];
+            const table_u = tables[1];
+            const table_v = tables[2];
+
+            const two: VT = @splat(2);
+
+            var results_u: [radius * 2]VUAT = @splat(@splat(0));
+            var results_v: [radius * 2]VUAT = @splat(@splat(0));
+            var abs_diffs_yu: [radius * 2]VUAT = @splat(@splat(0));
+            var abs_diffs_yv: [radius * 2]VUAT = @splat(@splat(0));
+
+            const shift: @Vector(vector_len, u8) = @splat(depth << 1);
+            const weight_shift = (depth - 8) * 2;
+            const max = @as(VBUAT, @splat(1)) << @intCast(shift);
+            const round = max / two;
+
+            const divisor = @as(VBUAT, max) * (@as(VT, @splat(radius)) * two);
+            const round2 = divisor / two;
+
+            for (0..radius * 2, src, ref, temporal_weights) |i, other, other_ref, _tweight| {
+                const VF = @Vector(vector_len, f32);
+                const tweight: VF = @splat(_tweight);
+
+                const curr_u: VT = vec.load(VT, curr[1], uv_index);
+                const curr_v: VT = vec.load(VT, curr[2], uv_index);
+
+                const curr_ref_y: VT = vec.load(VT, curr_ref[0], y_index);
+                const curr_ref_u: VT = vec.load(VT, curr_ref[1], uv_index);
+                const curr_ref_v: VT = vec.load(VT, curr_ref[2], uv_index);
+
+                const other_u: VT = vec.load(VT, other[1], uv_index);
+                const other_v: VT = vec.load(VT, other[2], uv_index);
+
+                const other_ref_y: VT = vec.load(VT, other_ref[0], y_index);
+                const other_ref_u: VT = vec.load(VT, other_ref[1], uv_index);
+                const other_ref_v: VT = vec.load(VT, other_ref[2], uv_index);
+
+                const abs_diff_y = math.absDiff(curr_ref_y, other_ref_y);
+                const abs_diff_u = math.absDiff(curr_ref_u, other_ref_u);
+                const abs_diff_v = math.absDiff(curr_ref_v, other_ref_v);
+
+                const table_idx_y: @Vector(vector_len, usize) = switch (T) {
+                    u8 => abs_diff_y,
+                    u16 => abs_diff_y >> @splat(@intCast(depth - 8)),
+                    else => @trunc(@min(abs_diff_y, 1.0) * 255.0),
+                };
+                const table_idx_u: @Vector(vector_len, usize) = switch (T) {
+                    u8 => abs_diff_u,
+                    u16 => abs_diff_u >> @splat(@intCast(depth - 8)),
+                    else => @trunc(@min(abs_diff_u, 1.0) * 255.0),
+                };
+                const table_idx_v: @Vector(vector_len, usize) = switch (T) {
+                    u8 => abs_diff_v,
+                    u16 => abs_diff_v >> @splat(@intCast(depth - 8)),
+                    else => @trunc(@min(abs_diff_v, 1.0) * 255.0),
+                };
+
+                var weight_u: VBUAT = (@as(VUAT, vec.gather(table_y, table_idx_y)) * vec.gather(table_u, table_idx_u)) << @splat(@intCast(weight_shift));
+                var weight_v: VBUAT = (@as(VUAT, vec.gather(table_y, table_idx_y)) * vec.gather(table_v, table_idx_v)) << @splat(@intCast(weight_shift));
+
+                weight_u = @intFromFloat(@round(@as(VF, @floatFromInt(weight_u)) * tweight));
+                weight_v = @intFromFloat(@round(@as(VF, @floatFromInt(weight_v)) * tweight));
+
+                const result_u = ((weight_u * other_u + (max - weight_u) * curr_u + round) >> @intCast(shift));
+                const result_v = ((weight_v * other_v + (max - weight_v) * curr_v + round) >> @intCast(shift));
+
+                results_u[i] = @intCast(result_u);
+                results_v[i] = @intCast(result_v);
+                abs_diffs_yu[i] = @as(VUAT, abs_diff_y) + abs_diff_u;
+                abs_diffs_yv[i] = @as(VUAT, abs_diff_y) + abs_diff_v;
+            }
+
+            // Inverse weight the results so that results derived
+            // from large difference frames have a lower weight, and vice versa.
+            var result_u: VBUAT = @splat(0);
+            var result_v: VBUAT = @splat(0);
+
+            for (0..radius * 2) |i| {
+                result_u += (max - abs_diffs_yu[i]) * results_u[i];
+                result_v += (max - abs_diffs_yv[i]) * results_v[i];
+            }
+
+            return .{
+                @intCast((result_u + round2) / divisor),
+                @intCast((result_v + round2) / divisor),
+            };
+        }
+
+        fn processFrameVector(radius: comptime_int, curr: [3][]const T, curr_ref: [3][]const T, src: []const [3][]const T, ref: []const [3][]const T, noalias dst_u: []T, noalias dst_v: []T, tables: [3][]align(LUT_ALIGN) const u8, opt: ProcessOpts) void {
+            const temporal_weights = opt.wmode.calculateWeights(radius);
+            const width_simd = opt.width_uv / vector_len * vector_len;
+
+            for (0..opt.height_uv) |y| {
+                var x: usize = 0;
+                while (x < width_simd) : (x += vector_len) {
+                    const y_index = y * opt.stride_y + x;
+                    const uv_index = y * opt.stride_uv + x;
+
+                    const result_u, const result_v = cnr4Vector(radius, y_index, uv_index, opt.depth, tables, curr, curr_ref, src, ref, &temporal_weights);
+
+                    vec.store(VT, dst_u, uv_index, result_u);
+                    vec.store(VT, dst_v, uv_index, result_v);
+                }
+
+                if (width_simd < opt.width_uv) {
+                    x = opt.width_uv - vector_len;
+                    const y_index = y * opt.stride_y + x;
+                    const uv_index = y * opt.stride_uv + x;
+
+                    const result_u, const result_v = cnr4Vector(radius, y_index, uv_index, opt.depth, tables, curr, curr_ref, src, ref, &temporal_weights);
+
+                    vec.store(VT, dst_u, uv_index, result_u);
+                    vec.store(VT, dst_v, uv_index, result_v);
+                }
+            }
+        }
+
         // Use separate dstp pointers so we can use `noalias`,
         // which leads to a *substantial speedup*: ~290fps -> 513 fps
         fn processFrame(curr8: [3][]const u8, curr_ref8: [3][]const u8, src8: []const [3][]const u8, ref8: []const [3][]const u8, noalias dst8_u: []u8, noalias dst8_v: []u8, scratch: [4][]u8, tables: [3][]align(LUT_ALIGN) const u8, opt: struct {
@@ -367,7 +487,8 @@ fn Cnr4(comptime T: type) type {
             if (opt.tmode == .inv_diff) {
                 // Inverse difference weight
                 switch (opt.radius) {
-                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, src, ref, dst_u, dst_v, tables, opts),
+                    // inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, src, ref, dst_u, dst_v, tables, opts),
+                    inline 1...MAX_RADIUS => |r| processFrameVector(r, curr, curr_ref, src, ref, dst_u, dst_v, tables, opts),
                     else => unreachable,
                 }
             } else {
@@ -393,7 +514,8 @@ fn Cnr4(comptime T: type) type {
                     // Left frames
                     if (!opt.tmode.useExpandingRadius()) {
                         // Radius 1 precalculating
-                        processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
+                        // processFrameScalar(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
+                        processFrameVector(1, srcs[l_idx], refs[l_idx], &.{ srcs[l_idx - 1], srcs[l_idx + 1] }, &.{ refs[l_idx - 1], refs[l_idx + 1] }, left_u, left_v, tables, opts);
                     } else {
                         // Expanding radius precalculating
 
@@ -411,7 +533,8 @@ fn Cnr4(comptime T: type) type {
                         }
 
                         switch (expanding_radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], left_u, left_v, tables, opts),
+                            // inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], left_u, left_v, tables, opts),
+                            inline 1...MAX_RADIUS => |r| processFrameVector(r, srcs[l_idx], refs[l_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], left_u, left_v, tables, opts),
                             else => unreachable,
                         }
                     }
@@ -429,7 +552,8 @@ fn Cnr4(comptime T: type) type {
                     // Right frames
                     if (!opt.tmode.useExpandingRadius()) {
                         // Radius 1 precalculating
-                        processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
+                        // processFrameScalar(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
+                        processFrameVector(1, srcs[r_idx], refs[r_idx], &.{ srcs[r_idx - 1], srcs[r_idx + 1] }, &.{ refs[r_idx - 1], refs[r_idx + 1] }, right_u, right_v, tables, opts);
                     } else {
                         // Expanding radius precalculating
                         for (0..expanding_radius) |j| {
@@ -443,7 +567,8 @@ fn Cnr4(comptime T: type) type {
                         }
 
                         switch (expanding_radius) {
-                            inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], right_u, right_v, tables, opts),
+                            // inline 1...MAX_RADIUS => |r| processFrameScalar(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], right_u, right_v, tables, opts),
+                            inline 1...MAX_RADIUS => |r| processFrameVector(r, srcs[r_idx], refs[r_idx], tmp_srcs[0 .. expanding_radius * 2], tmp_refs[0 .. expanding_radius * 2], right_u, right_v, tables, opts),
                             else => unreachable,
                         }
                     }
@@ -471,7 +596,8 @@ fn Cnr4(comptime T: type) type {
                 }
 
                 switch (opt.radius) {
-                    inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, tmp_srcs[0 .. opt.radius * 2], tmp_refs[0 .. opt.radius * 2], dst_u, dst_v, tables, opts),
+                    // inline 1...MAX_RADIUS => |r| processFrameScalar(r, curr, curr_ref, tmp_srcs[0 .. opt.radius * 2], tmp_refs[0 .. opt.radius * 2], dst_u, dst_v, tables, opts),
+                    inline 1...MAX_RADIUS => |r| processFrameVector(r, curr, curr_ref, tmp_srcs[0 .. opt.radius * 2], tmp_refs[0 .. opt.radius * 2], dst_u, dst_v, tables, opts),
                     else => unreachable,
                 }
             }
@@ -1073,7 +1199,7 @@ export fn cnr4Create(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, 
             .requestPattern = rp.General,
         },
     };
-    const num_deps: u8 = if(d.node_ref) |_| 2 else 1;
+    const num_deps: u8 = if (d.node_ref) |_| 2 else 1;
 
     zapi.createVideoFilter(out, "Cnr4", d.vi, cnr4GetFrame, cnr4Free, fm.Parallel, deps[0..num_deps], data);
 }

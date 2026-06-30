@@ -3,6 +3,7 @@
 ## 0.18.0
 * CCD: ~20% speedup for temporal radius >= 1. The algorithm now operates on prev/next frames simultaneously using
 instruction + memory access parallelism.
+* Cnr4: Add proper SIMD/vectorized implementation for a 2-3x speedup for temporal radius > 1.
 
 ## 0.17.0
 * Cnr4: BREAKING CHANGE. Also adjusted the order of arguments, placing the ones most likely to be changed at the front of the function,

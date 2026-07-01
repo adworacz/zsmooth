@@ -60,14 +60,29 @@ const BENCHMARKS: Benchmarks[] = [
     benchmarkPath: 'test_ccd.vpy',
     // biome-ignore format:
     specs: [
-      { plugin: 'zsmooth' , format:'u8'  , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
-      { plugin: 'zsmooth' , format:'u8'  , args: ['temporal_radius=3'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=YUV', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 5              , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=YUV', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=YUV', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
 
-      { plugin: 'zsmooth' , format:'u16' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
-      { plugin: 'zsmooth' , format:'u16' , args: ['temporal_radius=3'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 2      , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=RGB', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=RGB', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10              , } ,
+      { plugin: 'zsmooth' , format:'u8'  , args: ['colorfamily=RGB', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
 
-      { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
-      { plugin: 'zsmooth' , format:'f32' , args: ['temporal_radius=3'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 4      , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=YUV', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=YUV', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=YUV', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=RGB', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=RGB', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+      { plugin: 'zsmooth' , format:'u16' , args: ['colorfamily=RGB', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 2          , } ,
+
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=YUV', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=YUV', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=YUV', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 4      , } ,
+
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=RGB', 'temporal_radius=0'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=RGB', 'temporal_radius=1'] , frames: DEFAULT_NUM_FRAMES / 10 / 4          , } ,
+      { plugin: 'zsmooth' , format:'f32' , args: ['colorfamily=RGB', 'temporal_radius=2'] , frames: DEFAULT_NUM_FRAMES / 10 / 4 / 4      , } ,
     ],
   },
   {

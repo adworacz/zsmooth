@@ -1,7 +1,10 @@
 # Changelog
 
 ## 0.19.0
-* TBD
+* CCD: Add YUV support. This leads to a *massive* speed improvement, when compared to converting a clip to RGB and then
+calling CCD on said clip. There are multiple reasons why this is faster, but I'm seeing ~10x speed increase. And that's
+not a typo. Just a basic YUV420P8 -> RGB conversion with Lanczos + CCD runs \~36fps (single threaded). Running purely on
+the YUV420P8 input nets \~400fps (single-threaded). I was expecting a speed increase, but damn, that's huge.
 
 ## 0.18.0
 * CCD: ~20% speedup for temporal radius >= 1. The algorithm now operates on prev/next frames simultaneously using

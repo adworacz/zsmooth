@@ -7,6 +7,7 @@ core.num_threads = 1
 # format = 'u8'
 threshold = 20
 length = 30000
+# colorfamily = 'RGB'
 
 from vspreview.api import is_preview
 if is_preview():
@@ -19,13 +20,13 @@ temporal_radius = int(temporal_radius)
 
 match format:
     case 'u8':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24, color=[255, 255, 255], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB24 if colorfamily == 'RGB' else vs.YUV420P8, color=[255, 255, 255], length=length)
     case 'u16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48, color=[255, 255, 255], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGB48 if colorfamily == 'RGB' else vs.YUV420P16, color=[255, 255, 255], length=length)
     case 'f16':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH, color=[1.0, 1.0, 1.0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBH if colorfamily == 'RGB' else vs.YUV420PH, color=[1.0, 1.0, 1.0], length=length)
     case 'f32':
-        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS, color=[1.0, 1.0, 1.0], length=length)
+        clip = core.std.BlankClip(width=1920,height=1080, format=vs.RGBS if colorfamily == 'RGB' else vs.YUV420PS, color=[1.0, 1.0, 1.0], length=length)
     case _:
         # clip = core.lsmas.LWLibavSource("/home/adub/Videos/Audi R8.mp4")
         clip = core.lsmas.LWLibavSource("/home/adub/Videos/test.webm")

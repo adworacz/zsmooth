@@ -798,9 +798,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
     if (activation_reason == ar.Initial) {
         for (first..last + 1) |f| {
             zapi.requestFrameFilter(@intCast(f), d.node);
-            if (d.node_ref) |_| {
-                zapi.requestFrameFilter(@intCast(f), d.node_ref);
-            }
+            zapi.requestFrameFilter(@intCast(f), d.node_ref);
         }
     } else if (activation_reason == ar.AllFramesReady) {
         // Skip first and last frames that lie inside the temporal radius,
@@ -817,15 +815,11 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         for (0..temporal_diameter) |i| {
             src_frames[i] = zapi.initZFrame(d.node, @intCast(n - d.temporal_radius + i));
-            if (d.node_ref) |_| {
-                ref_frames[i] = zapi.initZFrame(d.node_ref, @intCast(n - d.temporal_radius + i));
-            }
+            ref_frames[i] = zapi.initZFrame(d.node_ref, @intCast(n - d.temporal_radius + i));
         }
         defer for (0..temporal_diameter) |i| {
             src_frames[i].deinit();
-            if (d.node_ref) |_| {
-                ref_frames[i].deinit();
-            }
+            ref_frames[i].deinit();
         };
 
         // Make sure we copy luma from source when handling YUV
@@ -867,9 +861,9 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const ref8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8 = blk: {
             var r: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8 = undefined;
             for (0..temporal_diameter) |i| {
-                r[i * 3 + 0] = if (d.node_ref) |_| ref_frames[i].getReadSlice(0) else src_frames[i].getReadSlice(0);
-                r[i * 3 + 1] = if (d.node_ref) |_| ref_frames[i].getReadSlice(1) else src_frames[i].getReadSlice(1);
-                r[i * 3 + 2] = if (d.node_ref) |_| ref_frames[i].getReadSlice(2) else src_frames[i].getReadSlice(2);
+                r[i * 3 + 0] = ref_frames[i].getReadSlice(0);
+                r[i * 3 + 1] = ref_frames[i].getReadSlice(1);
+                r[i * 3 + 2] = ref_frames[i].getReadSlice(2);
             }
             break :blk r;
         };
@@ -1052,16 +1046,16 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         return;
     }
 
-    d.node_ref = null;
-    if (inz.getNodeVi2("ref")) |refvi| {
+    // Use ref clip if it's passed, else the source
+    d.node_ref = if (inz.getNodeVi2("ref")) |refvi| blk: {
         if (!vsh.isSameVideoInfo(d.vi, refvi.vi)) {
             outz.setError("CCD: ref and source clip format, width, and height must match.");
             zapi.freeNode(d.node);
             zapi.freeNode(refvi.node);
             return;
         }
-        d.node_ref = refvi.node;
-    }
+        break :blk refvi.node;
+    } else zapi.addNodeRef(d.node);
 
     // YUV
 
@@ -1069,16 +1063,16 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     const has_luma = d.vi.format.colorFamily == .YUV;
     const should_resize = has_luma and (d.vi.format.subSamplingW > 0 or d.vi.format.subSamplingH > 0);
 
-    var node_luma = d.node_ref orelse d.node;
-
     // Resize the luma
     if (should_resize) {
+        var node_luma: ?*vs.Node = null;
+
         // Extract luma plane
         {
             const args = zapi.createZMap();
             defer args.free();
 
-            _ = args.setNode("clips", node_luma, .Append);
+            _ = args.setNode("clips", d.node_ref, .Append);
             args.setInt("planes", 0, .Append);
             args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.Gray), .Append);
 
@@ -1105,8 +1099,6 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
             _ = args.consumeNode("clip", node_luma, .Append);
             args.setInt("width", d.vi.width >> @intCast(d.vi.format.subSamplingW), .Append);
             args.setInt("height", d.vi.height >> @intCast(d.vi.format.subSamplingH), .Append);
-            std.debug.print("Resizing chroma to {} x {}\n", .{ d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH) });
-            //TODO: Add chroma location support for sub-pixel accuracy.
 
             const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Bilinear", args.map));
             defer ret.free();
@@ -1129,7 +1121,7 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
             defer args.free();
 
             _ = args.consumeNode("clips", node_luma, .Append);
-            _ = args.setNode("clips", d.node_ref orelse d.node, .Append);
+            _ = args.consumeNode("clips", d.node_ref, .Append);
             args.setInt("planes", 0, .Append);
             args.setInt("planes", 1, .Append);
             args.setInt("planes", 2, .Append);
@@ -1147,12 +1139,8 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
                 return;
             }
 
-            node_luma = ret.getNode("clip").?;
+            d.node_ref = ret.getNode("clip").?;
         }
-    }
-
-    if (has_luma) {
-        d.node_ref = node_luma;
     }
 
     const data: *CCDData = allocator.create(CCDData) catch unreachable;

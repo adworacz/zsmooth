@@ -605,7 +605,7 @@ fn CCD(comptime T: type, comptime ColorFamily: enum { rgb, yuv }) type {
         }
 
         // Use separate dst slices for each plane so we can use 'noalias'
-        fn processPlanesRGBVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_r: []T, noalias dst_g: []T, noalias dst_b: []T, opt: struct {
+        fn processPlanesVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_r: []T, noalias dst_g: []T, noalias dst_b: []T, opt: struct {
             width: usize,
             height: usize,
             stride: usize,
@@ -632,14 +632,25 @@ fn CCD(comptime T: type, comptime ColorFamily: enum { rgb, yuv }) type {
                 .weights = opt.weights,
             };
 
+            // Alias dst_u and dst_v for YUV convenience
+            const dst_u = dst_g;
+            const dst_v = dst_b;
+
             // Top rows - mirrored
             for (0..scaled_radius) |row| {
                 for (0..opt.width) |column| {
-                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_r[(row * opt.stride) + column] = result[0];
-                    dst_g[(row * opt.stride) + column] = result[1];
-                    dst_b[(row * opt.stride) + column] = result[2];
+                        dst_r[(row * opt.stride) + column] = result[0];
+                        dst_g[(row * opt.stride) + column] = result[1];
+                        dst_b[(row * opt.stride) + column] = result[2];
+                    } else {
+                        const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
+
+                        dst_u[(row * opt.stride) + column] = result[0];
+                        dst_v[(row * opt.stride) + column] = result[1];
+                    }
                 }
             }
 
@@ -647,140 +658,87 @@ fn CCD(comptime T: type, comptime ColorFamily: enum { rgb, yuv }) type {
             for (scaled_radius..opt.height - scaled_radius) |row| {
                 // First columns - mirrored
                 for (0..scaled_radius) |column| {
-                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_r[(row * opt.stride) + column] = result[0];
-                    dst_g[(row * opt.stride) + column] = result[1];
-                    dst_b[(row * opt.stride) + column] = result[2];
+                        dst_r[(row * opt.stride) + column] = result[0];
+                        dst_g[(row * opt.stride) + column] = result[1];
+                        dst_b[(row * opt.stride) + column] = result[2];
+                    } else {
+                        const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
+
+                        dst_u[(row * opt.stride) + column] = result[0];
+                        dst_v[(row * opt.stride) + column] = result[1];
+                    }
                 }
 
                 // Middle columns - not mirrored
                 var column: usize = scaled_radius;
                 while (column < width_simd) : (column += vector_len) {
-                    const result = ccdRGBVector(temporal_radius, row, column, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBVector(temporal_radius, row, column, src, ref, options);
 
-                    vec.store(VT, dst_r, row * opt.stride + column, result[0]);
-                    vec.store(VT, dst_g, row * opt.stride + column, result[1]);
-                    vec.store(VT, dst_b, row * opt.stride + column, result[2]);
+                        vec.store(VT, dst_r, row * opt.stride + column, result[0]);
+                        vec.store(VT, dst_g, row * opt.stride + column, result[1]);
+                        vec.store(VT, dst_b, row * opt.stride + column, result[2]);
+                    } else {
+                        const result = ccdYUVVector(temporal_radius, row, column, src, ref, options);
+
+                        vec.store(VT, dst_u, row * opt.stride + column, result[0]);
+                        vec.store(VT, dst_v, row * opt.stride + column, result[1]);
+                    }
                 }
 
                 // Last columns - non-mirrored
                 // We do this to minimize the use of scalar mirror code.
                 if (width_simd + scaled_radius < opt.width) {
                     const adjusted_column = opt.width - vector_len - scaled_radius;
-                    const result = ccdRGBVector(temporal_radius, row, adjusted_column, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBVector(temporal_radius, row, adjusted_column, src, ref, options);
 
-                    vec.store(VT, dst_r, row * opt.stride + adjusted_column, result[0]);
-                    vec.store(VT, dst_g, row * opt.stride + adjusted_column, result[1]);
-                    vec.store(VT, dst_b, row * opt.stride + adjusted_column, result[2]);
+                        vec.store(VT, dst_r, row * opt.stride + adjusted_column, result[0]);
+                        vec.store(VT, dst_g, row * opt.stride + adjusted_column, result[1]);
+                        vec.store(VT, dst_b, row * opt.stride + adjusted_column, result[2]);
+                    } else {
+                        const result = ccdYUVVector(temporal_radius, row, adjusted_column, src, ref, options);
+
+                        vec.store(VT, dst_u, row * opt.stride + adjusted_column, result[0]);
+                        vec.store(VT, dst_v, row * opt.stride + adjusted_column, result[1]);
+                    }
                 }
 
                 // Last columns - mirrored
                 for (opt.width - scaled_radius..opt.width) |c| {
-                    const result = ccdRGBScalar(true, temporal_radius, row, c, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBScalar(true, temporal_radius, row, c, src, ref, options);
 
-                    dst_r[(row * opt.stride) + c] = result[0];
-                    dst_g[(row * opt.stride) + c] = result[1];
-                    dst_b[(row * opt.stride) + c] = result[2];
+                        dst_r[(row * opt.stride) + c] = result[0];
+                        dst_g[(row * opt.stride) + c] = result[1];
+                        dst_b[(row * opt.stride) + c] = result[2];
+                    } else {
+                        const result = ccdYUVScalar(true, temporal_radius, row, c, src, ref, options);
+
+                        dst_u[(row * opt.stride) + c] = result[0];
+                        dst_v[(row * opt.stride) + c] = result[1];
+                    }
                 }
             }
 
             // Bottom rows - mirrored
             for (opt.height - scaled_radius..opt.height) |row| {
                 for (0..opt.width) |column| {
-                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
+                    if (ColorFamily == .rgb) {
+                        const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
-                    dst_r[(row * opt.stride) + column] = result[0];
-                    dst_g[(row * opt.stride) + column] = result[1];
-                    dst_b[(row * opt.stride) + column] = result[2];
-                }
-            }
-        }
+                        dst_r[(row * opt.stride) + column] = result[0];
+                        dst_g[(row * opt.stride) + column] = result[1];
+                        dst_b[(row * opt.stride) + column] = result[2];
+                    } else {
+                        const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
 
-        //TODO: Maybe combine this with processPlanesRGVVector to prevent eliminate 
-        //a lot of code duplication
-        fn processPlanesYUVVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_u: []T, noalias dst_v: []T, opt: struct {
-            width: usize,
-            height: usize,
-            stride: usize,
-            threshold: BUAT,
-            scale: f32,
-            points: []const Point,
-            diameter: u8,
-            weights: []const f32,
-            format_max: T,
-        }) void {
-            const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(opt.diameter)) * opt.scale));
-            //TODO: Maybe call this mirror_radius and pass it in directly instead of
-            //passing diameter just to divide it by two...
-            const scaled_radius: usize = scaled_diameter / 2;
-            const width_simd = (opt.width - scaled_radius) / vector_len * vector_len;
-            const options: CCDOptions = .{
-                .width = opt.width,
-                .height = opt.height,
-
-                .format_max = opt.format_max,
-                .points = opt.points,
-                .stride = opt.stride,
-                .threshold = opt.threshold,
-                .weights = opt.weights,
-            };
-
-            // Top rows - mirrored
-            for (0..scaled_radius) |row| {
-                for (0..opt.width) |column| {
-                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
-
-                    dst_u[(row * opt.stride) + column] = result[0];
-                    dst_v[(row * opt.stride) + column] = result[1];
-                }
-            }
-
-            // Middle rows
-            for (scaled_radius..opt.height - scaled_radius) |row| {
-                // First columns - mirrored
-                for (0..scaled_radius) |column| {
-                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
-
-                    dst_u[(row * opt.stride) + column] = result[0];
-                    dst_v[(row * opt.stride) + column] = result[1];
-                }
-
-                // Middle columns - not mirrored
-                var column: usize = scaled_radius;
-                while (column < width_simd) : (column += vector_len) {
-                    const result = ccdYUVVector(temporal_radius, row, column, src, ref, options);
-
-                    vec.store(VT, dst_u, row * opt.stride + column, result[0]);
-                    vec.store(VT, dst_v, row * opt.stride + column, result[1]);
-                }
-
-                // Last columns - non-mirrored
-                // We do this to minimize the use of scalar mirror code.
-                if (width_simd + scaled_radius < opt.width) {
-                    const adjusted_column = opt.width - vector_len - scaled_radius;
-                    const result = ccdYUVVector(temporal_radius, row, adjusted_column, src, ref, options);
-
-                    vec.store(VT, dst_u, row * opt.stride + adjusted_column, result[0]);
-                    vec.store(VT, dst_v, row * opt.stride + adjusted_column, result[1]);
-                }
-
-                // Last columns - mirrored
-                for (opt.width - scaled_radius..opt.width) |c| {
-                    const result = ccdYUVScalar(true, temporal_radius, row, c, src, ref, options);
-
-                    dst_u[(row * opt.stride) + c] = result[0];
-                    dst_v[(row * opt.stride) + c] = result[1];
-                }
-            }
-
-            // Bottom rows - mirrored
-            for (opt.height - scaled_radius..opt.height) |row| {
-                for (0..opt.width) |column| {
-                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
-
-                    dst_u[(row * opt.stride) + column] = result[0];
-                    dst_v[(row * opt.stride) + column] = result[1];
+                        dst_u[(row * opt.stride) + column] = result[0];
+                        dst_v[(row * opt.stride) + column] = result[1];
+                    }
                 }
             }
         }
@@ -804,46 +762,23 @@ fn CCD(comptime T: type, comptime ColorFamily: enum { rgb, yuv }) type {
 
             const format_max = vscmn.getFormatMaximum2(T, opt.bits_per_sample, false);
 
-            switch (ColorFamily) {
-                .rgb => {
-                    const dstp_r: []T = @ptrCast(@alignCast(dstp_r8));
-                    const dstp_g: []T = @ptrCast(@alignCast(dstp_g8));
-                    const dstp_b: []T = @ptrCast(@alignCast(dstp_b8));
+            const dstp_r: []T = @ptrCast(@alignCast(dstp_r8));
+            const dstp_g: []T = @ptrCast(@alignCast(dstp_g8));
+            const dstp_b: []T = @ptrCast(@alignCast(dstp_b8));
 
-                    switch (opt.temporal_radius) {
-                        inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesRGBVector(r, src, ref, dstp_r, dstp_g, dstp_b, .{
-                            .threshold = threshold,
-                            .scale = opt.scale,
-                            .points = opt.points,
-                            .diameter = opt.diameter,
-                            .weights = opt.weights,
-                            .format_max = format_max,
-                            .width = opt.width,
-                            .height = opt.height,
-                            .stride = stride,
-                        }),
-                        else => unreachable,
-                    }
-                },
-                .yuv => {
-                    const dstp_u: []T = @ptrCast(@alignCast(dstp_g8));
-                    const dstp_v: []T = @ptrCast(@alignCast(dstp_b8));
-
-                    switch (opt.temporal_radius) {
-                        inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesYUVVector(r, src, ref, dstp_u, dstp_v, .{
-                            .threshold = threshold,
-                            .scale = opt.scale,
-                            .points = opt.points,
-                            .diameter = opt.diameter,
-                            .weights = opt.weights,
-                            .format_max = format_max,
-                            .width = opt.width,
-                            .height = opt.height,
-                            .stride = stride,
-                        }),
-                        else => unreachable,
-                    }
-                },
+            switch (opt.temporal_radius) {
+                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(r, src, ref, dstp_r, dstp_g, dstp_b, .{
+                    .threshold = threshold,
+                    .scale = opt.scale,
+                    .points = opt.points,
+                    .diameter = opt.diameter,
+                    .weights = opt.weights,
+                    .format_max = format_max,
+                    .width = opt.width,
+                    .height = opt.height,
+                    .stride = stride,
+                }),
+                else => unreachable,
             }
         }
     };

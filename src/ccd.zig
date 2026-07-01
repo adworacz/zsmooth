@@ -885,7 +885,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
                 });
             },
             .YUV => {
-                processPlanesYUV(src8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+                processPlanesYUV(src8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], undefined, dst.getWriteSlice(1), dst.getWriteSlice(2), .{
                     .threshold = d.threshold,
                     .scale = d.scale,
                     .points = d.points,
@@ -950,7 +950,7 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     d.temporal_radius = inz.getInt(u8, "temporal_radius") orelse 0;
 
     if (d.temporal_radius > MAX_TEMPORAL_RADIUS) {
-        outz.setError("CCD: temporal radius must be less or equal to 10");
+        outz.setError("CCD: temporal radius must be <= 10");
         zapi.freeNode(d.node);
         return;
     }

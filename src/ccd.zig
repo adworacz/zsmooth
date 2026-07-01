@@ -98,7 +98,7 @@ const CCDData = struct {
     diameter: u8,
 };
 
-fn CCD(comptime T: type) type {
+fn CCD(comptime T: type, comptime ColorFamily: enum { rgb, yuv }) type {
     const vector_len = vec.getVecSize(T);
     const VT = @Vector(vector_len, T);
     const BSAT = types.BigSignedArithmeticType(T);
@@ -119,7 +119,7 @@ fn CCD(comptime T: type) type {
             weights: []const f32,
         };
 
-        fn ccdScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { T, T, T } {
+        fn ccdRGBScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { T, T, T } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) f32 else T;
@@ -237,8 +237,122 @@ fn CCD(comptime T: type) type {
             };
         }
 
+        fn ccdYUVScalar(comptime mirror: bool, comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { T, T } {
+            @setFloatMode(float_mode);
+
+            const F = if (types.isInt(T)) f32 else T;
+
+            const temporal_diameter = temporal_radius * 2 + 1;
+
+            var total_u: UAT = src[temporal_radius * 3 + 1][row * opt.stride + column];
+            var total_v: UAT = src[temporal_radius * 3 + 2][row * opt.stride + column];
+
+            const center_ref_y = ref[temporal_radius * 3 + 0][row * opt.stride + column];
+            const center_ref_u = ref[temporal_radius * 3 + 1][row * opt.stride + column];
+            const center_ref_v = ref[temporal_radius * 3 + 2][row * opt.stride + column];
+
+            var count: u8 = 0;
+
+            for (opt.points) |point| {
+                const y: isize = @as(isize, @intCast(row)) + point[1];
+                const x: isize = @as(isize, @intCast(column)) + point[0];
+
+                const absolute_y: usize = if (mirror) math.mirrorIndex(y, opt.height) else @intCast(y);
+                const absolute_x: usize = if (mirror) math.mirrorIndex(x, opt.width) else @intCast(x);
+
+                // Current frame
+                const point_u = src[temporal_radius * 3 + 1][absolute_y * opt.stride + absolute_x];
+                const point_v = src[temporal_radius * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                const point_ref_y = ref[temporal_radius * 3 + 0][absolute_y * opt.stride + absolute_x];
+                const point_ref_u = ref[temporal_radius * 3 + 1][absolute_y * opt.stride + absolute_x];
+                const point_ref_v = ref[temporal_radius * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                const diff_y: BSAT = lossyCast(BSAT, point_ref_y) - center_ref_y;
+                const diff_u: BSAT = lossyCast(BSAT, point_ref_u) - center_ref_u;
+                const diff_v: BSAT = lossyCast(BSAT, point_ref_v) - center_ref_v;
+
+                // See notes in vector version that describe why we multiply.
+                const luma_mult = 4;
+
+                // sum of squared differences
+                var ssd: BUAT = (lossyCast(BUAT, diff_y * diff_y) * luma_mult) + lossyCast(BUAT, diff_u * diff_u) + lossyCast(BUAT, diff_v * diff_v);
+
+                // Temporal neighbors
+                for (0..temporal_radius) |i| {
+                    const prev_idx = temporal_radius - 1 - i;
+                    const next_idx = temporal_radius + 1 + i;
+
+                    const point_prev_ref_y = ref[prev_idx * 3 + 0][absolute_y * opt.stride + absolute_x];
+                    const point_prev_ref_u = ref[prev_idx * 3 + 1][absolute_y * opt.stride + absolute_x];
+                    const point_prev_ref_v = ref[prev_idx * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                    const point_next_ref_y = ref[next_idx * 3 + 0][absolute_y * opt.stride + absolute_x];
+                    const point_next_ref_u = ref[next_idx * 3 + 1][absolute_y * opt.stride + absolute_x];
+                    const point_next_ref_v = ref[next_idx * 3 + 2][absolute_y * opt.stride + absolute_x];
+
+                    const diff_prev_y: BSAT = lossyCast(BSAT, point_prev_ref_y) - center_ref_y;
+                    const diff_prev_u: BSAT = lossyCast(BSAT, point_prev_ref_u) - center_ref_u;
+                    const diff_prev_v: BSAT = lossyCast(BSAT, point_prev_ref_v) - center_ref_v;
+
+                    const diff_next_y: BSAT = lossyCast(BSAT, point_next_ref_y) - center_ref_y;
+                    const diff_next_u: BSAT = lossyCast(BSAT, point_next_ref_u) - center_ref_u;
+                    const diff_next_v: BSAT = lossyCast(BSAT, point_next_ref_v) - center_ref_v;
+
+                    const frame_ssd_prev: BUAT = (lossyCast(BUAT, diff_prev_y * diff_prev_y) * luma_mult) + lossyCast(BUAT, diff_prev_u * diff_prev_u) + lossyCast(BUAT, diff_prev_v * diff_prev_v);
+                    const frame_ssd_next: BUAT = (lossyCast(BUAT, diff_next_y * diff_next_y) * luma_mult) + lossyCast(BUAT, diff_next_u * diff_next_u) + lossyCast(BUAT, diff_next_v * diff_next_v);
+
+                    // Prev/next frames have different weights (sqrt vs sin)
+                    const weight_prev = lossyCast(F, opt.weights[prev_idx]);
+                    const weight_next = lossyCast(F, opt.weights[next_idx]);
+
+                    ssd += if (types.isFloat(T))
+                        (frame_ssd_prev * weight_prev) + (frame_ssd_next * weight_next)
+                    else
+                        @intFromFloat(@round(lossyCast(f32, frame_ssd_prev) * weight_prev + lossyCast(f32, frame_ssd_next) * weight_next));
+                }
+
+                // optimization: using a branch to avoid expensive integer division when temporal_radius = 0
+                // TODO: This branching might not be needed any more, since temporal diameter is comptime known now,
+                // so the compiler should remove it... test without the branch, speeds should be identical.
+                if (temporal_radius > 0) {
+                    // Average the SSD across the number of frames.
+                    ssd = if (types.isFloat(T))
+                        ssd / temporal_diameter
+                    else
+                        // + (temporal_diameter / 2) to round integers properly.
+                        (ssd + (temporal_diameter / 2)) / temporal_diameter;
+                }
+
+                if (ssd < opt.threshold) {
+                    total_u += point_u;
+                    total_v += point_v;
+                    count += 1;
+                }
+            }
+
+            const calculated_u: F = lossyCast(F, total_u) / lossyCast(F, count + 1);
+            const calculated_v: F = lossyCast(F, total_v) / lossyCast(F, count + 1);
+
+            return switch (T) {
+                u8 => .{
+                    @intFromFloat(@round(calculated_u)),
+                    @intFromFloat(@round(calculated_v)),
+                },
+                u16 => .{
+                    // Round and clamp integer formats so that we can handle things like 10-bit.
+                    std.math.clamp(lossyCast(T, @round(calculated_u)), 0, opt.format_max),
+                    std.math.clamp(lossyCast(T, @round(calculated_v)), 0, opt.format_max),
+                },
+                else => .{
+                    calculated_u,
+                    calculated_v,
+                },
+            };
+        }
+
         // Only handles non-mirrored content, since mirroring is much more difficult to implement for vectors.
-        fn ccdVector(comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { VT, VT, VT } {
+        fn ccdRGBVector(comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { VT, VT, VT } {
             @setFloatMode(float_mode);
 
             const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
@@ -360,8 +474,138 @@ fn CCD(comptime T: type) type {
             };
         }
 
+        fn ccdYUVVector(comptime temporal_radius: u8, row: usize, column: usize, noalias src: []const []const T, noalias ref: []const []const T, opt: CCDOptions) struct { VT, VT } {
+            @setFloatMode(float_mode);
+
+            const F = if (types.isInt(T)) @Vector(vector_len, f32) else VT;
+
+            const threshold: VBUAT = @splat(opt.threshold);
+            const format_max: VT = @splat(opt.format_max);
+            const temporal_diameter = temporal_radius * 2 + 1;
+
+            const one: @Vector(vector_len, u8) = @splat(1);
+            const zero: VT = @splat(0);
+            const vtemporal_diameter: VT = @splat(temporal_diameter);
+            const vhalf_temporal_diameter: VT = @splat(temporal_diameter / 2);
+
+            var total_u: VUAT = vec.load(VT, src[temporal_radius * 3 + 1], row * opt.stride + column);
+            var total_v: VUAT = vec.load(VT, src[temporal_radius * 3 + 2], row * opt.stride + column);
+
+            const center_ref_y = vec.load(VT, ref[temporal_radius * 3 + 0], row * opt.stride + column);
+            const center_ref_u = vec.load(VT, ref[temporal_radius * 3 + 1], row * opt.stride + column);
+            const center_ref_v = vec.load(VT, ref[temporal_radius * 3 + 2], row * opt.stride + column);
+
+            var count: @Vector(vector_len, u8) = @splat(0);
+
+            for (opt.points) |point| {
+                const y: usize = @intCast(@as(isize, @intCast(row)) + point[1]);
+                const x: usize = @intCast(@as(isize, @intCast(column)) + point[0]);
+
+                const point_u = vec.load(VT, src[temporal_radius * 3 + 1], y * opt.stride + x);
+                const point_v = vec.load(VT, src[temporal_radius * 3 + 2], y * opt.stride + x);
+
+                // Current frame
+                const point_ref_y = vec.load(VT, ref[temporal_radius * 3 + 0], y * opt.stride + x);
+                const point_ref_u = vec.load(VT, ref[temporal_radius * 3 + 1], y * opt.stride + x);
+                const point_ref_v = vec.load(VT, ref[temporal_radius * 3 + 2], y * opt.stride + x);
+
+                const diff_y: VBSAT = lossyCast(VBSAT, point_ref_y) - center_ref_y;
+                const diff_u: VBSAT = lossyCast(VBSAT, point_ref_u) - center_ref_u;
+                const diff_v: VBSAT = lossyCast(VBSAT, point_ref_v) - center_ref_v;
+
+                // The original filter was designed for processing RGB
+                // data, which contained luma detail in every channel.
+                //
+                // YUV only contains said detail in one channel (Y). So we
+                // weight differences in that channel higher in order to
+                // replicate a similar form of detail retention to the RGB
+                // version.
+                //
+                // This isn't an exact science, but emprical tests
+                // (eye balling) showed a multiplier in the 3-6 range to be
+                // pretty solid in terms of detail retention. I go with 4,
+                // as its roughly in the middle, and likely gets optimized
+                // by the compiler to superfast bit shifts.
+                const luma_mult: VT = @splat(4);
+
+                // sum of squared differences
+                var ssd: VBUAT = (lossyCast(VBUAT, diff_y * diff_y) * luma_mult) + lossyCast(VBUAT, diff_u * diff_u) + lossyCast(VBUAT, diff_v * diff_v);
+
+                // Temporal neighbors
+                // By calculating both prev and next frames in one iteration,
+                // we see ~20% performance increase. Likely due to better
+                // memory access parallelization, among other things.
+                for (0..temporal_radius) |i| {
+                    // Center frame is in the middle, so other frames start +/- 1 on either side.
+                    const prev_idx = temporal_radius - 1 - i;
+                    const next_idx = temporal_radius + 1 + i;
+
+                    const point_ref_prev_y = vec.load(VT, ref[prev_idx * 3 + 0], y * opt.stride + x);
+                    const point_ref_prev_u = vec.load(VT, ref[prev_idx * 3 + 1], y * opt.stride + x);
+                    const point_ref_prev_v = vec.load(VT, ref[prev_idx * 3 + 2], y * opt.stride + x);
+
+                    const point_ref_next_y = vec.load(VT, ref[next_idx * 3 + 0], y * opt.stride + x);
+                    const point_ref_next_u = vec.load(VT, ref[next_idx * 3 + 1], y * opt.stride + x);
+                    const point_ref_next_v = vec.load(VT, ref[next_idx * 3 + 2], y * opt.stride + x);
+
+                    const diff_prev_y = lossyCast(VBSAT, point_ref_prev_y) - center_ref_y;
+                    const diff_prev_u = lossyCast(VBSAT, point_ref_prev_u) - center_ref_u;
+                    const diff_prev_v = lossyCast(VBSAT, point_ref_prev_v) - center_ref_v;
+
+                    const diff_next_y = lossyCast(VBSAT, point_ref_next_y) - center_ref_y;
+                    const diff_next_u = lossyCast(VBSAT, point_ref_next_u) - center_ref_u;
+                    const diff_next_v = lossyCast(VBSAT, point_ref_next_v) - center_ref_v;
+
+                    const frame_ssd_prev: VBUAT = (lossyCast(VBUAT, diff_prev_y * diff_prev_y) * luma_mult) + lossyCast(VBUAT, diff_prev_u * diff_prev_u) + lossyCast(VBUAT, diff_prev_v * diff_prev_v);
+                    const frame_ssd_next: VBUAT = (lossyCast(VBUAT, diff_next_y * diff_next_y) * luma_mult) + lossyCast(VBUAT, diff_next_u * diff_next_u) + lossyCast(VBUAT, diff_next_v * diff_next_v);
+
+                    // Add the weighted SSD to the total SSD.
+                    const weight_prev: F = @splat(@floatCast(opt.weights[prev_idx]));
+                    const weight_next: F = @splat(@floatCast(opt.weights[next_idx]));
+                    ssd += if (types.isFloat(T))
+                        (frame_ssd_prev * weight_prev) + (frame_ssd_next * weight_next)
+                    else
+                        @intFromFloat(@round(@as(F, @floatFromInt(frame_ssd_prev)) * weight_prev + @as(F, @floatFromInt(frame_ssd_next)) * weight_next));
+                }
+
+                //optimization: using a branch to avoid expensive integer division when temporal_radius = 0
+                if (temporal_radius > 0) {
+                    // Average the SSD across the number of frames.
+                    ssd = if (types.isFloat(T))
+                        ssd / vtemporal_diameter
+                    else
+                        // + (temporal_diameter / 2) for proper integer rounding
+                        (ssd + vhalf_temporal_diameter) / vtemporal_diameter;
+                }
+
+                const ssd_lt_threshold = ssd < threshold;
+                total_u = @select(UAT, ssd_lt_threshold, total_u + point_u, total_u);
+                total_v = @select(UAT, ssd_lt_threshold, total_v + point_v, total_v);
+                count = @select(u8, ssd_lt_threshold, count + one, count);
+            }
+
+            const calculated_u: F = lossyCast(F, total_u) / lossyCast(F, count + one);
+            const calculated_v: F = lossyCast(F, total_v) / lossyCast(F, count + one);
+
+            return switch (T) {
+                u8 => .{
+                    @intFromFloat(@round(calculated_u)),
+                    @intFromFloat(@round(calculated_v)),
+                },
+                u16 => .{
+                    // Round and clamp integer formats so that we can handle things like 10-bit.
+                    std.math.clamp(lossyCast(VT, @round(calculated_u)), zero, format_max),
+                    std.math.clamp(lossyCast(VT, @round(calculated_v)), zero, format_max),
+                },
+                else => .{
+                    calculated_u,
+                    calculated_v,
+                },
+            };
+        }
+
         // Use separate dst slices for each plane so we can use 'noalias'
-        fn processPlanesVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_r: []T, noalias dst_g: []T, noalias dst_b: []T, opt: struct {
+        fn processPlanesRGBVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_r: []T, noalias dst_g: []T, noalias dst_b: []T, opt: struct {
             width: usize,
             height: usize,
             stride: usize,
@@ -373,6 +617,8 @@ fn CCD(comptime T: type) type {
             format_max: T,
         }) void {
             const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(opt.diameter)) * opt.scale));
+            //TODO: Maybe call this mirror_radius and pass it in directly instead of
+            //passing diameter just to divide it by two...
             const scaled_radius: usize = scaled_diameter / 2;
             const width_simd = (opt.width - scaled_radius) / vector_len * vector_len;
             const options: CCDOptions = .{
@@ -389,7 +635,7 @@ fn CCD(comptime T: type) type {
             // Top rows - mirrored
             for (0..scaled_radius) |row| {
                 for (0..opt.width) |column| {
-                    const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
+                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
                     dst_r[(row * opt.stride) + column] = result[0];
                     dst_g[(row * opt.stride) + column] = result[1];
@@ -401,7 +647,7 @@ fn CCD(comptime T: type) type {
             for (scaled_radius..opt.height - scaled_radius) |row| {
                 // First columns - mirrored
                 for (0..scaled_radius) |column| {
-                    const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
+                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
                     dst_r[(row * opt.stride) + column] = result[0];
                     dst_g[(row * opt.stride) + column] = result[1];
@@ -411,7 +657,7 @@ fn CCD(comptime T: type) type {
                 // Middle columns - not mirrored
                 var column: usize = scaled_radius;
                 while (column < width_simd) : (column += vector_len) {
-                    const result = ccdVector(temporal_radius, row, column, src, ref, options);
+                    const result = ccdRGBVector(temporal_radius, row, column, src, ref, options);
 
                     vec.store(VT, dst_r, row * opt.stride + column, result[0]);
                     vec.store(VT, dst_g, row * opt.stride + column, result[1]);
@@ -422,7 +668,7 @@ fn CCD(comptime T: type) type {
                 // We do this to minimize the use of scalar mirror code.
                 if (width_simd + scaled_radius < opt.width) {
                     const adjusted_column = opt.width - vector_len - scaled_radius;
-                    const result = ccdVector(temporal_radius, row, adjusted_column, src, ref, options);
+                    const result = ccdRGBVector(temporal_radius, row, adjusted_column, src, ref, options);
 
                     vec.store(VT, dst_r, row * opt.stride + adjusted_column, result[0]);
                     vec.store(VT, dst_g, row * opt.stride + adjusted_column, result[1]);
@@ -431,7 +677,7 @@ fn CCD(comptime T: type) type {
 
                 // Last columns - mirrored
                 for (opt.width - scaled_radius..opt.width) |c| {
-                    const result = ccdScalar(true, temporal_radius, row, c, src, ref, options);
+                    const result = ccdRGBScalar(true, temporal_radius, row, c, src, ref, options);
 
                     dst_r[(row * opt.stride) + c] = result[0];
                     dst_g[(row * opt.stride) + c] = result[1];
@@ -442,11 +688,99 @@ fn CCD(comptime T: type) type {
             // Bottom rows - mirrored
             for (opt.height - scaled_radius..opt.height) |row| {
                 for (0..opt.width) |column| {
-                    const result = ccdScalar(true, temporal_radius, row, column, src, ref, options);
+                    const result = ccdRGBScalar(true, temporal_radius, row, column, src, ref, options);
 
                     dst_r[(row * opt.stride) + column] = result[0];
                     dst_g[(row * opt.stride) + column] = result[1];
                     dst_b[(row * opt.stride) + column] = result[2];
+                }
+            }
+        }
+
+        //TODO: Maybe combine this with processPlanesRGVVector to prevent eliminate 
+        //a lot of code duplication
+        fn processPlanesYUVVector(comptime temporal_radius: u8, noalias src: []const []const T, noalias ref: []const []const T, noalias dst_u: []T, noalias dst_v: []T, opt: struct {
+            width: usize,
+            height: usize,
+            stride: usize,
+            threshold: BUAT,
+            scale: f32,
+            points: []const Point,
+            diameter: u8,
+            weights: []const f32,
+            format_max: T,
+        }) void {
+            const scaled_diameter: usize = @intFromFloat(@round(@as(f32, @floatFromInt(opt.diameter)) * opt.scale));
+            //TODO: Maybe call this mirror_radius and pass it in directly instead of
+            //passing diameter just to divide it by two...
+            const scaled_radius: usize = scaled_diameter / 2;
+            const width_simd = (opt.width - scaled_radius) / vector_len * vector_len;
+            const options: CCDOptions = .{
+                .width = opt.width,
+                .height = opt.height,
+
+                .format_max = opt.format_max,
+                .points = opt.points,
+                .stride = opt.stride,
+                .threshold = opt.threshold,
+                .weights = opt.weights,
+            };
+
+            // Top rows - mirrored
+            for (0..scaled_radius) |row| {
+                for (0..opt.width) |column| {
+                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
+
+                    dst_u[(row * opt.stride) + column] = result[0];
+                    dst_v[(row * opt.stride) + column] = result[1];
+                }
+            }
+
+            // Middle rows
+            for (scaled_radius..opt.height - scaled_radius) |row| {
+                // First columns - mirrored
+                for (0..scaled_radius) |column| {
+                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
+
+                    dst_u[(row * opt.stride) + column] = result[0];
+                    dst_v[(row * opt.stride) + column] = result[1];
+                }
+
+                // Middle columns - not mirrored
+                var column: usize = scaled_radius;
+                while (column < width_simd) : (column += vector_len) {
+                    const result = ccdYUVVector(temporal_radius, row, column, src, ref, options);
+
+                    vec.store(VT, dst_u, row * opt.stride + column, result[0]);
+                    vec.store(VT, dst_v, row * opt.stride + column, result[1]);
+                }
+
+                // Last columns - non-mirrored
+                // We do this to minimize the use of scalar mirror code.
+                if (width_simd + scaled_radius < opt.width) {
+                    const adjusted_column = opt.width - vector_len - scaled_radius;
+                    const result = ccdYUVVector(temporal_radius, row, adjusted_column, src, ref, options);
+
+                    vec.store(VT, dst_u, row * opt.stride + adjusted_column, result[0]);
+                    vec.store(VT, dst_v, row * opt.stride + adjusted_column, result[1]);
+                }
+
+                // Last columns - mirrored
+                for (opt.width - scaled_radius..opt.width) |c| {
+                    const result = ccdYUVScalar(true, temporal_radius, row, c, src, ref, options);
+
+                    dst_u[(row * opt.stride) + c] = result[0];
+                    dst_v[(row * opt.stride) + c] = result[1];
+                }
+            }
+
+            // Bottom rows - mirrored
+            for (opt.height - scaled_radius..opt.height) |row| {
+                for (0..opt.width) |column| {
+                    const result = ccdYUVScalar(true, temporal_radius, row, column, src, ref, options);
+
+                    dst_u[(row * opt.stride) + column] = result[0];
+                    dst_v[(row * opt.stride) + column] = result[1];
                 }
             }
         }
@@ -461,7 +795,6 @@ fn CCD(comptime T: type) type {
             diameter: u8,
             temporal_radius: u8,
             weights: []const f32,
-            chroma: bool,
             bits_per_sample: u6,
         }) void {
             const threshold: BUAT = lossyCast(BUAT, opt.threshold);
@@ -469,25 +802,48 @@ fn CCD(comptime T: type) type {
             const src: []const []const T = @ptrCast(@alignCast(src8));
             const ref: []const []const T = @ptrCast(@alignCast(ref8));
 
-            const dstp_r: []T = @ptrCast(@alignCast(dstp_r8));
-            const dstp_g: []T = @ptrCast(@alignCast(dstp_g8));
-            const dstp_b: []T = @ptrCast(@alignCast(dstp_b8));
+            const format_max = vscmn.getFormatMaximum2(T, opt.bits_per_sample, false);
 
-            const format_max = vscmn.getFormatMaximum2(T, opt.bits_per_sample, opt.chroma);
+            switch (ColorFamily) {
+                .rgb => {
+                    const dstp_r: []T = @ptrCast(@alignCast(dstp_r8));
+                    const dstp_g: []T = @ptrCast(@alignCast(dstp_g8));
+                    const dstp_b: []T = @ptrCast(@alignCast(dstp_b8));
 
-            switch (opt.temporal_radius) {
-                inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesVector(r, src, ref, dstp_r, dstp_g, dstp_b, .{
-                    .threshold = threshold,
-                    .scale = opt.scale,
-                    .points = opt.points,
-                    .diameter = opt.diameter,
-                    .weights = opt.weights,
-                    .format_max = format_max,
-                    .width = opt.width,
-                    .height = opt.height,
-                    .stride = stride,
-                }),
-                else => unreachable,
+                    switch (opt.temporal_radius) {
+                        inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesRGBVector(r, src, ref, dstp_r, dstp_g, dstp_b, .{
+                            .threshold = threshold,
+                            .scale = opt.scale,
+                            .points = opt.points,
+                            .diameter = opt.diameter,
+                            .weights = opt.weights,
+                            .format_max = format_max,
+                            .width = opt.width,
+                            .height = opt.height,
+                            .stride = stride,
+                        }),
+                        else => unreachable,
+                    }
+                },
+                .yuv => {
+                    const dstp_u: []T = @ptrCast(@alignCast(dstp_g8));
+                    const dstp_v: []T = @ptrCast(@alignCast(dstp_b8));
+
+                    switch (opt.temporal_radius) {
+                        inline 0...MAX_TEMPORAL_RADIUS => |r| processPlanesYUVVector(r, src, ref, dstp_u, dstp_v, .{
+                            .threshold = threshold,
+                            .scale = opt.scale,
+                            .points = opt.points,
+                            .diameter = opt.diameter,
+                            .weights = opt.weights,
+                            .format_max = format_max,
+                            .width = opt.width,
+                            .height = opt.height,
+                            .stride = stride,
+                        }),
+                        else => unreachable,
+                    }
+                },
             }
         }
     };
@@ -523,6 +879,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 
         var src_frames: [MAX_TEMPORAL_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
         var ref_frames: [MAX_TEMPORAL_DIAMETER]ZAPI.ZFrame(*const vs.Frame) = undefined;
+
         for (0..temporal_diameter) |i| {
             src_frames[i] = zapi.initZFrame(d.node, @intCast(n - d.temporal_radius + i));
             if (d.node_ref) |_| {
@@ -536,13 +893,26 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
         };
 
-        const dst = src_frames[d.temporal_radius].newVideoFrame();
+        // Make sure we copy luma from source when handling YUV
+        const process: [3]bool = switch (d.vi.format.colorFamily) {
+            .RGB => .{ true, true, true },
+            .YUV => .{ false, true, true },
+            else => unreachable,
+        };
 
-        const processPlanes = switch (vscmn.FormatType.getDataType(d.vi.format)) {
-            .U8 => &CCD(u8).processPlanes,
-            .U16 => &CCD(u16).processPlanes,
-            .F16 => &CCD(f16).processPlanes,
-            .F32 => &CCD(f32).processPlanes,
+        const dst = src_frames[d.temporal_radius].newVideoFrame2(process);
+
+        const processPlanesRGB = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &CCD(u8, .rgb).processPlanes,
+            .U16 => &CCD(u16, .rgb).processPlanes,
+            .F16 => &CCD(f16, .rgb).processPlanes,
+            .F32 => &CCD(f32, .rgb).processPlanes,
+        };
+        const processPlanesYUV = switch (vscmn.FormatType.getDataType(d.vi.format)) {
+            .U8 => &CCD(u8, .yuv).processPlanes,
+            .U16 => &CCD(u16, .yuv).processPlanes,
+            .F16 => &CCD(f16, .yuv).processPlanes,
+            .F32 => &CCD(f32, .yuv).processPlanes,
         };
 
         // Width, height, and stride are the same for all planes,
@@ -550,7 +920,7 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
         const width: usize = dst.getWidth(0);
         const height: usize = dst.getHeight(0);
         const stride8: usize = dst.getStride(0);
-        const srcp8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8 = blk: {
+        const src8: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8 = blk: {
             var s: [MAX_TEMPORAL_DIAMETER_PLANES][]const u8 = undefined;
             for (0..temporal_diameter) |i| {
                 s[i * 3 + 0] = src_frames[i].getReadSlice(0);
@@ -568,22 +938,41 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
             }
             break :blk r;
         };
-        const chroma = vscmn.isChromaPlane(d.vi.format.colorFamily, 0);
         const bits_per_sample: u6 = @intCast(d.vi.format.bitsPerSample);
 
-        processPlanes(srcp8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
-            .threshold = d.threshold,
-            .scale = d.scale,
-            .points = d.points,
-            .diameter = d.diameter,
-            .temporal_radius = d.temporal_radius,
-            .weights = d.weights[0..temporal_diameter],
-            .chroma = chroma,
-            .bits_per_sample = bits_per_sample,
-            .width = width,
-            .height = height,
-            .stride8 = stride8,
-        });
+        switch (d.vi.format.colorFamily) {
+            .RGB => {
+                processPlanesRGB(src8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+                    .threshold = d.threshold,
+                    .scale = d.scale,
+                    .points = d.points,
+                    .diameter = d.diameter,
+                    .temporal_radius = d.temporal_radius,
+                    .weights = d.weights[0..temporal_diameter],
+                    .bits_per_sample = bits_per_sample,
+                    .width = width,
+                    .height = height,
+                    .stride8 = stride8,
+                });
+            },
+            .YUV => {
+                processPlanesYUV(src8[0 .. temporal_diameter * 3], ref8[0 .. temporal_diameter * 3], dst.getWriteSlice(0), dst.getWriteSlice(1), dst.getWriteSlice(2), .{
+                    .threshold = d.threshold,
+                    .scale = d.scale,
+                    .points = d.points,
+                    .diameter = d.diameter,
+                    .temporal_radius = d.temporal_radius,
+                    .weights = d.weights[0..temporal_diameter],
+                    .bits_per_sample = bits_per_sample,
+
+                    // Take dimensions and stride from chroma planes
+                    .width = dst.getWidth(1),
+                    .height = dst.getHeight(1),
+                    .stride8 = dst.getStride(1),
+                });
+            },
+            else => unreachable,
+        }
 
         return dst.frame;
     }
@@ -594,9 +983,12 @@ fn ccdGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*anyopaque, fra
 export fn ccdFree(instance_data: ?*anyopaque, core: ?*vs.Core, vsapi: ?*const vs.API) callconv(.c) void {
     _ = core;
     const d: *CCDData = @ptrCast(@alignCast(instance_data));
+
     vsapi.?.freeNode.?(d.node);
     vsapi.?.freeNode.?(d.node_ref);
+
     allocator.free(d.points);
+
     allocator.destroy(d);
 }
 
@@ -610,8 +1002,8 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
 
     d.node, d.vi = inz.getNodeVi("clip").?;
 
-    if (d.vi.format.colorFamily != vs.ColorFamily.RGB) {
-        outz.setError("CCD: only RGB color formats are supported");
+    if (d.vi.format.colorFamily != vs.ColorFamily.RGB and d.vi.format.colorFamily != vs.ColorFamily.YUV) {
+        outz.setError("CCD: only RGB and YUV color formats are supported");
         zapi.freeNode(d.node);
         return;
     }
@@ -619,13 +1011,17 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     const format_max = vscmn.getFormatMaximum(f32, d.vi.format, false);
 
     d.threshold = inz.getFloat(f32, "threshold") orelse 4;
-    d.threshold = d.threshold * format_max; // Scale to input bit depth for consitency across inputs.
-    d.threshold = (d.threshold * d.threshold) / (255 * 255 * 3); // squared euclidian, scaled to sum of sqaured differences for float.
+    d.threshold = d.threshold * format_max; // Scale to input bit depth for consitency across bit depths.
+
+    // squared euclidian, scaled to sum of squared differences for 8-bit int.
+    // This makes it easy to use an 8-bit scale threshold for all formats,
+    // including 16-bit int and float.
+    d.threshold = (d.threshold * d.threshold) / (255 * 255 * 3);
 
     d.temporal_radius = inz.getInt(u8, "temporal_radius") orelse 0;
 
     if (d.temporal_radius > MAX_TEMPORAL_RADIUS) {
-        outz.setError("CCD: temporal radius must be less than 10");
+        outz.setError("CCD: temporal radius must be less or equal to 10");
         zapi.freeNode(d.node);
         return;
     }
@@ -641,7 +1037,9 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
     // Ensure current/center frame is maximally weighted at 1.0;
     d.weights[d.temporal_radius] = 1.0;
 
-    d.scale = inz.getFloat(f32, "scale") orelse @as(f32, @floatFromInt(d.vi.height)) / 240.0;
+    // Scale points based on clip height, while accounting for chroma subsampling.
+    // The original filter was designed to work on 320 x 240 sources
+    d.scale = inz.getFloat(f32, "scale") orelse @as(f32, @floatFromInt(d.vi.height >> @intCast(d.vi.format.subSamplingH))) / 240.0;
 
     if (d.scale < 1.0) {
         outz.setError("CCD: scale must be greater than or equal to 1.0");
@@ -677,18 +1075,38 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         if (low) {
             @memcpy(d.points[i .. i + low_points.len], &low_points);
             i += low_points.len;
-            d.diameter = 9; // 4 + 4 + 1 (center)
         }
         if (medium) {
             @memcpy(d.points[i .. i + medium_points.len], &medium_points);
             i += medium_points.len;
-            d.diameter = 17; // 8 + 8 + 1 (center)
         }
         if (high) {
             @memcpy(d.points[i .. i + high_points.len], &high_points);
             i += high_points.len;
-            d.diameter = 25; // 12 + 12 + 1 (center)
         }
+    }
+
+    // scale points, while accounting for chroma subsampling
+    for (d.points) |*point| {
+        point[0] = @intFromFloat(@round(@as(f32, @floatFromInt(point[0] >> @intCast(d.vi.format.subSamplingW))) * d.scale));
+        point[1] = @intFromFloat(@round(@as(f32, @floatFromInt(point[1] >> @intCast(d.vi.format.subSamplingH))) * d.scale));
+    }
+
+    // Sort points to ensure optimal (cache aware) lookups.
+    // We do this *after* we subsample/scale the points to account for any adjustments.
+    std.sort.insertion(Point, d.points, {}, less_than_points);
+
+    // Go through all points and find the furthest from the center. This
+    // provides us a value that governs when we use mirror processing on frame
+    // edges. This is a conservative value, since we technically could track
+    // x/y (left/right vs top/bottom) distances separately, but that's
+    // basically twice as much code for little impact.
+    d.diameter = 0;
+    for (d.points) |point| {
+        const x_diameter: u8 = @intCast(@abs(point[0]) * 2 + 1);
+        const y_diameter: u8 = @intCast(@abs(point[1]) * 2 + 1);
+        d.diameter = @max(d.diameter, x_diameter); //x
+        d.diameter = @max(d.diameter, y_diameter); //y
     }
 
     const scaled_diameter: u32 = @intFromFloat(@round(@as(f32, @floatFromInt(d.diameter)) * d.scale));
@@ -697,15 +1115,6 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
         zapi.freeNode(d.node);
         allocator.free(d.points);
         return;
-    }
-
-    // Sort points to ensure optimal (cache aware) lookups.
-    std.sort.insertion(Point, d.points, {}, less_than_points);
-
-    // scale points
-    for (d.points) |*point| {
-        point[0] = @intFromFloat(@round(@as(f32, @floatFromInt(point[0])) * d.scale));
-        point[1] = @intFromFloat(@round(@as(f32, @floatFromInt(point[1])) * d.scale));
     }
 
     d.node_ref = null;
@@ -717,6 +1126,98 @@ export fn ccdCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyopaque, c
             return;
         }
         d.node_ref = refvi.node;
+    }
+
+    // YUV
+
+    // Call bilinear resize to handle the luma downscaling.
+    const has_luma = d.vi.format.colorFamily == .YUV;
+    const should_resize = has_luma and (d.vi.format.subSamplingW > 0 or d.vi.format.subSamplingH > 0);
+
+    var node_luma = d.node_ref orelse d.node;
+
+    // Resize the luma
+    if (should_resize) {
+        // Extract luma plane
+        {
+            const args = zapi.createZMap();
+            defer args.free();
+
+            _ = args.setNode("clips", node_luma, .Append);
+            args.setInt("planes", 0, .Append);
+            args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.Gray), .Append);
+
+            const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "ShufflePlanes", args.map));
+            defer ret.free();
+
+            if (ret.getError()) |e| {
+                // Don't love this manual string length calculation, but it works for now.
+                // Should probably upstream this to vapoursynth-zig
+                const index = std.mem.indexOfSentinel(u8, 0, e);
+                outz.setError(e[0..index :0]);
+                zapi.freeNode(node_luma);
+                return;
+            }
+
+            node_luma = ret.getNode("clip").?;
+        }
+
+        // Resize said luma plane
+        {
+            const args = zapi.createZMap();
+            defer args.free();
+
+            _ = args.consumeNode("clip", node_luma, .Append);
+            args.setInt("width", d.vi.width >> @intCast(d.vi.format.subSamplingW), .Append);
+            args.setInt("height", d.vi.height >> @intCast(d.vi.format.subSamplingH), .Append);
+            std.debug.print("Resizing chroma to {} x {}\n", .{ d.vi.width >> @intCast(d.vi.format.subSamplingW), d.vi.height >> @intCast(d.vi.format.subSamplingH) });
+            //TODO: Add chroma location support for sub-pixel accuracy.
+
+            const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.RESIZE_PLUGIN_ID), "Bilinear", args.map));
+            defer ret.free();
+
+            if (ret.getError()) |e| {
+                // Don't love this manual string length calculation, but it works for now.
+                // Should probably upstream this to vapoursynth-zig
+                const index = std.mem.indexOfSentinel(u8, 0, e);
+                outz.setError(e[0..index :0]);
+                zapi.freeNode(node_luma);
+                return;
+            }
+
+            node_luma = ret.getNode("clip").?;
+        }
+
+        // Merge the resized luma with the original chroma
+        {
+            const args = zapi.createZMap();
+            defer args.free();
+
+            _ = args.consumeNode("clips", node_luma, .Append);
+            _ = args.setNode("clips", d.node_ref orelse d.node, .Append);
+            args.setInt("planes", 0, .Append);
+            args.setInt("planes", 1, .Append);
+            args.setInt("planes", 2, .Append);
+            args.setInt("colorfamily", @intFromEnum(vs.ColorFamily.YUV), .Append);
+
+            const ret = zapi.initZMap(zapi.invoke(zapi.getPluginByID(vsh.STD_PLUGIN_ID), "ShufflePlanes", args.map));
+            defer ret.free();
+
+            if (ret.getError()) |e| {
+                // Don't love this manual string length calculation, but it works for now.
+                // Should probably upstream this to vapoursynth-zig
+                const index = std.mem.indexOfSentinel(u8, 0, e);
+                outz.setError(e[0..index :0]);
+                zapi.freeNode(node_luma);
+                return;
+            }
+
+            node_luma = ret.getNode("clip").?;
+        }
+    }
+
+    if (has_luma) {
+        d.node_ref = node_luma;
     }
 
     const data: *CCDData = allocator.create(CCDData) catch unreachable;

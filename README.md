@@ -70,19 +70,23 @@ It's a chroma denoiser that works great on old sources such as VHSes and DVDs.
 
 CCD works as a convolution (weighted average) of near pixels governed by the `ref_points` and `scale` parameters.
 
-If the Euclidean distance between the RGB values of the center pixel and a given pixel in the convolution
+If the Euclidean distance between the values of the center pixel and a given pixel in the convolution
 matrix is less than the threshold, then this pixel is considered in the average. 
 
-After denoising, the clip should be converted back to YUV / YCoCg, and the luma channel should
-be copied from the input. This plugin only denoises, it does no YUV->RGB->YUV conversion nor luma copying.
+Unlike other CCD implementations, this implementation supports both RGB and YUV clips. The main benefit of native YUV
+handling is a significant speed increase (~10x is not unreasonable for a YUV420P8 clip), but you also don't have to
+convert back and forth to RGB and handle split/joining luma + chroma planes afterwards.
+
+Note that YUV clips likely need a lower threshold value, ~1/2 of RGB's thresholds. Use that as a starting place and
+experiment.
 
 ```py
 core.zsmooth.CCD(clip clip, [float threshold = 4, int temporal_radius = 0, scale = auto, points=[True, True, False], clip ref = None])
 ```
 | Parameter | Type | Options (Default) | Description |
 | --- | --- | --- | --- |
-| clip | 8-16 bit integer, 16-32 bit float, RGB | | Clip to process |
-| threshold | float | 0-inf (4) | Euclidean distance threshold for including pixels in the convolution. Higher values result in more denoising. Automatically scaled to all bit depths internally. |
+| clip | 8-16 bit integer, 16-32 bit float, RGB or YUV | | Clip to process |
+| threshold | float | 0-inf (4) | Euclidean distance threshold for including pixels in the convolution. Higher values result in more denoising. Automatically scaled to all bit depths internally. YUV formats usually take a lower threshold than RGB formats. When comparing results, start with a YUV threshold about half of your RGB threshold. |
 | temporal_radius | int | 0-10 (0) | Temporal radius of processing. Higher values result in more denoising. |
 | points | bool[3] | ([True, True, False]) | Specifies whether to use the low, medium, or high reference points (or any combination), respectively, in the processing matrix. See the note on points below for more information. The default uses the low and medium, but excludes the high points. Feel free to adjust based on your source. |
 | scale | float | 0-inf (auto) | Multiplier for the size of the matrix. `scale=1` corresponds with a 25x25 matrix (just like the original CCD implementation by Sergey). `scale=2` is a 50x50 matrix, and so on. The default is automatic, which calculates a multiplier based off of the source height, as the original CCD was implemented for 240p content. It's recommended to use the auto calculation and/or adjust `points` to suit your source |

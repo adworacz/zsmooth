@@ -1,7 +1,7 @@
 .{
     .name = .zsmooth,
 
-    .version = "0.19.0",
+    .version = "0.20.0",
 
     .fingerprint = 0x1194a25849298724, // Changing this has security and trust implications.
 

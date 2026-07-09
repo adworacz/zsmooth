@@ -12,7 +12,7 @@ library_suffixes = ['.so', '.dll', '.dylib']
 cpus = [
     {'cpu': 'x86_64'}, 
     {'cpu': 'haswell', 'opt_suffix': 'avx2'},
-    {'cpu': 'znver4-sse4a', 'opt_suffix': 'zn4'}, # "-sse4a" means *remove* the use of SSE4a (which Intel never implemented)
+    {'cpu': 'znver4-sse4a-avx512bf16', 'opt_suffix': 'zn4'}, # "-sse4a" and "-avx512bf16" means *remove* the use of SSE4a and AVX512 BF16 (which Intel never implemented)
 ]
 
 targets = {

@@ -14,10 +14,10 @@ const targets = [_]std.Target.Query{
     .{ .os_tag = .linux, .cpu_arch = .aarch64, .abi = .musl },
     .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell }, .abi = .gnu, .glibc_version = min_glibc_version },
     .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell }, .abi = .musl },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}), .abi = .gnu, .glibc_version = min_glibc_version },
-    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}), .abi = .musl },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a, .avx512bf16}), .abi = .gnu, .glibc_version = min_glibc_version },
+    .{ .os_tag = .linux, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a, .avx512bf16}), .abi = .musl },
     .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.haswell } },
-    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a}) },
+    .{ .os_tag = .windows, .cpu_arch = .x86_64, .cpu_model = std.Target.Query.CpuModel{ .explicit = &x86.cpu.znver4 }, .cpu_features_sub = x86.featureSet(&[_]x86.Feature{.sse4a, .avx512bf16}) },
 };
 
 pub fn build(b: *std.Build) !void {

@@ -382,10 +382,20 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
         return vscmn.reportError2("TemporalSoften: All thresholds cannot be 0.", zapi, outz, d.node);
     }
 
+    const planes = vscmn.normalizePlanes(d.vi.format, in, vsapi) catch |e| {
+        zapi.freeNode(d.node);
+
+        switch (e) {
+            vscmn.PlanesError.IndexOutOfRange => outz.setError("TemporalSoften: Plane index out of range."),
+            vscmn.PlanesError.SpecifiedTwice => outz.setError("TemporalSoften: Plane specified twice."),
+        }
+        return;
+    };
+
     d.process = [_]bool{
-        d.threshold[0] > 0,
-        d.threshold[1] > 0,
-        d.threshold[2] > 0,
+        planes[0] and d.threshold[0] > 0,
+        planes[1] and d.threshold[1] > 0,
+        planes[2] and d.threshold[2] > 0,
     };
 
     const scene_change_threshold = if (inz.getInt(i32, "scenechange")) |scene_change_threshold| blk: {
@@ -441,5 +451,10 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
 }
 
 pub fn registerFunction(plugin: *vs.Plugin, vsapi: *const vs.PLUGINAPI) void {
-    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;radius:int:opt;threshold:float[]:opt;scenechange:int:opt;scalep:int:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
+    _ = vsapi.registerFunction.?("TemporalSoften", "clip:vnode;" ++
+        "radius:int:opt;" ++
+        "threshold:float[]:opt;" ++
+        "scenechange:int:opt;" ++
+        "scalep:int:opt;" ++
+        "planes:int[]:opt;", "clip:vnode;", temporalSoftenCreate, null, plugin);
 }

@@ -3,6 +3,7 @@
 ## 0.20.0
 * RemoveGrain: Fix bug in parsing of `mode` param. Previously, different modes non-zero planes were not respected.
 * build: Update znver4 builds to disable use of AVX512BF16, per Myrsloik's guidance.
+* TemporalSoften: Add `planes` parameter for convenience.
 
 ## 0.19.0
 * CCD: Add YUV support. This leads to a *massive* speed improvement, when compared to converting a clip to RGB and then

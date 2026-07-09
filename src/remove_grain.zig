@@ -909,7 +909,7 @@ export fn removeGrainCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*anyo
 
     for (0..3) |i| {
         if (i < numModes) {
-            if (inz.getInt(i32, "mode")) |mode| {
+            if (inz.getInt2(i32, "mode", i)) |mode| {
                 if (mode < 0 or mode > 24) {
                     outz.setError("RemoveGrain: Invalid mode specified, only modes 0-24 supported.");
                     zapi.freeNode(d.node);

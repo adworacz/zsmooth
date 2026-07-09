@@ -25,7 +25,7 @@ const st = vs.SampleType;
 // specifically the filter data between the Create and GetFrame functions.
 const allocator = std.heap.c_allocator;
 
-const MAX_RADIUS = 7;
+const MAX_RADIUS = 10;
 const MAX_DIAMETER = MAX_RADIUS * 2 + 1;
 
 const TemporalSoftenData = struct {
@@ -49,21 +49,22 @@ fn TemporalSoften(comptime T: type) type {
         const SAT = types.SignedArithmeticType(T);
         const UAT = types.UnsignedArithmeticType(T);
 
-        fn processPlaneScalar(srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneScalar(srcs: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             @setFloatMode(float_mode);
 
+            const frames: u8 = @intCast(srcs.len);
             const half_frames: u8 = @divTrunc(frames, 2);
 
             for (0..height) |row| {
                 for (0..width) |column| {
                     const current_pixel = row * stride + column;
-                    const current_value = srcp[0][current_pixel];
+                    const current_value = srcs[0][current_pixel];
 
                     var sum: UAT = current_value;
 
-                    for (1..frames) |i| {
+                    for (srcs[1..]) |src| {
                         var value = current_value;
-                        const frame_value = srcp[i][current_pixel];
+                        const frame_value = src[current_pixel];
                         if (@abs(@as(SAT, value) - frame_value) <= threshold) {
                             value = frame_value;
                         }
@@ -80,32 +81,33 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn processPlaneVector(srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, frames: u8, threshold: T) void {
+        fn processPlaneVector(srcp: []const []const T, noalias dstp: []T, width: usize, height: usize, stride: usize, threshold: T) void {
             const width_simd = width / vec_size * vec_size;
 
             for (0..height) |row| {
                 var column: usize = 0;
                 while (column < width_simd) : (column += vec_size) {
                     const offset = row * stride + column;
-                    temporalSmoothVector(srcp, dstp, offset, frames, threshold);
+                    temporalSmoothVector(srcp, dstp, offset, threshold);
                 }
 
                 if (width_simd < width) {
-                    temporalSmoothVector(srcp, dstp, (row * stride) + width - vec_size, frames, threshold);
+                    temporalSmoothVector(srcp, dstp, (row * stride) + width - vec_size, threshold);
                 }
             }
         }
 
-        fn temporalSmoothVector(srcp: []const []const T, noalias dstp: []T, offset: usize, frames: u8, threshold: T) void {
+        fn temporalSmoothVector(srcs: []const []const T, noalias dstp: []T, offset: usize, threshold: T) void {
             @setFloatMode(float_mode);
 
             const threshold_vec: VecType = @splat(threshold);
-            const current_value_vec = vec.load(VecType, srcp[0], offset);
+            const current_value_vec = vec.load(VecType, srcs[0], offset);
+            const frames: u8 = @intCast(srcs.len);
 
             var sum_vec: @Vector(vec_size, UAT) = current_value_vec;
 
-            for (1..frames) |i| {
-                const frame_value_vec = vec.load(VecType, srcp[i], offset);
+            for (srcs[1..]) |src| {
+                const frame_value_vec = vec.load(VecType, src, offset);
 
                 const abs_vec = switch (types.numberType(T)) {
                     .int => @max(current_value_vec, frame_value_vec) - @min(current_value_vec, frame_value_vec),
@@ -194,15 +196,14 @@ fn TemporalSoften(comptime T: type) type {
             }
         }
 
-        fn processPlane(frames: u8, _threshold: f32, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
-            //TODO: Remove 'frames' param, since it's just the length of the srcp8 slice.
+        fn processPlane(_threshold: f32, noalias dstp8: []u8, srcp8: []const []const u8, width: usize, height: usize, stride8: usize) void {
             const stride = stride8 / @sizeOf(T);
             const srcp: []const []const T = @ptrCast(@alignCast(srcp8));
             const dstp: []T = @ptrCast(@alignCast(dstp8));
             const threshold = math.lossyCast(T, _threshold);
 
-            // processPlaneScalar(srcp, dstp), width, height, stride, frames, threshold);
-            processPlaneVector(srcp, dstp, width, height, stride, frames, threshold);
+            // processPlaneScalar(srcp, dstp), width, height, stride, threshold);
+            processPlaneVector(srcp, dstp, width, height, stride, threshold);
         }
     };
 }
@@ -281,7 +282,7 @@ fn temporalSoftenGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*any
 
         for (0..@intCast(d.vi.format.numPlanes)) |plane| {
             // Skip planes we aren't supposed to process
-            if (d.threshold[plane] == 0) {
+            if (!d.process[plane]) {
                 continue;
             }
 
@@ -295,7 +296,7 @@ fn temporalSoftenGetFrame(_n: c_int, activation_reason: ar, instance_data: ?*any
             }
             const dstp8: []u8 = dst.getWriteSlice(plane);
 
-            processPlane(frames, d.threshold[plane], dstp8, srcp8[0..frames], width, height, stride8);
+            processPlane(d.threshold[plane], dstp8, srcp8[0..frames], width, height, stride8);
         }
 
         return dst.frame;
@@ -333,7 +334,7 @@ export fn temporalSoftenCreate(in: ?*const vs.Map, out: ?*vs.Map, user_data: ?*a
     // Check radius param
     if (inz.getInt(i32, "radius")) |radius| {
         if ((radius < 1) or (radius > MAX_RADIUS)) {
-            return vscmn.reportError2("TemporalSoften: Radius must be between 1 and 7 (inclusive)", zapi, outz, d.node);
+            return vscmn.reportError2("TemporalSoften: Radius must be between 1 and 10 (inclusive)", zapi, outz, d.node);
         }
         d.radius = @intCast(radius);
     } else {

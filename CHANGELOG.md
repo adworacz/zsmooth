@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.20.0
-* RemoveGrain: Fix bug in parsing of `mode` param. Previously, different modes non-zero planes were not respected.
+* RemoveGrain: Fix bug in parsing of `mode` param. Previously, specifying different modes for planes 1 and 2 were not respected.
 * build: Update znver4 builds to disable use of AVX512BF16, per Myrsloik's guidance.
 * TemporalSoften: Add `planes` parameter for convenience.
 * TemporalSoften: Increase max radius from 7 to 10.

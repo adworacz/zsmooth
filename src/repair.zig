@@ -60,8 +60,17 @@ fn Repair(comptime T: type) type {
 
         // Clamp the source pixel to the min/max of the repair pixels.
         fn repairMode1(src: T, grid: Grid) T {
-            const min = grid.minWithCenter();
-            const max = grid.maxWithCenter();
+            const minA = @min(grid.top_left, grid.bottom_right);
+            const minB = @min(grid.top_center, grid.bottom_center);
+            const minC = @min(grid.top_right, grid.bottom_left);
+            const minD = @min(grid.center_left, grid.center_right);
+            const min = @min(@min(minA, minB), @min(minC, minD), grid.center_center);
+
+            const maxA = @max(grid.top_left, grid.bottom_right);
+            const maxB = @max(grid.top_center, grid.bottom_center);
+            const maxC = @max(grid.top_right, grid.bottom_left);
+            const maxD = @max(grid.center_left, grid.center_right);
+            const max = @max(@max(maxA, maxB), @max(maxC, maxD), grid.center_center);
 
             return math.clamp(src, min, max);
         }
